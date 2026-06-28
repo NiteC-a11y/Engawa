@@ -426,10 +426,11 @@ const mention=document.getElementById('mention');
 let menuOpen=false,menuSel=0,menuItems=[];
 function candidates(filter){
   const present=(performance.now()-lastGuestSeen)<90000;     // 来訪中らしい間だけ客人/両方を出す
-  const c=[{ins:'茶々',h:'住人'}];
-  if(present){c.push({ins:'客人',h:guestName||'来訪中'});c.push({ins:'二人とも',h:'みんなに'});}
+  // label=メニュー表示／text=挿入する自然な呼びかけ（宛先語を含むので resolve_addressee がそのまま振り分け・部屋の全員に聞こえる）
+  const c=[{label:'茶々',text:'茶々、',h:'住人'}];
+  if(present){c.push({label:'客人',text:'客人さん、',h:guestName||'来訪中'});c.push({label:'二人とも',text:'二人とも、',h:'みんなに'});}
   const f=(filter||'').trim();
-  return f?c.filter(x=>x.ins.indexOf(f)>=0||(x.h&&x.h.indexOf(f)>=0)):c;
+  return f?c.filter(x=>x.label.indexOf(f)>=0||(x.h&&x.h.indexOf(f)>=0)):c;
 }
 function mentionToken(){
   const pos=inp.selectionStart,upto=inp.value.slice(0,pos),at=upto.lastIndexOf('@');
@@ -439,7 +440,7 @@ function mentionToken(){
 }
 function hideMenu(){menuOpen=false;mention.style.display='none';}
 function renderMenu(){
-  mention.innerHTML=menuItems.map((x,i)=>'<div class="mi'+(i===menuSel?' sel':'')+'" data-i="'+i+'"><span>@'+esc(x.ins)+'</span><span class="h">'+esc(x.h||'')+'</span></div>').join('');
+  mention.innerHTML=menuItems.map((x,i)=>'<div class="mi'+(i===menuSel?' sel':'')+'" data-i="'+i+'"><span>@'+esc(x.label)+'</span><span class="h">'+esc(x.h||'')+'</span></div>').join('');
   mention.style.display='block';menuOpen=true;
   mention.querySelectorAll('.mi').forEach(el=>el.onclick=()=>applyMention(menuItems[+el.dataset.i]));
 }
@@ -453,7 +454,7 @@ function updateMenu(){
 }
 function applyMention(cand){
   const t=mentionToken();if(!t||!cand)return;
-  const v=inp.value,pos=inp.selectionStart,before=v.slice(0,t.at)+cand.ins+' ';
+  const v=inp.value,pos=inp.selectionStart,before=v.slice(0,t.at)+cand.text;
   inp.value=before+v.slice(pos);
   inp.setSelectionRange(before.length,before.length);
   hideMenu();inp.focus();
