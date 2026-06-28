@@ -25,12 +25,12 @@ PHASE_GAP = (int(os.environ.get("ENGAWA_PHASE_GAP_MIN", "1")),
              int(os.environ.get("ENGAWA_PHASE_GAP_MAX", "2")))
 
 # 自発来訪のつまみ（ADR-0008: 時刻×確率×クールダウン。「来ない日がある」を低確率で表現）
-GUEST_VISIT_FROM_HOUR = config.get_int("ENGAWA_GUEST_FROM_HOUR", "guest", "from_hour", 15)   # 夕方以降のみ
-GUEST_VISIT_PROB = config.get_float("ENGAWA_GUEST_PROB", "guest", "prob", 0.05)              # eligible 判定の素確率（低め）
+GUEST_VISIT_FROM_HOUR = config.get_int("ENGAWA_GUEST_FROM_HOUR", "guest", "from_hour", 15, lo=0, hi=23)   # 夕方以降のみ
+GUEST_VISIT_PROB = config.get_float("ENGAWA_GUEST_PROB", "guest", "prob", 0.05, lo=0, hi=1)              # eligible 判定の素確率（低め）
 
 # 客人の世間話トピック（ADR-0014: ホワイトリスト・時節土台＋やわらかRSS・確率注入）
-TOPIC_REFRESH_MIN = config.get_int("ENGAWA_TOPIC_REFRESH_MIN", "topic", "refresh_min", 30)   # キャッシュ更新間隔（分）
-TOPIC_PROB = config.get_float("ENGAWA_TOPIC_PROB", "topic", "prob", 0.7)                     # 世間ビートでネタを使う確率
+TOPIC_REFRESH_MIN = config.get_int("ENGAWA_TOPIC_REFRESH_MIN", "topic", "refresh_min", 30, lo=1)   # キャッシュ更新間隔（分）
+TOPIC_PROB = config.get_float("ENGAWA_TOPIC_PROB", "topic", "prob", 0.7, lo=0, hi=1)               # 世間ビートでネタを使う確率
 TOPIC_MAX_LEN = int(os.environ.get("ENGAWA_TOPIC_MAX_LEN", "120"))           # 1ネタの長さ上限
 TOPIC_MAX_PER_SOURCE = int(os.environ.get("ENGAWA_TOPIC_MAX_PER_SOURCE", "5"))
 TOPIC_MAX_BYTES = 512 * 1024                                                  # rss 取得サイズ上限

@@ -40,7 +40,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 - **住人セッションは長命**：session/new は起動時1回。以後 prompt を同一 sessionId に積む。adr/0005
 - **客人セッションは使い捨て**：来訪ごとに session/new → 数往復 → 破棄。滞在は往復数で上限を切る。adr/0008
 - agent→client の `fs/*` `terminal/*` は **無効**（clientCapabilities で false 申告し、要求が来たらエラー応答）。住人はツールを使わない。
-- `session/request_permission` が来たら **cancelled で返す**（住人に許可作業をさせない）。
+- `session/request_permission` が来たら **cancelled で返す**（住人に許可作業をさせない）。実応答 JSON は `{"outcome": {"outcome": "cancelled"}}`（ACP `RequestPermissionResponse`：外側 `outcome`＝応答フィールド／内側＝判断の種別。実装は `acp.py`）。
 
 ---
 

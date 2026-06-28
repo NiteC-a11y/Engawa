@@ -37,25 +37,35 @@ def _from_json(section, key):
     return None
 
 
-def get(env, section, key, default, cast):
-    """env(ENGAWA_*) → engawa.json[section][key] → default の順で解決して cast。"""
+def _clamp(v, lo, hi):
+    """範囲外なら端へ寄せる（壊れた設定値で極端な挙動＝常時来訪/毎tick取得 等にならないように）。"""
+    if lo is not None and v < lo:
+        return lo
+    if hi is not None and v > hi:
+        return hi
+    return v
+
+
+def get(env, section, key, default, cast, lo=None, hi=None):
+    """env(ENGAWA_*) → engawa.json[section][key] → default の順で解決して cast。
+    lo/hi 指定時は範囲にクランプ（確率は 0..1、間隔は正数 等）。無効値は既定へ。"""
     if env in os.environ:
         try:
-            return cast(os.environ[env])
+            return _clamp(cast(os.environ[env]), lo, hi)
         except (TypeError, ValueError):
             pass                          # 壊れた env は無視して次へ
     v = _from_json(section, key)
     if v is not None:
         try:
-            return cast(v)
+            return _clamp(cast(v), lo, hi)
         except (TypeError, ValueError):
             pass                          # 壊れた json 値は無視して既定へ
-    return default
+    return _clamp(default, lo, hi)
 
 
-def get_int(env, section, key, default):
-    return get(env, section, key, default, int)
+def get_int(env, section, key, default, lo=None, hi=None):
+    return get(env, section, key, default, int, lo, hi)
 
 
-def get_float(env, section, key, default):
-    return get(env, section, key, default, float)
+def get_float(env, section, key, default, lo=None, hi=None):
+    return get(env, section, key, default, float, lo, hi)
