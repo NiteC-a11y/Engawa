@@ -67,6 +67,7 @@
 - [ ] 「茶々が反応しない（……）」の UI 表現（既読スルー感）
 
 ## 技術的負債 / 要確認
+- [x] 常設テストの復帰（codexレビュー S3・6/28）＝stdlib `unittest` で GUI/ネット不要の回帰テストを `tests/` に新設。views(`collapse_ws`/`corner_xy`)・config clamp(S4)・sources(whitelist `_host_allowed`/RSS `_parse_rss_titles`/`time_of_day`/`build_context`/narration)・acp(EOF→`ConnectionError` S1)・`Scheduler`＋`CaptureView`＋fake resident/codex(user入力・cancel優先・arc結了・客人3ビート使い捨て)。実行 `python -m unittest discover -s tests -t .`（45件 PASS）。以前 PASS 記録のあった JS `node --check`/実 E2E はこの stdlib スイートには含めない（別軸）
 - [x] session/cancel の実機 claude-code-acp 挙動（stopReason=cancelled が返るか）（確認済 6/27：cancelled で返る・エラーにならない）
 - [ ] cmd /c の裏の node 取り残し → 本番常駐では **Job Object 化**で確実に刈る（`taskkill /PID /T /F` は実装済み＝acp.py `shutdown_process`。taskkill 失敗時/孤立子の最終保険として Job Object を被せる）
 - [ ] 茶々用 CLAUDE.md は persona/ 等の別ディレクトリに置く運用（リポジトリの CLAUDE.md と同名衝突回避）

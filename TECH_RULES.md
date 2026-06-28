@@ -106,6 +106,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 ---
 
 ## 参照
+- テスト → リポジトリ直下で `python -m unittest discover -s tests -t .`（stdlib unittest のみ・GUI/ネット不要・`tests/`）
 - 判断の経緯 → `adr/`（README に一覧）
 - 全体像（正本） → `CLAUDE.md`（adr/0016）／旧構想は `engawa-acp-spec.md`（歴史的参照）
 - 住人の心得 → `CLAUDE.md`
