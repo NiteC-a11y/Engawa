@@ -294,44 +294,59 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
 
 
 class TestGameMode(unittest.IsolatedAsyncioTestCase):
-    """ゲームモード（ADR-0017 Inc3）の配線: 実 rlcard/LLM 無しで FakeGame＋fake codex で検証。"""
-    def _sched(self, created):
+    """ゲームモード（ADR-0017 Inc3/A）の配線: 実 rlcard/LLM 無しで FakeGame＋fake codex で検証。
+    A＝基本 私＋茶々（観戦は茶々のみ）＝客人 codex を呼ばない。足りない時だけ客人で埋める。"""
+    def _sched(self, created, make=None):
         s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
                             views.CaptureView(), spawn_codex=_codex_factory(created))
-        s._make_game = lambda gid, n: FakeGame(3)        # rlcard を使わせない（依存ゼロ）
+        s._make_game = make or (lambda gid, n: FakeGame(n))   # rlcard を使わせない（人数は尊重）
         return s
 
     @staticmethod
     def _systems(v):
         return [m for (t, m, _l) in v.events if t == "system"]
 
-    async def test_play_flow_human_then_ai_then_over(self):
+    async def test_play_is_human_plus_chacha_no_guest(self):
         created = []
         s = self._sched(created)
         await s._start_game("blackjack", watch=False)
         self.assertIsNotNone(s.game)
-        self.assertEqual(len(created), 1)                # 私+茶々+客人1＝3人 → 客人1体 spawn
+        self.assertEqual(len(created), 0)                # 私+茶々のみ＝客人 codex を呼ばない（A）
+        self.assertEqual(s.game.adapter.num_players, 2)
         self.assertTrue(s.game.waiting_for_human)        # slot0=私 → 入力待ち
         await s.on_user_input("hi")                      # 私が hi（FakeGame の合法手）
-        for _ in range(6):                               # tick で AI(茶々/客人)を1手ずつ
+        for _ in range(6):                               # tick で 茶々 が打って終局
             if s.game is None:
                 break
             await s._tick(sources.build_context(None, []))
-        self.assertIsNone(s.game)                        # 終局→片付け
-        self.assertTrue(created[0].closed)               # 客人 codex 破棄（使い捨て）
+        self.assertIsNone(s.game)
 
-    async def test_watch_mode_all_ai(self):
+    async def test_watch_is_chacha_solo_no_guest(self):
         created = []
         s = self._sched(created)
         await s._start_game("blackjack", watch=True)
-        self.assertEqual(len(created), 2)                # 茶々+客人2＝3 全AI
-        self.assertFalse(s.game.waiting_for_human)
+        self.assertEqual(len(created), 0)                # 茶々がディーラーと＝客人なし
+        self.assertEqual(s.game.adapter.num_players, 1)
+        self.assertFalse(s.game.waiting_for_human)       # 全AI（茶々のみ）
+        for _ in range(6):
+            if s.game is None:
+                break
+            await s._tick(sources.build_context(None, []))
+        self.assertIsNone(s.game)
+
+    async def test_fills_guests_only_when_game_needs_more(self):
+        # 人数が足りないゲーム（3人固定）の時だけ客人で埋め、終局で破棄
+        created = []
+        s = self._sched(created, make=lambda gid, n: FakeGame(3))
+        await s._start_game("blackjack", watch=False)    # 私+茶々=2 だが 3人ゲーム → 客人1
+        self.assertEqual(len(created), 1)
+        await s.on_user_input("hi")
         for _ in range(8):
             if s.game is None:
                 break
             await s._tick(sources.build_context(None, []))
         self.assertIsNone(s.game)
-        self.assertTrue(all(c.closed for c in created))  # 客人を全部破棄
+        self.assertTrue(created[0].closed)               # 埋めた客人 codex を破棄
 
     async def test_second_game_rejected(self):
         created = []

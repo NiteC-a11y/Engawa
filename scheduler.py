@@ -204,7 +204,7 @@ class Scheduler:
             self.view.system("  ふつうに打って Enter → 茶々に話しかける")
             self.view.system("  /arc [雀|猫|風]  → 箱庭アークを今すぐ再生（デバッグ）")
             self.view.system("  /codex <人格>    → 客人(codex)を呼ぶ（到着→世間→辞去の短い来訪）")
-            self.view.system("  /blackjack [見る] → ブラックジャック（私+茶々+客人／「見る」で観戦＝全AI・要 rlcard）")
+            self.view.system("  /blackjack [見る] → ブラックジャック（私+茶々／「見る」で茶々がディーラーと・要 rlcard）")
             self.view.system("  /model           → 今のモデルを表示（住人=Claude / 客人=codex）")
             self.view.system("  /quit            → 縁側を閉じる")
         elif cmd == "/arc":
@@ -322,11 +322,13 @@ class Scheduler:
         return decide
 
     async def _start_game(self, game_id, watch):
-        """対局開始。会話/アークは畳む。客人を人数ぶん召喚し、人間(任意)＋茶々＋客人で GameSession を組む。"""
+        """対局開始。会話/アークは畳む。基本は 私＋茶々（観戦は茶々のみ）＝客人 codex は呼ばない（A）。
+        ゲームが要求する人数に足りない時だけ客人で埋める。"""
         if self.game is not None:
             self.view.system("  もうゲーム中や。"); return
+        want = 1 if watch else 2                         # 観戦=茶々のみ / 参加=私+茶々（codex は基本不要）
         try:
-            adapter = self._make_game(game_id, 3)
+            adapter = self._make_game(game_id, want)
         except ImportError:
             self.view.system("  （ゲームには rlcard が要る: pip install rlcard）"); return
         except Exception as e:
@@ -345,7 +347,7 @@ class Scheduler:
                 players.append(game.Player("私"))        # 人間（観戦時は入れない＝全AI）。slot 0
             players.append(game.Player("茶々", self._ai_decider(self.resident, "茶々", len(players))))
             self._game_guests = []
-            while len(players) < n:                      # 残りスロットを客人(codex)で埋める
+            while len(players) < n:                      # 人数が足りないゲームの時だけ客人(codex)で埋める（blackjack では起きない）
                 persona = random.choice(sources.GUEST_PERSONAS)
                 try:
                     agent = await self._spawn_codex()
@@ -355,8 +357,10 @@ class Scheduler:
                 self._game_guests.append(agent)
                 slot = len(players)                      # 追加位置＝RLCard の player id（自分の手札参照に使う）
                 players.append(game.Player(f"客人〔{persona}〕", self._ai_decider(agent, persona, slot)))
+            players = players[:n]                         # 念のためスロット数に合わせる
             label = game.games().get(game_id, {}).get("label", game_id)
-            self.view.system(f"  〔{label}〕開始（{'観戦＝全部AI' if watch else 'あなたも参加'}・{n}人）")
+            who = "観戦＝茶々がディーラーと勝負" if watch else "あなたも参加"
+            self.view.system(f"  〔{label}〕開始（{who}・{n}人）")
             self.game = game.GameSession(
                 adapter, players,
                 on_move=lambda name, move, ad: self.view.system(f"  {name} → {move}"))

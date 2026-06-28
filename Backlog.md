@@ -63,8 +63,8 @@
 > 「ゲームは自作せず既存実装に AI が参加」。Pyxel/pygame はUI総取替で不適と判断、RLCard（読める状態＋合法手）を Port&Adapter で。
 - [x] **Inc1**: Game ポート核 `game.py`（GameAdapter/Player/GameSession 人数非依存/レジストリ・依存ゼロ・FakeGame でテスト）
 - [x] **Inc2**: `game_rlcard.py`（RLCardAdapter・**rlcard 依存はここだけ**）＋step方式＋AI-only観戦。実 rlcard で3人BJ完走を隔離venvで検証。rlcard は**任意依存**（無くてもコア app/テストは動く・adapter テストは skip）
-- [x] **Inc3**: 実 LLM プレイヤー（茶々=resident/客人=codex を人数ぶん召喚・state＋合法手→手）＋`/blackjack [見る]`＋console＋tickペース＋客人破棄。配線は FakeGame＋fake codex で全115 PASS
-  - [ ] **実機 E2E（ユーザー）**: `pip install rlcard` → `/blackjack`（私+茶々+客人）/`/blackjack 見る`（観戦＝全AI）。**実 claude/codex が合法手をちゃんと選ぶか**・パース外し時のフォールバック頻度
+- [x] **Inc3**: 実 LLM プレイヤー（茶々=resident・state＋合法手→手）＋`/blackjack [見る]`＋console＋tickペース。**A方式＝基本 私＋茶々（観戦は茶々のみ）で codex 不要**、ゲームが人数を要求する時だけ客人(codex)で埋めて終局で破棄。手番プロンプトに自分のスロットを明示（全員の手札が見える blackjack 対策）。配線は FakeGame＋fake codex で全116 PASS
+  - [ ] **実機 E2E（ユーザー）**: `pip install rlcard` → `/blackjack 見る`（茶々がディーラーと・codex不要）/`/blackjack`（私+茶々）。**実 claude が合法手(hit/stand)をちゃんと選ぶか**・パース外し時のフォールバック頻度・テンポ
 - [ ] **Inc4**: web の札UI（既存 canvas に pixel-art カード・伏せ札クリック等）。今は console/ログのテキスト表示
 - [ ] （任意）UNO/ポーカー等を増やす（`game_rlcard.register_rlcard_games` に1行）／PettingZoo アダプタ（盤ゲーム）／手番のリアクション台詞
 
