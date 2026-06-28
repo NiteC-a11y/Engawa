@@ -432,7 +432,7 @@ chips().forEach(c=>c.onclick=()=>selChip(c));
 function send(){
   const v=inp.value.trim(); if(!v||!window.pywebview) return;
   window.pywebview.api.send(addrPfx+v);                      // 選んだ宛先の自然な呼びかけを前置（resolve_addressee が振り分け）
-  inp.value=''; resetChip();                                 // 一回限り＝送ったら茶々へ戻す
+  inp.value='';                                             // 宛先(チップ)は保持＝変えるまで同じ相手（B方式・客人退場時のみ refreshAddr が茶々へ戻す）
 }
 document.getElementById('send').onclick=send;
 document.getElementById('close').onclick=()=>{window.pywebview&&window.pywebview.api.close();};
