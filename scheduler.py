@@ -20,6 +20,8 @@ TICK_MAX = config.get_float("ENGAWA_TICK_MAX", "timing", "tick_max", 70)
 QUIET_AFTER_USER = config.get_float("ENGAWA_QUIET", "timing", "quiet_after_user", 25)
 ARC_START_PROB = config.get_float("ENGAWA_ARC_PROB", "timing", "arc_prob", 0.30)
 MUTTER_PROB = config.get_float("ENGAWA_MUTTER_PROB", "timing", "mutter_prob", 0.6)
+ACTIVE_BEAT_MIN = config.get_float("ENGAWA_ACTIVE_BEAT_MIN", "timing", "active_beat_min", 5)   # アーク/来訪 進行中のビート間隔（短め＝会話が流れる）
+ACTIVE_BEAT_MAX = config.get_float("ENGAWA_ACTIVE_BEAT_MAX", "timing", "active_beat_max", 12)
 
 
 class Scheduler:
@@ -38,6 +40,7 @@ class Scheduler:
         self.weather = None                              # 最新天気を保持（起動時1回＋tick毎更新・捏造防止）
         self.topics = []                                 # 客人の世間話ネタ・プール（ADR-0014）
         self._topics_at = 0.0                            # 最終更新時刻（TOPIC_REFRESH_MIN で更新）
+        self._next_at = 0.0                              # 次ビートの予定時刻（active 中は短間隔・遅延しても保持）
         self.stop = asyncio.Event()
 
     # ── 注入（turn_lock で直列化）──────────────────────────
@@ -85,23 +88,34 @@ class Scheduler:
         if narr is not None and (narr.kind == "transition" or random.random() < MUTTER_PROB):
             await self._inject(narr)
 
+    def _next_interval(self):
+        """次ビートまでの間合い。アーク/来訪が進行中(active)は短く、何もない時は長い ambient。"""
+        if self.active is not None:
+            return random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
+        return random.uniform(TICK_MIN, TICK_MAX)
+
     async def _tick_loop(self):
+        self._next_at = time.time() + random.uniform(TICK_MIN, TICK_MAX)   # 起動直後は即つぶやかない
         while not self.stop.is_set():
-            wait = random.uniform(TICK_MIN, TICK_MAX)
-            try:
-                await asyncio.wait_for(self.stop.wait(), timeout=wait); break
+            try:                                         # 1秒刻みで起き、active 変化（召喚等）に即追従
+                await asyncio.wait_for(self.stop.wait(), timeout=1.0); break
             except asyncio.TimeoutError:
                 pass
-            if self.turn_lock.locked():
+            now = time.time()
+            if now < self._next_at:                      # まだ間合いの途中
                 continue
-            if time.time() - self.last_user_ts < QUIET_AFTER_USER:   # 会話直後は静か
+            if self.turn_lock.locked():                  # 注入中は次スライスで再挑戦（next_at 据置＝解け次第すぐ）
                 continue
+            guest_active = self.active is not None and self.active.key == "guest"
+            if not guest_active and now - self.last_user_ts < QUIET_AFTER_USER:
+                continue                                 # 会話直後は静か（ただし来訪は止めない）
             self.weather = await asyncio.to_thread(sources.fetch_weather)   # 保持を更新
-            if time.time() - self._topics_at > sources.TOPIC_REFRESH_MIN * 60:
+            if now - self._topics_at > sources.TOPIC_REFRESH_MIN * 60:
                 self.topics = await asyncio.to_thread(sources.fetch_topics)  # ネタを定期更新
-                self._topics_at = time.time()
+                self._topics_at = now
             async with self.drive_lock:                  # 召喚と active 駆動を競合させない
                 await self._tick(sources.build_context(self.weather, self.topics))
+            self._next_at = time.time() + self._next_interval()   # 次の間合い（active 中は短い＝会話が流れる）
 
     # ── ユーザー入力（割り込み・cancel優先）──────────────────
     async def on_user_input(self, line):
@@ -160,6 +174,8 @@ class Scheduler:
             await self._emit(await self.active.next_phase(sources.build_context(weather, self.topics)))
             if self.active is None:      # 第一声すら出ず結了＝codex spawn 失敗（召喚は明示動作なので可視化）
                 self.view.system("  （客人は来られなんだ。codex 接続・ChatGPT 認証を確認してな）")
+            else:                        # 続き(世間→辞去)を ambient の35-70秒でなく短間隔で流す（会話が止まって見えない対策）
+                self._next_at = time.time() + random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 
     async def _play_arc_now(self, key):
         weather = await asyncio.to_thread(sources.fetch_weather)

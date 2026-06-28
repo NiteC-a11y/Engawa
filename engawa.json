@@ -6,9 +6,11 @@
     "prob": 0.05
   },
   "timing": {
-    "_comment": "間合い。tick_min/max=つぶやき間隔(秒)。arc_prob=新アーク抽選。quiet_after_user=会話直後の沈黙(秒)。mutter_prob=天気つぶやき確率。",
+    "_comment": "間合い。tick_min/max=何もない時のつぶやき間隔(秒)。active_beat_min/max=アーク/来訪が進行中のビート間隔(秒・短め＝会話が流れる)。arc_prob=新アーク抽選。quiet_after_user=会話直後の沈黙(秒・来訪は止めない)。mutter_prob=天気つぶやき確率。",
     "tick_min": 35,
     "tick_max": 70,
+    "active_beat_min": 5,
+    "active_beat_max": 12,
     "arc_prob": 0.30,
     "quiet_after_user": 25,
     "mutter_prob": 0.6
