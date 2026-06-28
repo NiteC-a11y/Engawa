@@ -346,8 +346,13 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   .who{opacity:.55;margin-right:4px;font-size:11px}
   #bar{display:flex;gap:6px;padding:8px;background:#1f1916}
   /* 宛先ドロップダウン（左・3人会話の入力補助。@ は日本語IMEで打ちにくいのでセレクトで選ぶ） */
-  #addr{padding:8px 4px;border:1px solid #5a4a3a;border-radius:6px;background:#2e2620;color:#f0e9e0;
-    font-size:12px;flex:0 0 auto;max-width:8em;cursor:pointer}
+  /* 宛先チップ（入力欄の上・来訪中だけ表示・タップで次の発言の宛先を選ぶ） */
+  #addrbar{display:none;gap:5px;align-items:center;padding:5px 8px 0;background:#1f1916}
+  #addrbar.on{display:flex}
+  #addrbar .al{font-size:11px;opacity:.5}
+  #addrbar .ac{font-size:12px;padding:3px 10px;border:1px solid #5a4a3a;border-radius:12px;
+    background:#2e2620;color:#cdbfae;cursor:pointer}
+  #addrbar .ac.sel{background:#caa46b;color:#2a2320;border-color:#caa46b}
   #in{flex:1;padding:8px;border:1px solid #5a4a3a;border-radius:6px;background:#2e2620;color:#f0e9e0;font-size:13px}
   #send{padding:8px 13px;border:0;border-radius:6px;background:#caa46b;color:#2a2320;cursor:pointer}
 </style></head>
@@ -357,8 +362,11 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
     <canvas id="cha" width="74" height="74"></canvas><div id="nya">ニャー</div></div>
   <button id="close" title="閉じる">×</button>
   <div id="log"></div>
-  <div id="bar"><select id="addr" title="宛先（3人会話のとき）"><option value="">茶々へ</option></select>
-    <input id="in" placeholder="話しかける…（左で宛先・/help /codex /quit）" autocomplete="off">
+  <div id="addrbar"><span class="al">宛先</span>
+    <button class="ac sel" data-p="">茶々</button>
+    <button class="ac" data-p="客人さん、">客人</button>
+    <button class="ac" data-p="二人とも、">二人とも</button></div>
+  <div id="bar"><input id="in" placeholder="話しかける…（/help /codex /quit）" autocomplete="off">
     <button id="send">送信</button></div>
 </div>
 <script>
@@ -414,28 +422,27 @@ function updateGuest(){
   if(present&&!guestShown){guestShown=true;kehai();}            // 来訪の立ち上がりで気配
   else if(!present&&guestShown){guestShown=false;}
 }
+// ── 宛先チップ（入力欄の上・来訪中だけ表示）。タップで次の発言の宛先を選び、送ると茶々へ戻る（一回限り） ──
+const addrbar=document.getElementById('addrbar');
+const chips=()=>addrbar.querySelectorAll('.ac');
+let addrPfx='';                                              // 次の発言に前置する宛先（空=茶々/既定）
+function selChip(btn){addrPfx=btn.dataset.p;chips().forEach(c=>c.classList.toggle('sel',c===btn));}
+function resetChip(){addrPfx='';chips().forEach((c,i)=>c.classList.toggle('sel',i===0));}
+chips().forEach(c=>c.onclick=()=>selChip(c));
 function send(){
   const v=inp.value.trim(); if(!v||!window.pywebview) return;
-  window.pywebview.api.send(addr.value+v);   // 左で選んだ宛先の自然な呼びかけを前置（空=茶々/既定）
-  inp.value=''; addr.value='';               // 一回限り＝送ったら既定(茶々)へ戻す
+  window.pywebview.api.send(addrPfx+v);                      // 選んだ宛先の自然な呼びかけを前置（resolve_addressee が振り分け）
+  inp.value=''; resetChip();                                 // 一回限り＝送ったら茶々へ戻す
 }
 document.getElementById('send').onclick=send;
 document.getElementById('close').onclick=()=>{window.pywebview&&window.pywebview.api.close();};
 inp.addEventListener('keydown',e=>{if(e.key==='Enter')send();});
-// ── 宛先ドロップダウン（左）。@ は日本語IMEで切替が要るので、選んで送ると自然な呼びかけを前置・一回限り ──
-const addr=document.getElementById('addr');
-let addrKey=null;
+let addrShown=null;
 function refreshAddr(){
-  const present=(performance.now()-lastGuestSeen)<90000;     // 来訪中らしい間だけ客人/二人ともを出す
-  const key=present?'1':'0';                                 // 在/不在が変わった時だけ作り直す（操作を壊さない・幅も一定）
-  if(key===addrKey) return; addrKey=key;
-  const cur=addr.value;
-  let html='<option value="">茶々へ</option>';
-  if(present){
-    html+='<option value="客人さん、">客人へ</option>';      // 人格名は入れない（横幅が暴れて入力欄が潰れるため）
-    html+='<option value="二人とも、">二人ともへ</option>';
-  }
-  addr.innerHTML=html; addr.value=present?cur:'';            // 客人が去ったら茶々へ戻す
+  const present=(performance.now()-lastGuestSeen)<90000;     // 来訪中らしい間だけチップ行を出す
+  if(present===addrShown) return; addrShown=present;
+  addrbar.classList.toggle('on',present);
+  if(!present) resetChip();                                  // 客人が去ったら茶々へ戻す
 }
 setInterval(tick,150);
 // ── 茶々の描画（ADR-0010 骨/皮）: SPRITE シートがあればコマ送り、無ければ procedural ──
