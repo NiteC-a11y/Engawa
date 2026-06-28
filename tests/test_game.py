@@ -105,6 +105,19 @@ class TestGameSession(unittest.IsolatedAsyncioTestCase):
             game.GameSession(FakeGame(3), [game.Player("私")])   # 1 != 3
 
 
+class TestParseMove(unittest.TestCase):
+    def test_exact(self):
+        self.assertEqual(game.parse_move("hit", ["hit", "stand"]), "hit")
+
+    def test_substring_and_case(self):
+        self.assertEqual(game.parse_move("I'll HIT!", ["hit", "stand"]), "hit")
+        self.assertEqual(game.parse_move("stand かな", ["hit", "stand"]), "stand")
+
+    def test_none_when_absent(self):
+        self.assertIsNone(game.parse_move("パス", ["hit", "stand"]))
+        self.assertIsNone(game.parse_move("", ["hit", "stand"]))
+
+
 class TestRegistry(unittest.TestCase):
     def test_register_make_and_list(self):
         game.register("_faketest", lambda n: FakeGame(n), label="テスト", players=(1, 4))

@@ -17,6 +17,19 @@ class GameError(Exception):
     pass
 
 
+def parse_move(reply, legal_moves):
+    """LLM の返答テキストから合法手を1つ拾う（完全一致→部分一致）。見つからなければ None
+    （GameSession が合法手の先頭へフォールバックする）。"""
+    r = (reply or "").strip().lower()
+    for m in legal_moves:                      # 完全一致を優先
+        if r == str(m).lower():
+            return m
+    for m in legal_moves:                      # 次に本文に含まれる手
+        if str(m).lower() in r:
+            return m
+    return None
+
+
 # ── ポート（抽象）。framework 非依存。実装が RLCard 等をこの形に合わせる ──────────
 class GameAdapter:
     """1ゲームの最小インターフェース。state/legal_moves は「人間(=LLM)が読める」形で返すこと。"""

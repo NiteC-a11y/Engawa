@@ -320,6 +320,24 @@ def room_resident_prompt(window, kind):
             + "\nひと続きの短い独り言で。何も言いたくなければ「……」だけでよい。")
 
 
+# ── ゲーム（ADR-0017）。AIプレイヤーへ「状態＋合法手」を見せ、手の語だけ返させる ──────
+def describe_state(state):
+    """ゲームの読める状態(raw_obs の dict)を1行に。手の一覧は別に出すので除く。表示/プロンプト兼用。"""
+    if not isinstance(state, dict):
+        return str(state)
+    parts = [f"{k}: {v}" for k, v in state.items()
+             if k not in ("legal_actions", "raw_legal_actions")]
+    return " / ".join(parts)
+
+
+def game_move_prompt(name, state, legal_moves):
+    """AIプレイヤーへの注入。今の状況と打てる手を見せ、手の語だけを短く返させる（説明・台詞は不要）。"""
+    return (f"あなたは「{name}」。いまゲーム中で、あなたの番です。\n"
+            f"今の状況: {describe_state(state)}\n"
+            f"打てる手: {list(legal_moves)}\n"
+            "この中から1つだけ選び、その手の語だけを短く答えてください（説明や台詞は不要）。")
+
+
 # ── EventSource 基底 ─────────────────────────────────────────
 class EventSource:
     key = "?"

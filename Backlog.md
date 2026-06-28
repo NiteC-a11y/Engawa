@@ -59,6 +59,15 @@
 - [~] Increment 4: 客人来訪の演出（6/27 実装・GUI 確認はユーザー）＝**画面外＋気配方式**。当初の「障子に影」は *障子越しに会話するのは不自然*（障子=家の仕切り／客人=塀の向こう＝庭側）として却下→作り直し。客人は庭側＝画面外にいる扱いで姿は描かず、**到着時に庭先の葉がそよぐ気配**（`#kehai` のドリフト）＋**茶々の耳ピン反応**（既存 listen）＋会話ログで表す。信号は poll の guest voice 由来（`chacha.lastGuest` 12s 窓・立ち上がりで気配）＝Python 変更なし・sprite/procedural 両対応。JS `node --check`＋全8スイート緑
   - [ ] 実機の見た目確認（GUI）: `/codex <人格>` で庭先に葉のそよぎ＋茶々が耳ピン。手元検証はユーザー（Chrome 拡張未接続で自己描画確認は不可）
 
+## ゲーム（ADR-0017・AIが既存ゲームに参加）
+> 「ゲームは自作せず既存実装に AI が参加」。Pyxel/pygame はUI総取替で不適と判断、RLCard（読める状態＋合法手）を Port&Adapter で。
+- [x] **Inc1**: Game ポート核 `game.py`（GameAdapter/Player/GameSession 人数非依存/レジストリ・依存ゼロ・FakeGame でテスト）
+- [x] **Inc2**: `game_rlcard.py`（RLCardAdapter・**rlcard 依存はここだけ**）＋step方式＋AI-only観戦。実 rlcard で3人BJ完走を隔離venvで検証。rlcard は**任意依存**（無くてもコア app/テストは動く・adapter テストは skip）
+- [x] **Inc3**: 実 LLM プレイヤー（茶々=resident/客人=codex を人数ぶん召喚・state＋合法手→手）＋`/blackjack [見る]`＋console＋tickペース＋客人破棄。配線は FakeGame＋fake codex で全115 PASS
+  - [ ] **実機 E2E（ユーザー）**: `pip install rlcard` → `/blackjack`（私+茶々+客人）/`/blackjack 見る`（観戦＝全AI）。**実 claude/codex が合法手をちゃんと選ぶか**・パース外し時のフォールバック頻度
+- [ ] **Inc4**: web の札UI（既存 canvas に pixel-art カード・伏せ札クリック等）。今は console/ログのテキスト表示
+- [ ] （任意）UNO/ポーカー等を増やす（`game_rlcard.register_rlcard_games` に1行）／PettingZoo アダプタ（盤ゲーム）／手番のリアクション台詞
+
 ## Open Questions（spec §15）
 - [ ] 長命セッションの compaction 戦略 / fork 閾値（Naraku の外部状態方式を流用できるか）
 - [ ] /codex <自由テキスト> のプロンプトインジェクション（配布時のみ要対策。検討メモ 6/27）

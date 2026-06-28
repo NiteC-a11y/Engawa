@@ -16,8 +16,9 @@
 | 天気 | Open-Meteo（APIキー不要、`urllib` のみ） | 大阪 lat 34.6937 / lon 135.5023 |
 | UI（P5） | pywebview + HTML/JS canvas | frameless + on_top。adr/0009 |
 | 永続化（**予定・未実装**） | SQLite | spec §11。residents/guests/events/messages/sessions。**現状はメモリのみ**（Backlog 技術的負債） |
+| ゲーム（任意） | RLCard（`game_rlcard.py` に隔離・**任意依存**） | AI が既存ゲームに参加。Game ポート＋アダプタ（ADR-0017）。無くてもコア app は動く（遊ぶ時だけ `pip install rlcard`） |
 
-外部依存は最小に。天気は標準ライブラリのみで取る（requests等を足さない）。
+外部依存は最小に。天気は標準ライブラリのみで取る（requests等を足さない）。**例外＝ゲームの rlcard（任意・遊ぶ時だけ・アダプタに隔離・ADR-0017）。**
 
 ---
 

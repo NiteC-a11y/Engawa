@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import scheduler as sched
 import sources
 import views
+from tests.test_game import FakeGame   # ゲーム配線テスト用の依存ゼロ・アダプタ
 
 
 class FakeResident:
@@ -290,6 +291,63 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(s.room)                              # 辞去して部屋が閉じた（有界）
         self.assertIsNone(s.active)
         self.assertTrue(created[0].closed)                    # codex 破棄（使い捨て・ADR-0008）
+
+
+class TestGameMode(unittest.IsolatedAsyncioTestCase):
+    """ゲームモード（ADR-0017 Inc3）の配線: 実 rlcard/LLM 無しで FakeGame＋fake codex で検証。"""
+    def _sched(self, created):
+        s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
+                            views.CaptureView(), spawn_codex=_codex_factory(created))
+        s._make_game = lambda gid, n: FakeGame(3)        # rlcard を使わせない（依存ゼロ）
+        return s
+
+    @staticmethod
+    def _systems(v):
+        return [m for (t, m, _l) in v.events if t == "system"]
+
+    async def test_play_flow_human_then_ai_then_over(self):
+        created = []
+        s = self._sched(created)
+        await s._start_game("blackjack", watch=False)
+        self.assertIsNotNone(s.game)
+        self.assertEqual(len(created), 1)                # 私+茶々+客人1＝3人 → 客人1体 spawn
+        self.assertTrue(s.game.waiting_for_human)        # slot0=私 → 入力待ち
+        await s.on_user_input("hi")                      # 私が hi（FakeGame の合法手）
+        for _ in range(6):                               # tick で AI(茶々/客人)を1手ずつ
+            if s.game is None:
+                break
+            await s._tick(sources.build_context(None, []))
+        self.assertIsNone(s.game)                        # 終局→片付け
+        self.assertTrue(created[0].closed)               # 客人 codex 破棄（使い捨て）
+
+    async def test_watch_mode_all_ai(self):
+        created = []
+        s = self._sched(created)
+        await s._start_game("blackjack", watch=True)
+        self.assertEqual(len(created), 2)                # 茶々+客人2＝3 全AI
+        self.assertFalse(s.game.waiting_for_human)
+        for _ in range(8):
+            if s.game is None:
+                break
+            await s._tick(sources.build_context(None, []))
+        self.assertIsNone(s.game)
+        self.assertTrue(all(c.closed for c in created))  # 客人を全部破棄
+
+    async def test_second_game_rejected(self):
+        created = []
+        s = self._sched(created)
+        await s._start_game("blackjack", watch=True)
+        s.view.events.clear()
+        await s._start_game("blackjack", watch=True)     # 二重開始は拒否
+        self.assertTrue(any("ゲーム中" in (m or "") for m in self._systems(s.view)))
+
+    async def test_input_during_ai_turn_is_held(self):
+        created = []
+        s = self._sched(created)
+        await s._start_game("blackjack", watch=True)     # 全AI＝人間の番でない
+        s.view.events.clear()
+        await s.on_user_input("hi")
+        self.assertTrue(any("他のプレイヤーの番" in (m or "") for m in self._systems(s.view)))
 
 
 if __name__ == "__main__":
