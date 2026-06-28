@@ -300,7 +300,6 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
         s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
                             views.CaptureView(), spawn_codex=_codex_factory(created))
         s._make_game = make or (lambda gid, n: FakeGame(n))   # rlcard を使わせない（人数は尊重）
-        s._game_linger = 0                                    # 終局 linger をテストでは無効（sleep しない）
         return s
 
     @staticmethod
@@ -311,22 +310,20 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
     def _game_events(v):
         return [t for (t, _a, _b) in v.events if t in ("game_open", "game_update", "game_close")]
 
-    async def test_game_window_lifecycle_events(self):
-        # 観戦窓の口: 開始で game_open→game_update（配り）、終局で game_close（ADR-0017 Inc4a）
+    async def test_game_window_opens_and_persists(self):
+        # 開始で game_open→game_update（配り）。終局しても **窓は閉じない**（ユーザーが×で閉じる）
         created = []
         s = self._sched(created)
         await s._start_game("blackjack", watch=True)
         evs = self._game_events(s.view)
         self.assertEqual(evs[0], "game_open")
         self.assertIn("game_update", evs)
-        self.assertNotIn("game_close", evs)              # まだ終局していない
         for _ in range(6):
             if s.game is None:
                 break
             await s._tick(sources.build_context(None, []))
-        evs = self._game_events(s.view)
-        self.assertEqual(evs[0], "game_open")
-        self.assertEqual(evs[-1], "game_close")          # 終局で閉じる
+        self.assertIsNone(s.game)                        # 対局自体は終わる
+        self.assertNotIn("game_close", self._game_events(s.view))  # でも観戦窓は開いたまま
 
     async def test_play_is_human_plus_chacha_no_guest(self):
         created = []

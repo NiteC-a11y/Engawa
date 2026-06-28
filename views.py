@@ -397,11 +397,13 @@ class _WebApi:
 
 
 class _GameApi:
-    """観戦窓の JS から呼べる窓口（poll だけ）。"""
+    """観戦窓の JS から呼べる窓口（poll と、×ボタンの close）。"""
     def __init__(self, view):
         self._v = view
     def poll(self, since):
         return self._v.game_poll(since)
+    def close(self):
+        self._v.game_close(); return True
 
 
 # 観戦窓（ADR-0017 Inc4b）。snapshot を poll してカードを描く小窓。札卓っぽい緑フェルト。
@@ -424,12 +426,18 @@ GAME_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   .badge{margin-left:8px;font-size:12px;padding:1px 8px;border-radius:10px}
   .badge.win{background:#2e7d4f}.badge.lose{background:#9a3b32}.badge.draw{background:#6b6256}
   #txt{font-size:12px;white-space:pre-wrap;opacity:.9}
+  #gclose{position:absolute;top:4px;right:6px;z-index:20;width:20px;height:20px;padding:0;
+    line-height:18px;text-align:center;border:0;border-radius:4px;cursor:pointer;
+    background:rgba(0,0,0,.30);color:#f0ece2;font-size:14px}
+  #gclose:hover{background:rgba(150,50,40,.85)}
 </style></head><body><div id="app">
+  <button id="gclose" title="閉じる">×</button>
   <div class="label" id="title">観戦</div>
   <div id="table"></div>
   <div id="txt"></div>
 </div>
 <script>
+document.getElementById('gclose').onclick=()=>{window.pywebview&&window.pywebview.api.close();};
 let since=0;
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function cardEl(c){
