@@ -35,8 +35,9 @@
 ### ファイル
 - `engawa_main.py` — 起動口（composition root）。console / `ENGAWA_UI=web` で隅の縁側窓。
 - `acp.py` / `sources.py` / `scheduler.py` / `views.py` — 現行構成（event-source/scheduler・adr/0013）。`views.py` に `ConsoleView` と `WebView`（pywebview・poll方式）。
-- `sprite.json` + `chacha.png` — 茶々スプライト（差し替え可能な皮・adr/0010）。今は Gemini 三毛猫の8コマ。
+- `sprite.json` + `chacha.png` — 茶々スプライト（差し替え可能な皮・adr/0010）。今は Gemini 三毛猫ベース10コマ（口パク/まばたき/にっこり/耳ピンは0基準の自作差分）。
 - `topic_sources.json` — 客人の世間話トピックの取得先ホワイトリスト（config主導・adr/0014）。
+- `engawa.json` + `config.py` — アプリ挙動の設定（guest/間合い/topic）。優先順位 **env(ENGAWA_*) > engawa.json > 既定**。キーは入れない(adr/0002)。
 - `engawa_p1/p2/p3_*.py` — 各フェーズの検証済み基準点。**温存・触らない**。
 - `adr/`（0001〜0016）, `TECH_RULES.md`, `Backlog.md`
 - `engawa-acp-spec.md` — ピボット前の**旧構想 仕様書 v1**（adr/0004 で転換・adr/0016 で降格）。歴史的参照として温存・**現行仕様ではない**。
@@ -49,7 +50,7 @@
 - **console（端末）**: `python engawa_main.py`
 - **web（隅の縁側窓・frameless）**: cmd で `set "ENGAWA_UI=web" && python engawa_main.py`（`$env:` は PowerShell 専用・cmd は `set`・空白混入回避でクォート）
 - **認証**: 先に `claude` と codex(ChatGPT) にサブスクでログイン。API キーは子 env から除去（adr/0002）。
-- **主な env つまみ**: `ENGAWA_UI=web` / `ENGAWA_GUEST_PROB`,`ENGAWA_GUEST_FROM_HOUR`（自発来訪）/ `ENGAWA_TOPIC_PROB`,`ENGAWA_TOPIC_REFRESH_MIN`,`ENGAWA_TOPIC_CONFIG`（トピック）/ `ENGAWA_UI_CORNER`,`ENGAWA_UI_EASYDRAG`（窓）/ `ENGAWA_SPRITE_CONFIG`（スプライト）/ `ENGAWA_TICK_MIN/MAX`,`ENGAWA_ARC_PROB`（間合い）
+- **主な env つまみ**: `ENGAWA_UI=web` / `ENGAWA_GUEST_PROB`,`ENGAWA_GUEST_FROM_HOUR`（自発来訪）/ `ENGAWA_TOPIC_PROB`,`ENGAWA_TOPIC_REFRESH_MIN`,`ENGAWA_TOPIC_CONFIG`（トピック）/ `ENGAWA_UI_CORNER`,`ENGAWA_UI_EASYDRAG`（窓）/ `ENGAWA_SPRITE_CONFIG`（スプライト）/ `ENGAWA_TICK_MIN/MAX`,`ENGAWA_ARC_PROB`（間合い）。**これらは `engawa.json` にも書ける＝永続（env が優先・adr原則4のconfig主導）**
 - **スラッシュ**: `/codex <人格>`（客人召喚）/ `/arc [雀|猫|風]`（箱庭再生・デバッグ）/ `/help` / `/quit`
 
 ---

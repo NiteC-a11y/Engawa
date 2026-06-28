@@ -9,17 +9,17 @@ source のカーソル（active）は触らない → QUIET 明けに同じ acti
 close は run() の finally の全 teardown 専用（結了時は reset()+cooldown のみ・ADR-0013 #2）。
 """
 import asyncio
-import os
 import random
 import time
 
+import config   # 設定解決（env > engawa.json > 既定）
 import sources
 
-TICK_MIN = float(os.environ.get("ENGAWA_TICK_MIN", "35"))
-TICK_MAX = float(os.environ.get("ENGAWA_TICK_MAX", "70"))
-QUIET_AFTER_USER = float(os.environ.get("ENGAWA_QUIET", "25"))
-ARC_START_PROB = float(os.environ.get("ENGAWA_ARC_PROB", "0.30"))
-MUTTER_PROB = float(os.environ.get("ENGAWA_MUTTER_PROB", "0.6"))
+TICK_MIN = config.get_float("ENGAWA_TICK_MIN", "timing", "tick_min", 35)
+TICK_MAX = config.get_float("ENGAWA_TICK_MAX", "timing", "tick_max", 70)
+QUIET_AFTER_USER = config.get_float("ENGAWA_QUIET", "timing", "quiet_after_user", 25)
+ARC_START_PROB = config.get_float("ENGAWA_ARC_PROB", "timing", "arc_prob", 0.30)
+MUTTER_PROB = config.get_float("ENGAWA_MUTTER_PROB", "timing", "mutter_prob", 0.6)
 
 
 class Scheduler:

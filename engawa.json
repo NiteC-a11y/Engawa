@@ -1,0 +1,21 @@
+{
+  "_comment": "茶々の挙動設定。優先順位は env(ENGAWA_*) > この値 > コード既定。APIキーは入れない(adr/0002)。env ENGAWA_CONFIG でパス差し替え可。欠損/壊れは全部コード既定へフォールバック。config.py が解決する。",
+  "guest": {
+    "_comment": "自発来訪。from_hour=開始時刻(既定15=夕方/time_of_day準拠・0で終日)。prob=tickあたりの素確率(低め＝来ない日がある)。召喚 /codex はこのゲートを受けない。",
+    "from_hour": 15,
+    "prob": 0.05
+  },
+  "timing": {
+    "_comment": "間合い。tick_min/max=つぶやき間隔(秒)。arc_prob=新アーク抽選。quiet_after_user=会話直後の沈黙(秒)。mutter_prob=天気つぶやき確率。",
+    "tick_min": 35,
+    "tick_max": 70,
+    "arc_prob": 0.30,
+    "quiet_after_user": 25,
+    "mutter_prob": 0.6
+  },
+  "topic": {
+    "_comment": "客人の世間話ネタ。prob=世間ビートで使う確率。refresh_min=取得キャッシュ更新間隔(分)。",
+    "prob": 0.7,
+    "refresh_min": 30
+  }
+}
