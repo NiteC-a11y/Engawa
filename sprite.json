@@ -1,5 +1,5 @@
 {
-  "_comment": "茶々のスプライト（ADR-0010 の皮）。Gemini 生成の三毛猫アニメ列(8コマ・座布団なし)をグレー背景キー抜き→高さ正規化→64高に整列したもの。state→コマ: 0=平常/1=尻尾ふり/2=笑顔/3=見上げ/4=ウインク/5=目閉じ笑/6=伏し目/7=びっくり口開け。frame_w/h はシート1コマpx・表示サイズ/位置は scene から自動算出・呼吸(CSS breathe)は猫だけなので有効。sheet 無し/欠損は procedural にフォールバック。env ENGAWA_SPRITE_CONFIG で差し替え可。",
+  "_comment": "茶々のスプライト（ADR-0010 の皮）。Gemini 生成の三毛猫アニメ列(8コマ・座布団なし)をグレー背景キー抜き→高さ正規化→64高に整列したもの。state→コマ: 0=平常/1=尻尾ふり/2=笑顔(0由来・happy⌒+口あけ+ほっぺ・attentive用)/3=耳ピン(0由来・listen用)/4=ウインク/5=目閉じ笑/6=伏し目/7=びっくり口開け/8=口あき(0由来・talk用)/9=目とじ(0由来・blink用)。2,3,8,9 は『0をマスターに目/口/耳だけ差分』で自作＝ぴくつき防止（元のGemini 2笑顔/3見上げは座り位置がズレるので0由来に差し替え。1,4-7 は未使用の旧Geminiコマ）（gen は scratchpad の delta生成手順）。talk は 0↔8 を喋ってる間ループ・blink は idle 中に9を一瞬。frame_w/h はシート1コマpx・表示サイズ/位置は scene から自動算出・呼吸(CSS breathe)は猫だけなので有効。sheet 無し/欠損は procedural にフォールバック。env ENGAWA_SPRITE_CONFIG で差し替え可。",
   "enabled": true,
   "sheet": "chacha.png",
   "frame_w": 80,
@@ -7,8 +7,8 @@
   "scale": 2,
   "animations": {
     "idle":      {"frames": [0], "fps": 1},
-    "blink":     {"frames": [0], "fps": 1},
-    "talk":      {"frames": [2], "fps": 1},
+    "blink":     {"frames": [9], "fps": 1},
+    "talk":      {"frames": [0, 8], "fps": 7},
     "listen":    {"frames": [3], "fps": 1},
     "attentive": {"frames": [2], "fps": 1}
   }
