@@ -54,7 +54,7 @@ class TestGameSession(unittest.IsolatedAsyncioTestCase):
         a = FakeGame(3)
         moves, over = [], []
         s = game.GameSession(a, [_ai("茶々", "hi"), _ai("客人A", "lo"), _ai("客人B", "hi")],
-                             on_move=lambda n, m, _a: moves.append((n, m)),
+                             on_move=lambda n, m, _a, _s: moves.append((n, m)),
                              on_over=lambda r: over.append(r))
         s.begin()
         await _pump(s)
@@ -68,7 +68,7 @@ class TestGameSession(unittest.IsolatedAsyncioTestCase):
         moves = []
         s = game.GameSession(a, [game.Player("私"), _ai("茶々", "hi"),
                                  _ai("客人A", "hi"), _ai("客人B", "lo")],
-                             on_move=lambda n, m, _a: moves.append((n, m)))
+                             on_move=lambda n, m, _a, _s: moves.append((n, m)))
         s.begin()
         await _pump(s)                           # スロット0=人間 → 即停止（AI は動かない）
         self.assertTrue(s.waiting_for_human)
@@ -86,7 +86,7 @@ class TestGameSession(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_ai_move_falls_back(self):
         a = FakeGame(1)
         moves = []
-        s = game.GameSession(a, [_ai("茶々", "ZZZ")], on_move=lambda n, m, _a: moves.append((n, m)))
+        s = game.GameSession(a, [_ai("茶々", "ZZZ")], on_move=lambda n, m, _a, _s: moves.append((n, m)))
         s.begin()
         await _pump(s)
         self.assertEqual(moves, [("茶々", "hi")])    # 不正手→合法手の先頭(hi)へフォールバック

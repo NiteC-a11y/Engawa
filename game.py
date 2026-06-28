@@ -34,6 +34,7 @@ def parse_move(reply, legal_moves):
 class GameAdapter:
     """1ゲームの最小インターフェース。state/legal_moves は「人間(=LLM)が読める」形で返すこと。"""
     num_players = 0
+    render = None        # ゲーム固有の表示器（任意・配り/手/結果を整形）。無ければ呼び側が汎用表示
 
     def reset(self):
         raise NotImplementedError
@@ -84,7 +85,7 @@ class GameSession:
             raise GameError(f"players({len(players)}) != num_players({adapter.num_players})")
         self.adapter = adapter
         self.players = players                       # index = スロット
-        self._on_move = on_move or (lambda name, move, state: None)
+        self._on_move = on_move or (lambda name, move, adapter, slot: None)
         self._on_over = on_over or (lambda result: None)
 
     @property
@@ -132,7 +133,7 @@ class GameSession:
     def _apply(self, slot, move):
         name = self.players[slot].name
         self.adapter.play(move)
-        self._on_move(name, move, self.adapter)
+        self._on_move(name, move, self.adapter, slot)
         if self.over:
             self._on_over(self.adapter.result())
 

@@ -48,6 +48,8 @@ class Scheduler:
         self.room = None                                 # 3人会話の部屋（来訪中だけ・ADR-0015 Inc2）
         self.game = None                                 # ゲームのセッション（対局中だけ・ADR-0017 Inc3）
         self._game_guests = []                           # ゲームのために召喚した客人(codex)＝終局で破棄
+        self._game_render = None                         # ゲーム固有の表示器（adapter.render 由来）
+        self._game_names = []                            # 各スロットの表示名（結果表示で使う）
         self.cooldowns = {s.key: 0 for s in source_list}
         self.turn_lock = asyncio.Lock()                  # resident 注入(_inject)の直列化＝割り込みの単位
         self.drive_lock = asyncio.Lock()                 # self.active 駆動を tick と召喚で排他（競合防止）
@@ -358,13 +360,24 @@ class Scheduler:
                 slot = len(players)                      # 追加位置＝RLCard の player id（自分の手札参照に使う）
                 players.append(game.Player(f"客人〔{persona}〕", self._ai_decider(agent, persona, slot)))
             players = players[:n]                         # 念のためスロット数に合わせる
+            names = [p.name for p in players]
+            render = adapter.render                        # ゲーム固有の表示器（blackjack は札と勝敗を整形）
+            self._game_render = render
+            self._game_names = names
             label = game.games().get(game_id, {}).get("label", game_id)
             who = "観戦＝茶々がディーラーと勝負" if watch else "あなたも参加"
             self.view.system(f"  〔{label}〕開始（{who}・{n}人）")
-            self.game = game.GameSession(
-                adapter, players,
-                on_move=lambda name, move, ad: self.view.system(f"  {name} → {move}"))
+
+            def on_move(name, move, ad, slot):
+                if render is not None:
+                    self.view.system(render.move(name, move, ad, slot))
+                else:
+                    self.view.system(f"  {name} → {move}")
+            self.game = game.GameSession(adapter, players, on_move=on_move)
             self.game.begin()
+            if render is not None:                        # 配り（各自の手札＋ディーラーの表向き）を見せる
+                for ln in render.deal(adapter, names):
+                    self.view.system(ln)
             self._next_at = time.time() + random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
             if self.game.over:
                 await self._end_game()
@@ -374,16 +387,26 @@ class Scheduler:
     def _show_human_turn(self):
         cur = self.game.adapter.current_player()
         legal = self.game.adapter.legal_moves(cur)
-        self.view.system(f"  あなたの番｜{sources.describe_state(self.game.adapter.state(cur))}")
+        render = self._game_render
+        if render is not None:
+            self.view.system(render.turn(self.game.adapter, cur, "あなた"))
+        else:
+            self.view.system(f"  あなたの番｜{sources.describe_state(self.game.adapter.state(cur))}")
         self.view.system(f"  打てる手: {' / '.join(map(str, legal))}  （そのまま打って）")
 
     async def _end_game(self):
         g = self.game
         self.game = None
         if g is not None:
-            names = [p.name for p in g.players]
-            res = " / ".join(f"{nm}: {r}" for nm, r in zip(names, g.adapter.result()))
-            self.view.system(f"  〔結果〕 {res}")
+            names = self._game_names or [p.name for p in g.players]
+            render = self._game_render
+            if render is not None:                        # 結果（ディーラー公開＋各自の勝敗）
+                for ln in render.result(g.adapter, names):
+                    self.view.system(ln)
+            else:
+                res = " / ".join(f"{nm}: {r}" for nm, r in zip(names, g.adapter.result()))
+                self.view.system(f"  〔結果〕 {res}")
+        self._game_render = None
         await self._cleanup_game_guests()
 
     async def _cleanup_game_guests(self):

@@ -60,5 +60,33 @@ class TestSessionWithRLCard(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(over[0]), 3)
 
 
+class TestBlackjackRenderPure(unittest.TestCase):
+    """表示ヘルパ（純粋関数・rlcard 不要）。"""
+    def test_value(self):
+        self.assertEqual(game_rlcard._value(["DT", "H7"]), 17)       # 10+7
+        self.assertEqual(game_rlcard._value(["DT", "HA"]), 21)       # 10+A(11)
+        self.assertEqual(game_rlcard._value(["HA", "DA", "H9"]), 21)  # 11+1+9（A 片方は1）
+        self.assertEqual(game_rlcard._value(["DK", "HQ", "S5"]), 25)  # bust
+
+    def test_card_and_hand(self):
+        self.assertEqual(game_rlcard._card("DT"), "♦10")
+        self.assertEqual(game_rlcard._card("HA"), "♥A")
+        self.assertEqual(game_rlcard._hand(["S2", "C9"]), "♠2 ♣9")
+
+
+@unittest.skipUnless(HAVE_RLCARD, "rlcard 未インストール")
+class TestBlackjackRenderLive(unittest.TestCase):
+    def test_deal_and_result_lines(self):
+        a = game_rlcard.RLCardAdapter("blackjack", 2, seed=11, render=game_rlcard.BlackjackRender())
+        a.reset()
+        deal = a.render.deal(a, ["私", "茶々"])
+        self.assertTrue(any("ディーラー" in ln for ln in deal))     # 配りでディーラーの表が出る
+        while not a.is_over():
+            a.play(random.choice(a.legal_moves(a.current_player())))
+        res = a.render.result(a, ["私", "茶々"])
+        self.assertEqual(len(res), 3)                                # ディーラー行＋2人
+        self.assertTrue(any("結果" in ln for ln in res))
+
+
 if __name__ == "__main__":
     unittest.main()
