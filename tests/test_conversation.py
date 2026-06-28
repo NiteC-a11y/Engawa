@@ -115,6 +115,16 @@ class TestRoomFlow(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(room.state_name, "AwaitingHuman")                              # 必ず人間待ちへ
         self.assertEqual(len(room.transcript), 5)   # 挨拶2 + 私 + 2
 
+    async def test_explicit_to_overrides_and_tags(self):
+        # C方式: 本文に客人語が無くても to=guest で客人へ。本文はクリーン・方向は話者タグに残す
+        log = []
+        room = _room(log)
+        await room.begin(); log.clear()
+        await room.on_human("こんばんは", to="guest")
+        self.assertEqual(_kinds(log), [("ご隠居", conv.REPLY), ("茶々", conv.CHIME)])   # 客人→もう片方
+        self.assertIn("私→客人", [u.speaker for u in room.transcript])                  # 方向タグ
+        self.assertIn("こんばんは", [u.text for u in room.transcript])                  # 本文はクリーン（呼びかけ無し）
+
     async def test_human_default_to_resident(self):
         log = []
         room = _room(log)

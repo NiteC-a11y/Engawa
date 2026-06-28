@@ -129,8 +129,8 @@ class Room:
     async def begin(self):
         await self._state.enter()
 
-    async def on_human(self, text):
-        await self._state.on_human((text or "").strip())
+    async def on_human(self, text, to=None):
+        await self._state.on_human((text or "").strip(), to)
 
     async def on_tick(self):
         await self._state.on_tick()
@@ -155,7 +155,7 @@ class RoomState:
     async def enter(self):
         pass
 
-    async def on_human(self, text):    # 既定: 無視（Greeting/Leaving/Closed 中の人間入力）
+    async def on_human(self, text, to=None):   # 既定: 無視（Greeting/Leaving/Closed 中の人間入力）
         pass
 
     async def on_tick(self):
@@ -178,9 +178,9 @@ class AwaitingHuman(RoomState):
         super().__init__(room)
         self.idle = 0
 
-    async def on_human(self, text):
+    async def on_human(self, text, to=None):
         if text:
-            await self.room._goto(Responding(self.room, text)).enter()
+            await self.room._goto(Responding(self.room, text, to)).enter()
 
     async def on_tick(self):
         self.idle += 1
@@ -190,14 +190,17 @@ class AwaitingHuman(RoomState):
 
 class Responding(RoomState):
     """人間発話への応答。宛先AI→もう片方が一言、ただし **最大 turn_cap 手** で必ず人間待ちへ戻る（歯止め）。"""
-    def __init__(self, room, human_text):
+    def __init__(self, room, human_text, to=None):
         super().__init__(room)
         self.human_text = human_text
+        self.to = to                  # 明示宛先（web チップ由来。無ければ本文から名前メンション解決・C方式）
 
     async def enter(self):
         r = self.room
-        r.transcript.append("私", self.human_text)        # 人間の発話を場へ（表示は View 側で別途エコー済み）
-        addr = resolve_addressee(self.human_text, r.persona)
+        addr = self.to or resolve_addressee(self.human_text, r.persona)
+        # 本文はクリーンのまま。誰宛かは話者タグに残す＝場の全員(茶々/客人)が方向を知れる（部屋の原則）。表示は View が別途エコー済み
+        tag = {"guest": "私→客人", "both": "私→二人とも"}.get(addr, "私")
+        r.transcript.append(tag, self.human_text)
         order = {
             "guest":    [(r.guest, REPLY), (r.resident, CHIME)],
             "resident": [(r.resident, REPLY), (r.guest, CHIME)],

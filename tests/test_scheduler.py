@@ -184,6 +184,18 @@ def _codex_factory(created, line="ごめんやす"):
     return spawn
 
 
+class TestParseAddr(unittest.TestCase):
+    def test_marker(self):
+        self.assertEqual(sched._parse_addr("\x00guest\x00やあ"), ("guest", "やあ"))
+        self.assertEqual(sched._parse_addr("\x00both\x00みな"), ("both", "みな"))
+
+    def test_no_marker(self):
+        self.assertEqual(sched._parse_addr("やあ"), (None, "やあ"))
+
+    def test_empty_to_is_none(self):
+        self.assertEqual(sched._parse_addr("\x00\x00やあ"), (None, "やあ"))
+
+
 class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
     """3人会話の部屋（ADR-0015 Inc2）: Scheduler↔Room の統合。fake codex＋CaptureView で実 ACP 不要。"""
     def _scheduler(self, created):
@@ -223,6 +235,18 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         await s.on_user_input("ええ天気やね")                  # 名前なし＝既定は茶々
         self.assertEqual([sp for sp, _ in self._says(s.view)],
                          ["茶々", "近所の物知りなご隠居"])
+
+    async def test_explicit_addressee_marker_clean_body(self):
+        # web チップ=客人（C方式）: 本文に「客人さん、」を混ぜずメタデータで客人へ振り分け
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("近所の物知りなご隠居")
+        s.view.events.clear()
+        await s.on_user_input("\x00guest\x00こんばんは")
+        self.assertEqual([sp for sp, _ in self._says(s.view)],
+                         ["近所の物知りなご隠居", "茶々"])         # 客人→もう片方（最大2手）
+        self.assertTrue(any("こんばんは" in p for p in created[0].prompts))
+        self.assertFalse(any("客人さん、" in p for p in created[0].prompts))   # 本文クリーン
 
     async def test_codex_hears_human_and_chacha(self):
         created = []

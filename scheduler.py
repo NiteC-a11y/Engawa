@@ -27,6 +27,15 @@ TICK_MIN, TICK_MAX = min(TICK_MIN, TICK_MAX), max(TICK_MIN, TICK_MAX)           
 ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX = min(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX), max(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 
 
+def _parse_addr(line):
+    """web チップの明示宛先を本文と分離: '\\x00<to>\\x00<text>' → (to, text)。無印(console 等)は (None, line)。"""
+    if line.startswith("\x00"):
+        parts = line.split("\x00", 2)
+        if len(parts) == 3:
+            return (parts[1] or None), parts[2]
+    return None, line
+
+
 class Scheduler:
     def __init__(self, resident, source_list, idle, view, spawn_codex=None):
         self.resident = resident
@@ -132,7 +141,8 @@ class Scheduler:
 
     # ── ユーザー入力（割り込み・cancel優先）──────────────────
     async def on_user_input(self, line):
-        line = (line or "").strip()
+        to, line = _parse_addr(line or "")                   # web チップの明示宛先を本文と分離（C方式・console は無印）
+        line = line.strip()
         if not line:
             return
         if line.startswith("/"):
@@ -142,7 +152,7 @@ class Scheduler:
         if self.room is not None:                            # 3人会話の可能性（ADR-0015）
             async with self.drive_lock:                      # tick と直列化。ロック内で部屋の有無を確定
                 if self.room is not None and not self.room.closed:   # 待機中に tick が辞去した場合に備え再確認
-                    await self.room.on_human(line)
+                    await self.room.on_human(line, to)
                     if self.room.closed:
                         await self._end_visit()
                     self.last_user_ts = time.time()

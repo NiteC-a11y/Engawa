@@ -262,16 +262,17 @@ class WebView(View):
                 "voice": collapse_ws(i["voice"]) if i["voice"] else None,
                 "text": collapse_ws(i["text"]), "done": i["done"]}
 
-    def send(self, text):
+    def send(self, text, to=""):
         text = (text or "").strip()
         if not text:
             return
-        with self._lock:                # 自分の発言をログにエコー（端末と違い web は自動表示されない）
+        with self._lock:                # 自分の発言を「本文クリーンで」エコー（宛先はチップが示す・C方式）
             self._id += 1
             self._log.append({"id": self._id, "rev": self._bump(), "type": "you",
                               "text": text, "done": True})
             self._trim()
-        self._inq.put(text)             # その後 scheduler へ
+        # 宛先(to)は本文に混ぜず制御マーカーで scheduler へ運ぶ（'\x00<to>\x00<text>'・console は無印）
+        self._inq.put(("\x00" + to + "\x00" + text) if to else text)
 
     def bind_window(self, window):
         self._window = window           # frameless の×ボタンから閉じるため
@@ -293,8 +294,8 @@ class _WebApi:
         self._v = view
     def poll(self, since):
         return self._v.poll(since)
-    def send(self, text):
-        self._v.send(text); return True
+    def send(self, text, to=""):
+        self._v.send(text, to); return True
     def close(self):
         self._v.close(); return True
 
@@ -364,8 +365,8 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   <div id="log"></div>
   <div id="addrbar"><span class="al">宛先</span>
     <button class="ac sel" data-p="">茶々</button>
-    <button class="ac" data-p="客人さん、">客人</button>
-    <button class="ac" data-p="二人とも、">二人とも</button></div>
+    <button class="ac" data-p="guest">客人</button>
+    <button class="ac" data-p="both">二人とも</button></div>
   <div id="bar"><input id="in" placeholder="話しかける…（/help /codex /quit）" autocomplete="off">
     <button id="send">送信</button></div>
 </div>
@@ -425,13 +426,13 @@ function updateGuest(){
 // ── 宛先チップ（入力欄の上・来訪中だけ表示）。タップで次の発言の宛先を選び、送ると茶々へ戻る（一回限り） ──
 const addrbar=document.getElementById('addrbar');
 const chips=()=>addrbar.querySelectorAll('.ac');
-let addrPfx='';                                              // 次の発言に前置する宛先（空=茶々/既定）
-function selChip(btn){addrPfx=btn.dataset.p;chips().forEach(c=>c.classList.toggle('sel',c===btn));}
-function resetChip(){addrPfx='';chips().forEach((c,i)=>c.classList.toggle('sel',i===0));}
+let addrTo='';                                               // 次の発言の宛先キー（''=茶々/既定・guest・both）
+function selChip(btn){addrTo=btn.dataset.p;chips().forEach(c=>c.classList.toggle('sel',c===btn));}
+function resetChip(){addrTo='';chips().forEach((c,i)=>c.classList.toggle('sel',i===0));}
 chips().forEach(c=>c.onclick=()=>selChip(c));
 function send(){
   const v=inp.value.trim(); if(!v||!window.pywebview) return;
-  window.pywebview.api.send(addrPfx+v);                      // 選んだ宛先の自然な呼びかけを前置（resolve_addressee が振り分け）
+  window.pywebview.api.send(v, addrTo);                      // 本文はクリーン・宛先は別引数で渡す（C方式）
   inp.value='';                                             // 宛先(チップ)は保持＝変えるまで同じ相手（B方式・客人退場時のみ refreshAddr が茶々へ戻す）
 }
 document.getElementById('send').onclick=send;
