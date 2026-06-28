@@ -39,6 +39,24 @@ class TestResolveAddressee(unittest.TestCase):
         self.assertIn("客人", al)
 
 
+class TestUnquote(unittest.TestCase):
+    def test_strips_kagi(self):
+        self.assertEqual(conv._unquote("「こんばんは」"), "こんばんは")
+
+    def test_strips_other_quotes(self):
+        self.assertEqual(conv._unquote("『はい』"), "はい")
+        self.assertEqual(conv._unquote('"ok"'), "ok")
+
+    def test_keeps_unwrapped(self):
+        self.assertEqual(conv._unquote("こんばんは"), "こんばんは")
+
+    def test_keeps_inner_quote(self):
+        self.assertEqual(conv._unquote("彼が「やあ」と言った"), "彼が「やあ」と言った")   # 全体の包みでない
+
+    def test_keeps_multiple_pairs(self):
+        self.assertEqual(conv._unquote("「あ」「い」"), "「あ」「い」")                    # 単一の包みでない
+
+
 class TestTranscript(unittest.TestCase):
     def test_window_and_render(self):
         t = conv.Transcript()
@@ -72,6 +90,21 @@ class TestRoomFlow(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(room.state_name, "AwaitingHuman")
         self.assertEqual(_kinds(log), [("ご隠居", conv.ARRIVE), ("茶々", conv.REACT)])
         self.assertEqual(len(room.transcript), 2)
+
+    async def test_utter_strips_surrounding_quotes(self):
+        # codex が「…」で包んでも、保存/表示は一様に（括弧なし）
+        log = []
+
+        def q(name):
+            async def fn(window, kind):
+                return "「" + name + "の台詞」"
+            return conv.Speaker(name, fn)
+
+        room = conv.Room(PERSONA, q("茶々"), q("ご隠居"),
+                         on_say=lambda s, t, k: log.append((s, t)))
+        await room.begin()
+        self.assertTrue(log)
+        self.assertTrue(all("「" not in t and "」" not in t for _s, t in log))   # 包む括弧は剥がれる
 
     async def test_human_to_guest_two_turns_then_await(self):
         log = []

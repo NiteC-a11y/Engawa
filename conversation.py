@@ -31,6 +31,19 @@ def guest_aliases(persona):
     return set(_NAME_RUN.findall(persona or "")) | set(_GUEST_WORDS)
 
 
+_QUOTE_PAIRS = (("「", "」"), ("『", "』"), ("“", "”"), ('"', '"'), ("'", "'"))
+
+
+def _unquote(s):
+    """発話全体を包む引用符を1組だけ剥がす（codex が台詞を「…」で包みがち→表示を一様に）。
+    全体の包みでない（途中に同じ括弧がある／複数組）時はそのまま＝中身の引用は壊さない。"""
+    s = s.strip()
+    for a, b in _QUOTE_PAIRS:
+        if len(s) >= 2 and s[0] == a and s[-1] == b and a not in s[1:-1] and b not in s[1:-1]:
+            return s[1:-1].strip()
+    return s
+
+
 def resolve_addressee(text, persona):
     """誰に言ったか → 'both' | 'guest' | 'resident'（既定）。副作用なしの純関数。
     明示語「二人/両方…」=both、「茶々」=resident、persona 語/「客人」=guest、両方該当=both、無印=既定 resident。"""
@@ -124,7 +137,7 @@ class Room:
 
     # 1人に喋らせて transcript/表示へ（無言は積まない）
     async def _utter(self, speaker, kind):
-        text = (await speaker.say(self.transcript.window(), kind) or "").strip()
+        text = _unquote((await speaker.say(self.transcript.window(), kind) or "").strip())
         if text:
             self.transcript.append(speaker.name, text)
             self._on_say(speaker.name, text, kind)
