@@ -114,6 +114,27 @@ class BlackjackRender:
             lines.append(f"  {nm}: {_hand(hand)} = {_value(hand)} → {outcome}")
         return lines
 
+    def snapshot(self, adapter, names, current_slot=None, over=False):
+        """観戦窓（カード描画）用の構造化状態。プレイ中はディーラー伏せ札、終局で全公開＋勝敗。"""
+        ro = adapter.state(0)
+        dealer = ro["dealer hand"]
+        payoffs = adapter.result() if over else [None] * len(names)
+        players = []
+        for i, nm in enumerate(names):
+            hand = ro[f"player{i} hand"]
+            r = payoffs[i]
+            outcome = None
+            if r is not None:
+                r = int(r)
+                outcome = "勝ち" if r > 0 else ("負け" if r < 0 else "引き分け")
+            players.append({"name": nm, "cards": [_card(c) for c in hand], "value": _value(hand),
+                            "current": (i == current_slot) and not over, "outcome": outcome})
+        shown = dealer if over else dealer[:1]              # プレイ中は表向き1枚だけ
+        return {"label": "ブラックジャック", "over": over,
+                "dealer": {"cards": [_card(c) for c in shown], "value": _value(shown),
+                           "hidden": (not over)},
+                "players": players}
+
 
 # ── レジストリ登録（ゲーム種類を増やす口＝ここに1行足すだけ）──────────────────
 def register_rlcard_games():

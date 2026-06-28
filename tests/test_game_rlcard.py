@@ -75,6 +75,28 @@ class TestBlackjackRenderPure(unittest.TestCase):
 
 
 @unittest.skipUnless(HAVE_RLCARD, "rlcard 未インストール")
+class TestBlackjackSnapshot(unittest.TestCase):
+    """観戦窓（カード描画）用の構造化スナップショット。"""
+    def test_play_then_over(self):
+        a = game_rlcard.RLCardAdapter("blackjack", 2, seed=11, render=game_rlcard.BlackjackRender())
+        a.reset()
+        snap = a.render.snapshot(a, ["私", "茶々"], current_slot=0, over=False)
+        self.assertEqual(snap["label"], "ブラックジャック")
+        self.assertFalse(snap["over"])
+        self.assertTrue(snap["dealer"]["hidden"])            # プレイ中は伏せ札あり
+        self.assertEqual(len(snap["dealer"]["cards"]), 1)     # 表向き1枚だけ
+        self.assertEqual(len(snap["players"]), 2)
+        self.assertTrue(snap["players"][0]["current"])        # current_slot=0 を反映
+        self.assertIsNone(snap["players"][0]["outcome"])
+        while not a.is_over():
+            a.play(random.choice(a.legal_moves(a.current_player())))
+        over = a.render.snapshot(a, ["私", "茶々"], over=True)
+        self.assertTrue(over["over"])
+        self.assertFalse(over["dealer"]["hidden"])            # 終局で公開
+        self.assertIn(over["players"][0]["outcome"], ("勝ち", "負け", "引き分け"))
+
+
+@unittest.skipUnless(HAVE_RLCARD, "rlcard 未インストール")
 class TestBlackjackRenderLive(unittest.TestCase):
     def test_deal_and_result_lines(self):
         a = game_rlcard.RLCardAdapter("blackjack", 2, seed=11, render=game_rlcard.BlackjackRender())

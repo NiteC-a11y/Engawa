@@ -369,20 +369,27 @@ class Scheduler:
             self.view.system(f"  〔{label}〕開始（{who}・{n}人）")
 
             def on_move(name, move, ad, slot):
-                if render is not None:
-                    self.view.system(render.move(name, move, ad, slot))
-                else:
-                    self.view.system(f"  {name} → {move}")
+                lines = [render.move(name, move, ad, slot)] if render is not None else [f"  {name} → {move}"]
+                cur = ad.current_player() if not ad.is_over() else None
+                self._game_emit(ad, lines, current_slot=cur, over=ad.is_over())
             self.game = game.GameSession(adapter, players, on_move=on_move)
+            self.view.game_open(label)                    # web は隣に観戦窓を開く（console は何もしない）
             self.game.begin()
-            if render is not None:                        # 配り（各自の手札＋ディーラーの表向き）を見せる
-                for ln in render.deal(adapter, names):
-                    self.view.system(ln)
+            deal_lines = render.deal(adapter, names) if render is not None else []
+            self._game_emit(adapter, deal_lines, current_slot=adapter.current_player(), over=False)
             self._next_at = time.time() + random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
             if self.game.over:
                 await self._end_game()
             elif self.game.waiting_for_human:
                 self._show_human_turn()
+
+    def _game_emit(self, adapter, lines, current_slot=None, over=False):
+        """局面更新を View へ（snapshot=観戦窓の描画用 / lines=console の文字表現）。"""
+        snap = None
+        render = self._game_render
+        if render is not None and hasattr(render, "snapshot"):
+            snap = render.snapshot(adapter, self._game_names, current_slot, over)
+        self.view.game_update(snap, lines)
 
     def _show_human_turn(self):
         cur = self.game.adapter.current_player()
@@ -393,6 +400,7 @@ class Scheduler:
         else:
             self.view.system(f"  あなたの番｜{sources.describe_state(self.game.adapter.state(cur))}")
         self.view.system(f"  打てる手: {' / '.join(map(str, legal))}  （そのまま打って）")
+        self._game_emit(self.game.adapter, [], current_slot=cur, over=False)   # 観戦窓に自分の番を反映
 
     async def _end_game(self):
         g = self.game
@@ -401,11 +409,13 @@ class Scheduler:
             names = self._game_names or [p.name for p in g.players]
             render = self._game_render
             if render is not None:                        # 結果（ディーラー公開＋各自の勝敗）
-                for ln in render.result(g.adapter, names):
-                    self.view.system(ln)
+                lines = render.result(g.adapter, names)
+                snap = render.snapshot(g.adapter, names, None, True) if hasattr(render, "snapshot") else None
             else:
-                res = " / ".join(f"{nm}: {r}" for nm, r in zip(names, g.adapter.result()))
-                self.view.system(f"  〔結果〕 {res}")
+                lines = ["  〔結果〕 " + " / ".join(f"{nm}: {r}" for nm, r in zip(names, g.adapter.result()))]
+                snap = None
+            self.view.game_update(snap, lines)
+            self.view.game_close()                        # web は観戦窓を閉じる
         self._game_render = None
         await self._cleanup_game_guests()
 

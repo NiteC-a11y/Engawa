@@ -43,6 +43,10 @@ class View:
     def turn_end(self): ...
     def system(self, msg): ...
     def say(self, speaker, text): ...          # 3人会話の確定発話を1行で出す（茶々/客人を一様に・ADR-0015）
+    # ゲーム観戦（ADR-0017 Inc4）。console=テキスト / web=隣の観戦窓。snapshot は構造化状態、lines は文字表現
+    def game_open(self, title): ...            # 対局開始（web は観戦窓を開く）
+    def game_update(self, snapshot, lines): ...  # 局面更新（web は札を描く／console は lines を出す）
+    def game_close(self): ...                  # 終局（web は観戦窓を閉じる）
     async def inputs(self):
         if False:
             yield None
@@ -110,6 +114,16 @@ class ConsoleView(View):
     def say(self, speaker, text):              # 3人会話: 確定した発話を1行で（茶々/客人を一様に）
         sys.stdout.write(f"   {speaker} › {collapse_ws(text)}\n"); sys.stdout.flush()
 
+    def game_open(self, title):                # console は窓を出さない（開始バナーは system 済み）
+        pass
+
+    def game_update(self, snapshot, lines):    # console は文字表現をそのまま出す
+        for ln in (lines or []):
+            print(ln)
+
+    def game_close(self):
+        pass
+
     async def inputs(self):
         loop = asyncio.get_event_loop()
         while True:
@@ -146,6 +160,15 @@ class CaptureView(View):
 
     def say(self, speaker, text):              # 3人会話の確定発話を記録（テスト用）
         self.events.append(("say", speaker, text))
+
+    def game_open(self, title):
+        self.events.append(("game_open", title, None))
+
+    def game_update(self, snapshot, lines):
+        self.events.append(("game_update", snapshot, lines))
+
+    def game_close(self):
+        self.events.append(("game_close", None, None))
 
     def feed(self, line):
         self._q.put_nowait(line)
@@ -223,6 +246,16 @@ class WebView(View):
             self._log.append({"id": self._id, "rev": self._bump(), "type": "say",
                               "speaker": str(speaker), "text": str(text), "done": True})
             self._trim()
+
+    def game_open(self, title):
+        pass                                   # Inc4b で隣に観戦窓を生成（今は本窓ログへ流す）
+
+    def game_update(self, snapshot, lines):    # Inc4a 暫定: 文字表現を本窓ログへ（Inc4b で観戦窓のカード描画へ）
+        for ln in (lines or []):
+            self.system(ln)
+
+    def game_close(self):
+        pass
 
     def _trim(self, cap=120):
         if len(self._log) > cap:

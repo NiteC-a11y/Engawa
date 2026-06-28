@@ -306,6 +306,27 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
     def _systems(v):
         return [m for (t, m, _l) in v.events if t == "system"]
 
+    @staticmethod
+    def _game_events(v):
+        return [t for (t, _a, _b) in v.events if t in ("game_open", "game_update", "game_close")]
+
+    async def test_game_window_lifecycle_events(self):
+        # 観戦窓の口: 開始で game_open→game_update（配り）、終局で game_close（ADR-0017 Inc4a）
+        created = []
+        s = self._sched(created)
+        await s._start_game("blackjack", watch=True)
+        evs = self._game_events(s.view)
+        self.assertEqual(evs[0], "game_open")
+        self.assertIn("game_update", evs)
+        self.assertNotIn("game_close", evs)              # まだ終局していない
+        for _ in range(6):
+            if s.game is None:
+                break
+            await s._tick(sources.build_context(None, []))
+        evs = self._game_events(s.view)
+        self.assertEqual(evs[0], "game_open")
+        self.assertEqual(evs[-1], "game_close")          # 終局で閉じる
+
     async def test_play_is_human_plus_chacha_no_guest(self):
         created = []
         s = self._sched(created)
