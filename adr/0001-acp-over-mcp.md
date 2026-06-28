@@ -2,7 +2,7 @@
 
 - ステータス: Accepted
 - 日付: 2026-06-26
-- 関連: spec v2 §5(L3), ADR-0002, ADR-0008
+- 関連: ADR-0002, ADR-0008
 
 ## 背景 / 課題
 API課金を避け、手元のローカル Claude Code / Codex をアプリ(Engawa)から駆動してLLMを動かしたい。当初は「アプリをMCP経由でClaude Codeに繋ぐ」構想だった。

@@ -1,7 +1,12 @@
 # Engawa (縁側) — ACP マルチエージェント版 仕様書 v1
 
-**Status:** Draft
-**Scope:** V1 = Claude Code 同士のみ（GPT/Codex/Gemini は V2 以降）
+> ⚠ **これは旧構想（SUPERSEDED）。現行仕様ではない。**
+> 本書は「複数の AI 人格が自律的に会話する」**ピボット前のビジョン**で、ADR-0004 で方向転換済み（現行＝環境反応型の単体住人＋有界な客人来訪）。
+> **現行全体像の正本は `CLAUDE.md`**（ADR-0016）、**ACP 機構の正本は `TECH_RULES.md §2`**、決定の経緯は `adr/`。
+> 歴史的参照として温存（`legacy/app.py` と同じ扱い）。具体的な乖離点は文中の該当箇所参照（V1=Claude のみ／Codex は V2 以降／1ターン1セッション推奨 などは現行と食い違う）。
+
+**Status:** Superseded（adr/0016・旧構想）
+**Scope:** V1 = Claude Code 同士のみ（GPT/Codex/Gemini は V2 以降）  ※現行は resident=Claude(長命)／guest=Codex(使い捨て)
 **前提:** ローカル・個人利用（BYO ローカル Claude Code、サブスク認証）
 
 ---

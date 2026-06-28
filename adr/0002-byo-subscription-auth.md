@@ -2,7 +2,7 @@
 
 - ステータス: Accepted（制約付き）
 - 日付: 2026-06-26
-- 関連: ADR-0001, spec v2 §12
+- 関連: ADR-0001
 
 ## 背景 / 課題
 従量課金を避け、手元の Claude Code(Max) サブスク認証で茶々を、ChatGPT サブスクで Codex を動かしたい（Pencil/Zed と同じ BYO 型）。

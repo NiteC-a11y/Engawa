@@ -68,7 +68,7 @@
 
 ## 技術的負債 / 要確認
 - [x] session/cancel の実機 claude-code-acp 挙動（stopReason=cancelled が返るか）（確認済 6/27：cancelled で返る・エラーにならない）
-- [ ] cmd /c の裏の node 取り残し → 本番常駐では Job Object / taskkill /T で確実に刈る
+- [ ] cmd /c の裏の node 取り残し → 本番常駐では **Job Object 化**で確実に刈る（`taskkill /PID /T /F` は実装済み＝acp.py `shutdown_process`。taskkill 失敗時/孤立子の最終保険として Job Object を被せる）
 - [ ] 茶々用 CLAUDE.md は persona/ 等の別ディレクトリに置く運用（リポジトリの CLAUDE.md と同名衝突回避）
 - [ ] SQLite 永続化の実装（spec §11：residents/guests/events/messages/sessions）
 - [ ] 環境イベントの「体感ナレーション」層（気温の生値→体感語、前ティック差分、時刻×気温）

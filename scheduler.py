@@ -4,7 +4,7 @@
 毎ティック {進行中アーク前進 / 新アーク開始 / 天気つぶやき・移ろい / 沈黙} を抽選し、
 源の産んだ Narration を resident に注入する。間合い・cooldown・割り込みを一手に持つ。
 
-割り込み（cancel優先・ADR-0006）の対象は **resident の注入ターン（speaking_task）だけ**。
+割り込み（cancel優先・ADR-0006）の対象は **resident の注入ターン（speaking 中）だけ**。
 source のカーソル（active）は触らない → QUIET 明けに同じ active から背景継続（Test C で実証）。
 close は run() の finally の全 teardown 専用（結了時は reset()+cooldown のみ・ADR-0013 #2）。
 """

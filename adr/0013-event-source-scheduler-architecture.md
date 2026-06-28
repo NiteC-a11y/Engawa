@@ -75,13 +75,14 @@ classDiagram
     class Context {
         <<value>>
         +weather, desc, raining
-        +tod, hour, prev_desc, now
+        +tod, hour, now, topics
     }
     class Narration {
         <<value>>
         +text : str
         +kind : str
         +label : str
+        +voice : str?
     }
     class Phase {
         <<value>>
@@ -119,7 +120,7 @@ classDiagram
         -sources : List~EventSource~
         -idle : EventSource
         -active : EventSource
-        -speaking_task : Task
+        -speaking : bool
         -cooldowns : Map~str,int~
         -turn_lock
         -last_user_ts
@@ -168,7 +169,7 @@ classDiagram
 - 配線役 `engawa_main`（composition root）は図から省略：`AcpAgent.spawn()` → 源を registry 登録 → `Scheduler(resident, sources, ConsoleView).run()`。
 - `EventSource.next_phase()` / `close()` は **async**（ACP I/O・timeout・cancel・process close を含むため、同期APIに見せない）。
 - **cooldown は2層に分離**：`EventSource.cooldown_ticks`＝設定値（不変）、`Scheduler.cooldowns: Map~str,int~`＝実行時の残りティック。混ぜない。
-- **割り込みの cancel 対象（#1）**：`Scheduler.speaking_task`＝進行中の `resident.prompt()` 注入ターン**のみ**。割り込みは `resident.cancel()`（session/cancel）でこれを stopReason=cancelled に畳む。**`active`(source) と `next_phase()` は asyncio-cancel しない**＝カーソル保持 → QUIET 明けに背景継続（Test C で実証）。
+- **割り込みの cancel 対象（#1）**：`Scheduler.speaking`(bool)＝進行中の `resident.prompt()` 注入ターン**のみ**（`_inject` が in-flight の間 True）。割り込みは `speaking` 中だけ `resident.cancel()`（session/cancel）を送り、これを stopReason=cancelled に畳む。**`active`(source) と `next_phase()` は asyncio-cancel しない**＝カーソル保持 → QUIET 明けに背景継続（Test C で実証）。
 - **close の意味（#2）**：`close()` は **shutdown 時の全 teardown 専用**（`run()` の finally が全 source ＋ resident に1回）。**source 結了（`next_phase`→None）では `_conclude` が `reset()`+cooldown のみ**で、再利用 source（雀/猫/天気）は破棄しない。**guest の使い捨て agent は `GuestSource` 内部で「visit 開始＝spawn／visit 終了＝close」と対にする**（カプセル化）。finally の close() は取り残し対策の最終防波堤。
 
 ### 1ティックのデータフロー
@@ -182,12 +183,11 @@ Scheduler._tick()
             active.reset() ; cooldowns[active.key] = active.cooldown_ticks ; active = None
   active なし → eligible(ctx) かつ cooldowns[key]<=0 の source を activate
                 （無ければ idle=WeatherSource or 沈黙）
-  speaking_task = create_task(resident.prompt(narration.text, sink=view))   # 茶々への注入ターン
-  await speaking_task
-     └ ACPClient のチャンク → view.chunk()（turn_start/turn_end も）
+  await _inject(narration)                          # turn_lock 下で茶々へ注入（speaking=True の間）
+     └ resident.prompt(text, on_chunk=view.chunk) → ACPClient のチャンク → view.chunk()（turn_start/turn_end も）
 
 on_user_input(text):                                 # 別経路から割り込み
-  speaking_task が進行中 → await resident.cancel()    # session/cancel → stopReason=cancelled
+  speaking（注入が in-flight）なら → await resident.cancel()    # session/cancel → stopReason=cancelled
   # active(source) と next_phase のカーソルは触らない → QUIET 明けに同じ active から継続（背景継続）
   ユーザーターンを最優先で注入
 
