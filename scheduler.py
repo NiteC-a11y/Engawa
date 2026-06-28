@@ -160,8 +160,14 @@ class Scheduler:
                 self.view.system(f"  茶々(住人): {r.model}（指定）")
             else:                                        # 未指定かつアダプタ未報告＝こちらは実物を知らない
                 self.view.system("  茶々(住人): 不明（未指定・アダプタ未報告）— 確実に固定するなら ENGAWA_MODEL を設定")
-            guest = config.get_str("ENGAWA_CODEX_MODEL", "model", "guest", "")
-            self.view.system(f"  客人(codex): {guest + '（指定）' if guest else '未指定（来訪時にアダプタ既定）'}")
+            # 客人は使い捨て＝持続エージェント無し。来訪中なら live な codex の報告を優先、いなければ設定値（来訪時に使う指定）
+            g = self.active if (self.active is not None and self.active.key == "guest") else None
+            gmodel = getattr(getattr(g, "agent", None), "reported_model", None)
+            if gmodel:
+                self.view.system(f"  客人(codex): {gmodel}（来訪中・アダプタ報告）")
+            else:
+                guest = config.get_str("ENGAWA_CODEX_MODEL", "model", "guest", "")
+                self.view.system(f"  客人(codex): {guest + '（設定値・来訪時に使用）' if guest else '未指定（来訪時にアダプタ既定）'}")
         else:
             self.view.system(f"  はて、そんな作法（{cmd}）は知らんな。/help どうぞ。")
 

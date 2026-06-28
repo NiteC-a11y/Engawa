@@ -104,6 +104,21 @@ class TestUserInput(unittest.IsolatedAsyncioTestCase):
         await s.on_user_input("/model")
         self.assertTrue(any("不明" in (m or "") for m in _systems(v)))
 
+    async def test_model_command_guest_live_reported(self):
+        s, r, v = _make()
+
+        class _LiveGuest:                      # 来訪中の客人を擬似（key=guest・live agent が報告あり）
+            key = "guest"
+
+            def __init__(self):
+                self.agent = type("A", (), {"reported_model": "gpt-5-codex（Codex）"})()
+
+        s.active = _LiveGuest()
+        await s.on_user_input("/model")
+        systems = _systems(v)
+        self.assertTrue(any("来訪中・アダプタ報告" in (m or "") for m in systems))  # live 報告を優先
+        self.assertTrue(any("gpt-5-codex" in (m or "") for m in systems))
+
 
 class TestArcAndGuest(unittest.IsolatedAsyncioTestCase):
     async def test_single_phase_arc_concludes(self):
