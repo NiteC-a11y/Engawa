@@ -1,0 +1,64 @@
+"""game_rlcard.py（RLCardAdapter・ADR-0017）: 実 rlcard でアダプタとフルゲーム＋GameSession を検証。
+rlcard 未インストール時は丸ごと skip（コア suite は rlcard 無しで緑のまま＝任意依存）。"""
+import os
+import random
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    import rlcard  # noqa: F401
+    HAVE_RLCARD = True
+except ImportError:
+    HAVE_RLCARD = False
+import game
+import game_rlcard
+
+
+@unittest.skipUnless(HAVE_RLCARD, "rlcard 未インストール（pip install rlcard）")
+class TestRLCardAdapter(unittest.TestCase):
+    def test_blackjack_3p_full_random_game(self):
+        a = game_rlcard.RLCardAdapter("blackjack", 3, seed=1)
+        self.assertEqual(a.num_players, 3)
+        a.reset()
+        turns = 0
+        while not a.is_over() and turns < 300:
+            cur = a.current_player()
+            legal = a.legal_moves(cur)
+            self.assertTrue(legal)                      # 合法手が必ずある
+            self.assertIsInstance(a.state(cur), dict)   # 読める状態（dict）
+            a.play(random.choice(legal))
+            turns += 1
+        self.assertTrue(a.is_over())
+        self.assertEqual(len(a.result()), 3)            # 3人ぶんの結果
+
+    def test_register_adds_games(self):
+        game_rlcard.register_rlcard_games()
+        self.assertIn("blackjack", game.games())
+        self.assertIn("uno", game.games())
+
+    def test_uno_is_2p(self):
+        a = game_rlcard.RLCardAdapter("uno", 3)          # 3 を要求しても…
+        self.assertEqual(a.num_players, 2)               # …UNO は2固定（実値を採る）
+
+
+@unittest.skipUnless(HAVE_RLCARD, "rlcard 未インストール")
+class TestSessionWithRLCard(unittest.IsolatedAsyncioTestCase):
+    async def test_ai_only_blackjack_completes(self):
+        # 全スタックE2E（LLM無し）: 実アダプタ＋ランダムAI×3を GameSession で完走（観戦モード相当）
+        async def rand_decide(state, legal):
+            return random.choice(legal)
+        a = game_rlcard.RLCardAdapter("blackjack", 3, seed=7)
+        players = [game.Player(f"P{i}", rand_decide) for i in range(a.num_players)]
+        over = []
+        s = game.GameSession(a, players, on_over=lambda r: over.append(r))
+        s.begin()
+        steps = 0
+        while await s.step() and steps < 300:
+            steps += 1
+        self.assertTrue(s.over)
+        self.assertEqual(len(over[0]), 3)
+
+
+if __name__ == "__main__":
+    unittest.main()

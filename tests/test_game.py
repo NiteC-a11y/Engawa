@@ -42,46 +42,62 @@ def _ai(name, move):
     return game.Player(name, decide)
 
 
+async def _pump(s):
+    """AI ターンを step で進められるだけ進める（実機は tick で間合いを置いて呼ぶ）。"""
+    while await s.step():
+        pass
+
+
 class TestGameSession(unittest.IsolatedAsyncioTestCase):
-    async def test_all_ai_plays_to_end(self):
+    async def test_ai_only_watch_runs_to_end(self):
+        # 観戦モード＝全員 AI（人間ゼロ）。step だけで完走する
         a = FakeGame(3)
         moves, over = [], []
         s = game.GameSession(a, [_ai("茶々", "hi"), _ai("客人A", "lo"), _ai("客人B", "hi")],
                              on_move=lambda n, m, _a: moves.append((n, m)),
                              on_over=lambda r: over.append(r))
-        await s.begin()
+        s.begin()
+        await _pump(s)
         self.assertTrue(s.over)
-        self.assertEqual(moves, [("茶々", "hi"), ("客人A", "lo"), ("客人B", "hi")])  # スロット順に自動進行
+        self.assertEqual(moves, [("茶々", "hi"), ("客人A", "lo"), ("客人B", "hi")])  # スロット順に進む
         self.assertEqual(over, [[1, -1, 1]])                                        # result が on_over へ
 
-    async def test_player_count_agnostic(self):
-        # 人数を増やす＝プレイヤー配列を増やすだけ（客人を足す想定）
+    async def test_player_count_agnostic_and_human_stop(self):
+        # 人数を増やす＝プレイヤー配列を増やすだけ（客人を足す想定）。人間のターンで止まる
         a = FakeGame(4)
         moves = []
         s = game.GameSession(a, [game.Player("私"), _ai("茶々", "hi"),
                                  _ai("客人A", "hi"), _ai("客人B", "lo")],
                              on_move=lambda n, m, _a: moves.append((n, m)))
-        await s.begin()                          # スロット0=人間 → 即停止（AI は動かない）
-        self.assertFalse(s.over)
+        s.begin()
+        await _pump(s)                           # スロット0=人間 → 即停止（AI は動かない）
+        self.assertTrue(s.waiting_for_human)
         self.assertEqual(moves, [])
-        await s.human_move("hi")                 # 私→以降の AI(茶々/客人A/客人B)が自動で続き終局
+        self.assertTrue(await s.human_move("hi"))    # 私 → 以降の AI が自動で続き終局
+        await _pump(s)
         self.assertEqual([n for n, _m in moves], ["私", "茶々", "客人A", "客人B"])
         self.assertTrue(s.over)
+
+    async def test_step_noop_on_human_turn(self):
+        s = game.GameSession(FakeGame(1), [game.Player("私")])
+        s.begin()
+        self.assertFalse(await s.step())         # 人間のターンでは step は進めない
 
     async def test_invalid_ai_move_falls_back(self):
         a = FakeGame(1)
         moves = []
         s = game.GameSession(a, [_ai("茶々", "ZZZ")], on_move=lambda n, m, _a: moves.append((n, m)))
-        await s.begin()
+        s.begin()
+        await _pump(s)
         self.assertEqual(moves, [("茶々", "hi")])    # 不正手→合法手の先頭(hi)へフォールバック
 
     async def test_human_illegal_ignored(self):
         a = FakeGame(1)
         s = game.GameSession(a, [game.Player("私")])
-        await s.begin()
-        await s.human_move("ZZZ")                    # 不正→無視
+        s.begin()
+        self.assertFalse(await s.human_move("ZZZ"))  # 不正→適用しない(False)
         self.assertFalse(s.over)
-        await s.human_move("hi")
+        self.assertTrue(await s.human_move("hi"))
         self.assertTrue(s.over)
 
     async def test_players_mismatch_raises(self):

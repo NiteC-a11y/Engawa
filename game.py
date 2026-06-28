@@ -82,39 +82,46 @@ class GameSession:
     def current(self):
         return self.players[self.adapter.current_player()]
 
-    async def begin(self):
-        """開始。最初の人間ターンまで（or 終局まで）AI を自動で進める。"""
+    @property
+    def waiting_for_human(self):
+        """現プレイヤーが人間で入力待ちか（呼び側が UI に手を出させる合図）。"""
+        return (not self.over) and self.current.is_human
+
+    def begin(self):
+        """開始（局面初期化のみ）。以降は呼び側が step()/human_move() で1手ずつ進める。"""
         self.adapter.reset()
-        await self._run_ai()
+
+    async def step(self):
+        """**1手だけ**進める。現プレイヤーが AI なら打つ。人間のターン or 終局なら何もしない。
+        戻り値: 進めたら True（呼び側が間合いを置いて再度 step ＝ペース付き／AI-only なら step だけで完走）。"""
+        if self.over or self.current.is_human:
+            return False
+        cur = self.adapter.current_player()
+        legal = self.adapter.legal_moves(cur)
+        move = await self.players[cur].choose(self.adapter.state(cur), legal)
+        if move not in legal:                           # 不正手は合法手の先頭へフォールバック（堅牢化）
+            move = legal[0]
+        self._apply(cur, move)
+        return True
 
     async def human_move(self, move):
-        """人間の手。現プレイヤーが人間で合法な時だけ適用し、続けて AI を進める。"""
+        """人間の手。現プレイヤーが人間で合法な時だけ適用。戻り値: 適用したか。"""
         if self.over:
-            return
+            return False
         cur = self.adapter.current_player()
         if not self.players[cur].is_human:
-            return
+            return False
         if move not in self.adapter.legal_moves(cur):   # UI は合法手だけ出す前提・保険
-            return
+            return False
         self._apply(cur, move)
-        await self._run_ai()
-
-    async def _run_ai(self):
-        """現プレイヤーが AI の間、自動で打つ。人間のターン or 終局で止まる。"""
-        while not self.over and not self.current.is_human:
-            cur = self.adapter.current_player()
-            legal = self.adapter.legal_moves(cur)
-            move = await self.players[cur].choose(self.adapter.state(cur), legal)
-            if move not in legal:                       # 不正手は合法手の先頭へフォールバック（堅牢化）
-                move = legal[0]
-            self._apply(cur, move)
-        if self.over:
-            self._on_over(self.adapter.result())
+        return True
 
     def _apply(self, slot, move):
         name = self.players[slot].name
         self.adapter.play(move)
         self._on_move(name, move, self.adapter)
+        if self.over:
+            self._on_over(self.adapter.result())
 
 
 # ── レジストリ（ゲーム種類を後から増やす口）──────────────────────────────────
