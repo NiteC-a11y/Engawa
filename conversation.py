@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""conversation.py — 3人会話の「部屋」（ADR-0015 / Inc1）。
+
+私(人間)・茶々(住人)・客人(codex) が同じ場で聞き合う。最難関の **ターン管理** を
+**State パターン**で明示し、「人間が駆動している間だけ AI が応答し、必ず人間待ちに戻る」
+＝原則#3（人間不在の無際限な自律往復に戻さない）を *構造で* 保証する。
+
+採用したデザインパターン:
+- **value**: `Utterance` / `Transcript` … 共有の発話ログ。codex(使い捨て)には window を毎回渡す土台。
+- **Strategy / DI**: `Speaker` … 茶々/客人を均一に「喋らせる」注入カラブル。Room は実体(agent/View)を
+  知らない＝差し替え可能・テスト可能（Inc2 で Scheduler が実 agent を結線する）。
+- **純関数（Strategy-lite）**: `resolve_addressee` … 宛先解決（名前メンション＋既定は茶々・ADR-0015 決定）。
+- **State パターン**: `RoomState` ＝ `Greeting → AwaitingHuman → Responding → Leaving → Closed`。
+  - `AwaitingHuman` は **on_tick で AI を一切動かさない**（沈黙が続けば Leaving へ）＝自律往復が起き得ない。
+  - `Responding` は人間発話あたり **最大 turn_cap(=2) 手**で必ず `AwaitingHuman` へ戻る＝歯止めの本体。
+- **Mediator**: 外側は既存 `Scheduler`、その下に部屋の調停役 `Room` を置く。
+
+このモジュールはライブ未接続（Scheduler/agent に触れない）。Inc2 で結線する。
+"""
+import re
+
+# ── 宛先解決（ADR-0015 決定: 名前メンション＋既定は茶々）────────────────────
+_BOTH_WORDS = ("二人", "両方", "みんな", "双方")
+_GUEST_WORDS = ("客人", "お客")
+# 呼び名候補＝漢字/カタカナの2字以上の連なり（「近所の物知りなご隠居」→ 近所/物知/隠居。助詞は落ちる）。
+_NAME_RUN = re.compile(r"[一-鿿゠-ヿ]{2,}")
+
+
+def guest_aliases(persona):
+    """persona から客人の呼び名候補を粗く拾う。完全一致は要らない（ユーザーは「ご隠居」等と短く呼ぶ）。"""
+    return set(_NAME_RUN.findall(persona or "")) | set(_GUEST_WORDS)
+
+
+def resolve_addressee(text, persona):
+    """誰に言ったか → 'both' | 'guest' | 'resident'（既定）。副作用なしの純関数。
+    明示語「二人/両方…」=both、「茶々」=resident、persona 語/「客人」=guest、両方該当=both、無印=既定 resident。"""
+    t = text or ""
+    if any(w in t for w in _BOTH_WORDS):
+        return "both"
+    to_guest = any(a in t for a in guest_aliases(persona))
+    to_resident = "茶々" in t
+    if to_guest and to_resident:
+        return "both"
+    if to_guest:
+        return "guest"
+    return "resident"
+
+
+# ── 共有の発話ログ（value）─────────────────────────────────────────────
+class Utterance:
+    __slots__ = ("speaker", "text")
+    def __init__(self, speaker, text):
+        self.speaker, self.text = speaker, text
+
+
+class Transcript:
+    """部屋の発話ログ。codex には window(直近N) を毎回渡す（使い捨て＝文脈を持たないため）。"""
+    def __init__(self):
+        self._items = []
+
+    def append(self, speaker, text):
+        self._items.append(Utterance(speaker, text))
+
+    def window(self, n=8):
+        return tuple(self._items[-n:])
+
+    def render(self, n=8):
+        return "\n".join(f"{u.speaker}「{u.text}」" for u in self.window(n))
+
+    def __len__(self):
+        return len(self._items)
+
+    def __iter__(self):
+        return iter(self._items)
+
+
+# ── 発話者（Strategy/DI）。Room は agent/View を知らず、注入された fn を呼ぶだけ ──────
+# kind: 場面の種別。実プロンプト文言は Inc2 で Scheduler 側の fn が解釈する（Room は配役と順序だけ持つ）。
+ARRIVE, REACT, REPLY, CHIME, LEAVE, LEAVE_REACT = (
+    "arrive", "react", "reply", "chime", "leave", "leave_react")
+
+
+class Speaker:
+    """茶々/客人を均一に喋らせる注入アダプタ。name は transcript の話者タグ。
+    fn: async (window: tuple[Utterance], kind: str) -> str | None（None/空＝無言で積まない）。"""
+    def __init__(self, name, fn):
+        self.name = name
+        self._fn = fn
+
+    async def say(self, window, kind):
+        return await self._fn(window, kind)
+
+
+# ── 部屋（Mediator）＋ 状態（State パターン）────────────────────────────────
+class Room:
+    def __init__(self, persona, resident, guest, *, turn_cap=2, idle_leave_ticks=4, on_say=None):
+        self.persona = persona
+        self.resident = resident          # Speaker（茶々）
+        self.guest = guest                # Speaker（客人）
+        self.turn_cap = max(1, int(turn_cap))           # 人間発話あたりの連続AIターン上限（歯止め）
+        self.idle_leave_ticks = max(1, int(idle_leave_ticks))   # 人間沈黙が続いたら客人は辞去
+        self.transcript = Transcript()
+        self._on_say = on_say or (lambda speaker, text, kind: None)   # 表示/記録フック（任意）
+        self._state = Greeting(self)
+
+    # 観測用
+    @property
+    def closed(self):
+        return isinstance(self._state, Closed)
+
+    @property
+    def state_name(self):
+        return type(self._state).__name__
+
+    # 外部イベント（Scheduler が駆動）。状態へ委譲＝State パターン
+    async def begin(self):
+        await self._state.enter()
+
+    async def on_human(self, text):
+        await self._state.on_human((text or "").strip())
+
+    async def on_tick(self):
+        await self._state.on_tick()
+
+    # 1人に喋らせて transcript/表示へ（無言は積まない）
+    async def _utter(self, speaker, kind):
+        text = (await speaker.say(self.transcript.window(), kind) or "").strip()
+        if text:
+            self.transcript.append(speaker.name, text)
+            self._on_say(speaker.name, text, kind)
+        return text
+
+    def _goto(self, state):
+        self._state = state
+        return state
+
+
+class RoomState:
+    def __init__(self, room):
+        self.room = room
+
+    async def enter(self):
+        pass
+
+    async def on_human(self, text):    # 既定: 無視（Greeting/Leaving/Closed 中の人間入力）
+        pass
+
+    async def on_tick(self):
+        pass
+
+
+class Greeting(RoomState):
+    """来訪の入り＝客人が到着の挨拶、茶々が一言（有界・人間不要のアーク的瞬間）→ 人間待ちへ。"""
+    async def enter(self):
+        r = self.room
+        await r._utter(r.guest, ARRIVE)
+        await r._utter(r.resident, REACT)
+        await r._goto(AwaitingHuman(r)).enter()
+
+
+class AwaitingHuman(RoomState):
+    """部屋オープン＝人間待ち。**on_tick で AI を動かさない**（自律往復が起き得ない核）。
+    人間が沈黙し続けたら客人は辞去する（有界維持）。"""
+    def __init__(self, room):
+        super().__init__(room)
+        self.idle = 0
+
+    async def on_human(self, text):
+        if text:
+            await self.room._goto(Responding(self.room, text)).enter()
+
+    async def on_tick(self):
+        self.idle += 1
+        if self.idle >= self.room.idle_leave_ticks:
+            await self.room._goto(Leaving(self.room)).enter()
+
+
+class Responding(RoomState):
+    """人間発話への応答。宛先AI→もう片方が一言、ただし **最大 turn_cap 手** で必ず人間待ちへ戻る（歯止め）。"""
+    def __init__(self, room, human_text):
+        super().__init__(room)
+        self.human_text = human_text
+
+    async def enter(self):
+        r = self.room
+        r.transcript.append("私", self.human_text)        # 人間の発話を場へ（表示は View 側で別途エコー済み）
+        addr = resolve_addressee(self.human_text, r.persona)
+        order = {
+            "guest":    [(r.guest, REPLY), (r.resident, CHIME)],
+            "resident": [(r.resident, REPLY), (r.guest, CHIME)],
+            "both":     [(r.resident, REPLY), (r.guest, REPLY)],
+        }[addr]
+        turns = 0
+        for speaker, kind in order:
+            if turns >= r.turn_cap:
+                break
+            if await r._utter(speaker, kind):
+                turns += 1
+        await r._goto(AwaitingHuman(r)).enter()           # 必ず人間待ちへ（ピンポンに入らない）
+
+
+class Leaving(RoomState):
+    """辞去＝客人が暇を告げ、茶々が見送る（有界）→ 終端。codex の破棄は Scheduler 側（closed を見て）。"""
+    async def enter(self):
+        r = self.room
+        await r._utter(r.guest, LEAVE)
+        await r._utter(r.resident, LEAVE_REACT)
+        r._goto(Closed(r))
+
+
+class Closed(RoomState):
+    """終端。以後の on_human/on_tick は no-op（来訪終了）。"""
+    pass
