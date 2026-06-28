@@ -163,5 +163,88 @@ class TestArcAndGuest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(created and created[0].closed)        # 辞去で codex 破棄（使い捨て）
 
 
+def _codex_factory(created, line="ごめんやす"):
+    class FakeCodex:
+        def __init__(self):
+            self.closed = False
+            self.reported_model = None
+            self.prompts = []
+
+        async def prompt(self, text, on_chunk=None):
+            self.prompts.append(text)
+            return line
+
+        async def close(self):
+            self.closed = True
+
+    async def spawn():
+        c = FakeCodex()
+        created.append(c)
+        return c
+    return spawn
+
+
+class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
+    """3人会話の部屋（ADR-0015 Inc2）: Scheduler↔Room の統合。fake codex＋CaptureView で実 ACP 不要。"""
+    def _scheduler(self, created):
+        return sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
+                               views.CaptureView(), spawn_codex=_codex_factory(created))
+
+    @staticmethod
+    def _says(v):
+        return [(sp, t) for (typ, sp, t) in v.events if typ == "say"]
+
+    async def test_summon_opens_room_and_greets(self):
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("近所の物知りなご隠居")
+        self.assertIsNotNone(s.room)
+        self.assertFalse(s.room.closed)
+        speakers = [sp for sp, _ in self._says(s.view)]
+        self.assertIn("近所の物知りなご隠居", speakers)        # 客人の到着挨拶
+        self.assertIn("茶々", speakers)                        # 茶々の反応
+        self.assertEqual(len(created), 1)                      # codex 1体だけ spawn
+
+    async def test_human_to_guest_two_turns(self):
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("近所の物知りなご隠居")
+        s.view.events.clear()
+        await s.on_user_input("ご隠居どう思う?")
+        self.assertEqual([sp for sp, _ in self._says(s.view)],
+                         ["近所の物知りなご隠居", "茶々"])      # 宛先=客人→もう片方=茶々（最大2手）
+        self.assertFalse(s.room.closed)
+
+    async def test_human_default_to_resident(self):
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("近所の物知りなご隠居")
+        s.view.events.clear()
+        await s.on_user_input("ええ天気やね")                  # 名前なし＝既定は茶々
+        self.assertEqual([sp for sp, _ in self._says(s.view)],
+                         ["茶々", "近所の物知りなご隠居"])
+
+    async def test_codex_hears_human_and_chacha(self):
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("近所の物知りなご隠居")
+        await s.on_user_input("ご隠居、最近どう?")
+        prompts = created[0].prompts
+        self.assertTrue(any("最近どう" in p for p in prompts))  # 双方向: codex に人間の発話が届く
+        self.assertTrue(any("ここまでのやり取り" in p for p in prompts))  # transcript 同梱
+
+    async def test_silence_makes_guest_leave_and_dispose(self):
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("近所の物知りなご隠居")
+        for _ in range(8):
+            await s._tick(sources.build_context(None, []))
+            if s.room is None:
+                break
+        self.assertIsNone(s.room)                              # 辞去して部屋が閉じた（有界）
+        self.assertIsNone(s.active)
+        self.assertTrue(created[0].closed)                    # codex 破棄（使い捨て・ADR-0008）
+
+
 if __name__ == "__main__":
     unittest.main()

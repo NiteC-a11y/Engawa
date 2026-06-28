@@ -12,7 +12,8 @@ import asyncio
 import random
 import time
 
-import config   # 設定解決（env > engawa.json > 既定）
+import config        # 設定解決（env > engawa.json > 既定）
+import conversation  # 3人会話の部屋（State パターン・ADR-0015 Inc2）
 import sources
 
 TICK_MIN = config.get_float("ENGAWA_TICK_MIN", "timing", "tick_min", 35, lo=1)
@@ -34,6 +35,7 @@ class Scheduler:
         self.view = view
         self._spawn_codex = spawn_codex          # 客人(codex)の async factory（adr/0008）
         self.active = None                               # 進行中 source（割り込みで消えない）
+        self.room = None                                 # 3人会話の部屋（来訪中だけ・ADR-0015 Inc2）
         self.cooldowns = {s.key: 0 for s in source_list}
         self.turn_lock = asyncio.Lock()                  # resident 注入(_inject)の直列化＝割り込みの単位
         self.drive_lock = asyncio.Lock()                 # self.active 駆動を tick と召喚で排他（競合防止）
@@ -75,6 +77,11 @@ class Scheduler:
     async def _tick(self, ctx):
         for k in self.cooldowns:
             self.cooldowns[k] = max(0, self.cooldowns[k] - 1)
+        if self.room is not None:                        # (0) 3人会話の部屋＝人間待ち/沈黙→辞去（State が判断）
+            await self.room.on_tick()
+            if self.room.closed:
+                await self._end_visit()
+            return
         if self.active is not None:                      # (1) 進行中アークを前へ
             await self._emit(await self.active.next_phase(ctx))
             return
@@ -82,9 +89,13 @@ class Scheduler:
             eligible = [s for s in self.sources
                         if s.eligible(ctx) and self.cooldowns.get(s.key, 0) <= 0]
             if eligible:
-                self.active = random.choice(eligible)
-                self.active.reset()
-                await self._emit(await self.active.next_phase(ctx))   # 起を即出す
+                chosen = random.choice(eligible)
+                chosen.reset()
+                self.active = chosen
+                if chosen.key == "guest":                # 自発来訪 → 3人会話の部屋を開く（ADR-0015）
+                    await self._start_room(chosen.persona)
+                else:
+                    await self._emit(await self.active.next_phase(ctx))   # 箱庭アークは起を即出す
                 return
         narr = await self.idle.next_phase(ctx)           # (3) 天気つぶやき/移ろい or 沈黙
         if narr is not None and (narr.kind == "transition" or random.random() < MUTTER_PROB):
@@ -128,7 +139,14 @@ class Scheduler:
             await self._command(line)
             return
         self.last_user_ts = time.time()
-        if self.speaking:                                # 進行中の注入だけを畳む
+        if self.room is not None and not self.room.closed:   # 3人会話＝人間が宛先を決めて駆動（ADR-0015）
+            async with self.drive_lock:                      # tick と直列化（部屋の状態機械を保護）
+                await self.room.on_human(line)
+                if self.room.closed:
+                    await self._end_visit()
+            self.last_user_ts = time.time()
+            return
+        if self.speaking:                                # 進行中の注入だけを畳む（ambient・cancel優先）
             await self.resident.cancel()                 # session/cancel → stopReason=cancelled
             self.view.system("[茶々がこちらを向いた]")
         # active(source) は触らない → QUIET 明けに背景継続
@@ -189,12 +207,59 @@ class Scheduler:
                 self._conclude(self.active)
             self.view.system(f"  〔客人〕「{persona}」が訪ねてきた…")
             self.active = sources.GuestSource(persona, self._spawn_codex)
-            weather = await asyncio.to_thread(sources.fetch_weather)
-            await self._emit(await self.active.next_phase(sources.build_context(weather, self.topics)))
-            if self.active is None:      # 第一声すら出ず結了＝codex spawn 失敗（召喚は明示動作なので可視化）
-                self.view.system("  （客人は来られなんだ。codex 接続・ChatGPT 認証を確認してな）")
-            else:                        # 続き(世間→辞去)を ambient の35-70秒でなく短間隔で流す（会話が止まって見えない対策）
-                self._next_at = time.time() + random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
+            await self._start_room(persona)              # 3人会話の部屋を開く（到着→人間待ち・ADR-0015）
+
+    # ── 3人会話の部屋（ADR-0015 Inc2）────────────────────────
+    async def _start_room(self, persona):
+        """codex を先に spawn（失敗なら来訪中止）、Speaker を結線して Room を開き、到着の挨拶を出す。
+        以後は tick→on_tick / ユーザー入力→on_human で進む。drive_lock 内から呼ぶ前提。"""
+        try:
+            await self.active.ensure_agent()             # codex を今 spawn（失敗は例外）
+        except Exception:
+            self.view.system("  （客人は来られなんだ。codex 接続・ChatGPT 認証を確認してな）")
+            self._conclude(self.active)
+            return
+        resident_spk, guest_spk = self._room_speakers(persona)
+        self.room = conversation.Room(
+            persona, resident_spk, guest_spk,
+            on_say=lambda who, text, kind: self.view.say(who, text))
+        await self.room.begin()                          # 到着の挨拶＋茶々の反応 → 人間待ち
+        if self.room.closed:                             # 念のため（通常は AwaitingHuman）
+            await self._end_visit()
+        else:                                            # 沈黙検出のため tick を短間隔に
+            self._next_at = time.time() + random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
+
+    def _room_speakers(self, persona):
+        """茶々/客人を均一に喋らせる Speaker（Strategy/DI）。Room は agent/View を知らない。"""
+        async def resident_say(window, kind):
+            async with self.turn_lock:                   # ambient と同じ直列化単位
+                self.speaking = True
+                try:
+                    return await self.resident.prompt(sources.room_resident_prompt(window, kind))
+                finally:
+                    self.speaking = False
+
+        async def guest_say(window, kind):
+            agent = self.active.agent if self.active is not None else None
+            if agent is None:
+                return ""
+            return (await agent.prompt(sources.room_guest_prompt(persona, window, kind))).strip()
+
+        return (conversation.Speaker("茶々", resident_say),
+                conversation.Speaker(persona, guest_say))
+
+    async def _end_visit(self):
+        """来訪終了: codex を破棄（使い捨て・ADR-0008）し cooldown を置いて部屋を閉じる。"""
+        src = self.active
+        self.room = None
+        if src is not None:
+            try:
+                await src.close()
+            except Exception:
+                pass
+            self.cooldowns[src.key] = src.cooldown_ticks
+            src.reset()
+            self.active = None
 
     async def _play_arc_now(self, key):
         weather = await asyncio.to_thread(sources.fetch_weather)
@@ -237,8 +302,9 @@ class Scheduler:
                 await tick_task
             except (asyncio.CancelledError, Exception):
                 pass
-            for s in list(self.sources) + [self.idle]:   # shutdown teardown（leak 最終防波堤）
-                try:
+            visiting = self.active if self.active not in self.sources else None  # 召喚客人は registry 外
+            for s in list(self.sources) + [self.idle] + ([visiting] if visiting else []):
+                try:                                     # shutdown teardown（codex leak の最終防波堤）
                     await s.close()
                 except Exception:
                     pass

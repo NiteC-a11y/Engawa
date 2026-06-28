@@ -36,3 +36,13 @@
 - 茶々(長命)と客人(使い捨て)の transcript 共有の持ち方（どこまで・どの粒度で渡すか）。
 - cancel優先(ADR-0006)との整合（人間の割り込みは常に最優先のまま）。
 - プロンプトインジェクション面（共有の場に客人出力が入る＝ADR-0014 の整理と地続き）。
+
+## 実装メモ（決定の確定＋進捗・2026-06-28）
+Open Questions の主要点を確定し、**State パターン**で実装:
+- **宛先**: 名前メンション＋既定は茶々（persona 語/「客人」→客人、「茶々」→住人、「二人/両方」→両方、無印→茶々）。`conversation.resolve_addressee`（純関数）。
+- **連続AIターン上限**: 人間発話あたり**最大2手**（宛先AI→もう片方が一言→人間待ち）。`Room.turn_cap`。
+- **transcript 共有**: codex(使い捨て)へは直近 window を毎回同梱／茶々(長命)へも window を渡す（双方向）。
+- **進捗**:
+  - **Inc1**: 会話エンジン `conversation.py`（State: Greeting→AwaitingHuman⇄Responding→Leaving→Closed。`AwaitingHuman` は tick で AI を動かさない＝自律往復が*起き得ない*構造。`Responding` は cap 手で必ず人間待ちへ）＋Speaker(Strategy/DI)＋ユニット。
+  - **Inc2**: Scheduler/GuestSource 結線（`/codex`・自発来訪が部屋を開く・`view.say` で確定発話を一様表示・沈黙で辞去・codex 使い捨て維持＝ADR-0008 の核は不変）＋統合テスト。
+- **Inc3 に残す**: cancel優先(ADR-0006)の部屋内統合（現状は短いターンを直列化＝人間は待つ）／茶々の room ストリーミング（現状は確定行表示）／**実 codex の3人会話 E2E（実機・ユーザー）**／表示・スプライト演出の磨き。

@@ -32,8 +32,11 @@
   - [ ] 人格マッチ topic の源拡充（行商人→相場、絵描き→色 等）／直近回避の窓調整
 - [ ] 時節の挨拶差し替え（月初・季節の変わり目・祝日）※茶々の自発挨拶側（客人ネタとは別口）
 - [~] Codex の initialize capability を読んで分岐（caps は取得済み＝auth/loadSession 等。実際の分岐は必要になってから）
-- [ ] 〔大物・ADR-0015〕客人(visitor)に **人間アンカーで有界な3人会話** を解禁（私↔茶々／私↔客人／茶々↔客人／3人 の全組合せ）。「部屋」方式＝全員が全員の発言を聞く・宛先で応答者が決まる（取り次ぎでない）。歯止め: 人間アンカー・連続AIターン上限・来訪は有界のまま。最難関は**ターン管理**。方向は ADR-0015 で確定、実装は別途
-  - Open: 宛先の決め方／連続ターン上限／茶々(長命)と客人(使い捨て)の transcript 共有／cancel優先との整合／注入面（ADR-0014 と地続き）
+- [~] 〔大物・ADR-0015〕客人(visitor)に **人間アンカーで有界な3人会話** を解禁（私↔茶々／私↔客人／茶々↔客人／3人 の全組合せ）。「部屋」方式＝全員が全員の発言を聞く・宛先で応答者が決まる（取り次ぎでない）。歯止め: 人間アンカー・連続AIターン上限・来訪は有界のまま。最難関は**ターン管理**。
+  - 決定（6/28）: 宛先=名前メンション＋既定茶々／連続AIターン上限=2手（ADR-0015 実装メモ）
+  - [x] **Inc1**: 会話エンジン `conversation.py`（State: Greeting→AwaitingHuman⇄Responding→Leaving→Closed。AwaitingHuman は tick で AI を動かさない＝自律往復が起き得ない／Responding は cap 手で必ず人間待ちへ）。Speaker(Strategy/DI)・resolve_addressee(純関数)・Transcript(value)。ユニット17件
+  - [x] **Inc2**: Scheduler/GuestSource 結線（`/codex`・自発来訪が部屋を開く・codex/茶々の双方に transcript window を渡し双方向化・`view.say` で確定発話を一様表示・沈黙で辞去・codex 使い捨て維持）。統合テスト5件。全84 PASS・web JS node --check OK
+  - [ ] **Inc3**: cancel優先(ADR-0006)の部屋内統合（今は短いターンを直列化＝人間は待つ）／茶々の room ストリーミング（今は確定行表示）／**実 codex の3人会話 E2E（実機・ユーザー）**／表示・スプライト演出の磨き／idle_leave_ticks 等の調整
 
 ## P5 — ドット絵UI（Increment 1 済み 6/27）
 - [x] **Increment 1: 最小の実UI**（6/27）＝`views.WebView`（poll 方式・ADR-0013 の View 差し替え）＋`engawa_main` web モード（`ENGAWA_UI=web`。webview メインスレッド／Scheduler 別スレッド+loop／窓閉じで signal_close→teardown）。出力は `_log`＋rev 差分を JS が poll、入力は `queue.Queue`。茶々の lazy 表示・改行畳み・客人 voice 表示も ConsoleView と揃え。WebView 12件＋全7スイート PASS。**実窓 GUI 起動は未（GUI ブロックのため手元検証はユーザー）**

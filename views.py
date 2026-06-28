@@ -42,6 +42,7 @@ class View:
     def chunk(self, text): ...
     def turn_end(self): ...
     def system(self, msg): ...
+    def say(self, speaker, text): ...          # 3人会話の確定発話を1行で出す（茶々/客人を一様に・ADR-0015）
     async def inputs(self):
         if False:
             yield None
@@ -106,6 +107,9 @@ class ConsoleView(View):
     def system(self, msg):
         print(msg)
 
+    def say(self, speaker, text):              # 3人会話: 確定した発話を1行で（茶々/客人を一様に）
+        sys.stdout.write(f"   {speaker} › {collapse_ws(text)}\n"); sys.stdout.flush()
+
     async def inputs(self):
         loop = asyncio.get_event_loop()
         while True:
@@ -139,6 +143,9 @@ class CaptureView(View):
 
     def system(self, msg):
         self.events.append(("system", msg, None))
+
+    def say(self, speaker, text):              # 3人会話の確定発話を記録（テスト用）
+        self.events.append(("say", speaker, text))
 
     def feed(self, line):
         self._q.put_nowait(line)
@@ -210,6 +217,13 @@ class WebView(View):
                               "text": str(msg), "done": True})
             self._trim()
 
+    def say(self, speaker, text):              # 3人会話: 確定発話を1件のログ行として積む（poll が配る）
+        with self._lock:
+            self._id += 1
+            self._log.append({"id": self._id, "rev": self._bump(), "type": "say",
+                              "speaker": str(speaker), "text": str(text), "done": True})
+            self._trim()
+
     def _trim(self, cap=120):
         if len(self._log) > cap:
             del self._log[:len(self._log) - cap]
@@ -241,6 +255,9 @@ class WebView(View):
     def _serialize(i):
         if i["type"] in ("system", "you"):
             return {"id": i["id"], "type": i["type"], "text": i["text"]}
+        if i["type"] == "say":                  # 3人会話の確定発話（speaker＋text）
+            return {"id": i["id"], "type": "say", "speaker": i["speaker"],
+                    "text": collapse_ws(i["text"])}
         return {"id": i["id"], "type": "turn", "kind": i["kind"], "label": i["label"],
                 "voice": collapse_ws(i["voice"]) if i["voice"] else None,
                 "text": collapse_ws(i["text"]), "done": i["done"]}
@@ -349,6 +366,10 @@ const chacha={lastGuest:-1e9,lastUser:-1e9}; const liveSet=new Set(); let lastTu
 function render(it){
   if(it.type==='system') return '<div class="sys">'+esc(it.text)+'</div>';
   if(it.type==='you') return '<div class="you"><span class="who">あなた ›</span>'+esc(it.text)+'</div>';
+  if(it.type==='say'){                    // 3人会話の確定発話（茶々 or 客人）
+    const cls=(it.speaker==='茶々')?'cha':'guest';
+    return '<div class="'+cls+'"><span class="who">'+esc(it.speaker)+' ›</span>'+esc(it.text)+'</div>';
+  }
   let h='';
   if(it.voice) h+='<div class="guest"><span class="who">客人 ›</span>'+esc(it.voice)+'</div>';
   h+='<div class="cha"><span class="who">茶々 ›</span>'+esc(it.text)+'</div>';
@@ -365,6 +386,7 @@ async function tick(){
       if(!el){el=document.createElement('div');el.className='item';log.appendChild(el);seen[it.id]=el;}
       el.innerHTML=render(it);
       if(it.type==='you') chacha.lastUser=performance.now();          // 話しかけたら即こっち見る
+      if(it.type==='say'&&it.speaker!=='茶々') chacha.lastGuest=performance.now();  // 3人会話で客人が喋った＝耳ピン/気配
       if(it.type==='turn'){
         if(it.done) liveSet.delete(it.id); else liveSet.add(it.id);   // 話してる最中か
         if(it.id>lastTurnId){
