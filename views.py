@@ -344,7 +344,14 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   .guest{color:#9fd2e2}.cha{color:#f3e8c9}
   .you{color:#bfd99a;text-align:right}
   .who{opacity:.55;margin-right:4px;font-size:11px}
-  #bar{display:flex;gap:6px;padding:8px;background:#1f1916}
+  #bar{display:flex;gap:6px;padding:8px;background:#1f1916;position:relative}
+  /* @メンション候補（宛先入力の補助・3人会話） */
+  #mention{position:absolute;left:8px;right:8px;bottom:46px;z-index:40;display:none;
+    background:#2e2620;border:1px solid #5a4a3a;border-radius:8px;overflow:hidden;
+    box-shadow:0 -4px 12px rgba(0,0,0,.35);font-size:13px}
+  #mention .mi{padding:7px 11px;cursor:pointer;display:flex;justify-content:space-between;gap:8px;color:#f0e9e0}
+  #mention .mi .h{opacity:.5;font-size:11px}
+  #mention .mi.sel,#mention .mi:hover{background:#3a2f26}
   #in{flex:1;padding:8px;border:1px solid #5a4a3a;border-radius:6px;background:#2e2620;color:#f0e9e0;font-size:13px}
   #send{padding:8px 13px;border:0;border-radius:6px;background:#caa46b;color:#2a2320;cursor:pointer}
 </style></head>
@@ -354,7 +361,8 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
     <canvas id="cha" width="74" height="74"></canvas><div id="nya">ニャー</div></div>
   <button id="close" title="閉じる">×</button>
   <div id="log"></div>
-  <div id="bar"><input id="in" placeholder="話しかける…（/help /codex /quit）" autocomplete="off">
+  <div id="bar"><div id="mention"></div>
+    <input id="in" placeholder="話しかける…（@で宛先・/help /codex /quit）" autocomplete="off">
     <button id="send">送信</button></div>
 </div>
 <script>
@@ -363,6 +371,7 @@ const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]
 let since=0; const seen={}; let busy=false;
 // 茶々の state（poll から推定して canvas の動きへ）
 const chacha={lastGuest:-1e9,lastUser:-1e9}; const liveSet=new Set(); let lastTurnId=0;
+let guestName='', lastGuestSeen=-1e9;   // @メニュー用: 来訪中の客人名と最終発話時刻
 function render(it){
   if(it.type==='system') return '<div class="sys">'+esc(it.text)+'</div>';
   if(it.type==='you') return '<div class="you"><span class="who">あなた ›</span>'+esc(it.text)+'</div>';
@@ -386,7 +395,7 @@ async function tick(){
       if(!el){el=document.createElement('div');el.className='item';log.appendChild(el);seen[it.id]=el;}
       el.innerHTML=render(it);
       if(it.type==='you') chacha.lastUser=performance.now();          // 話しかけたら即こっち見る
-      if(it.type==='say'&&it.speaker!=='茶々') chacha.lastGuest=performance.now();  // 3人会話で客人が喋った＝耳ピン/気配
+      if(it.type==='say'&&it.speaker!=='茶々'){chacha.lastGuest=performance.now();guestName=it.speaker;lastGuestSeen=performance.now();}  // 客人が喋った＝耳ピン/気配＋@候補
       if(it.type==='turn'){
         if(it.done) liveSet.delete(it.id); else liveSet.add(it.id);   // 話してる最中か
         if(it.id>lastTurnId){
@@ -409,10 +418,56 @@ function updateGuest(){
   if(present&&!guestShown){guestShown=true;kehai();}            // 来訪の立ち上がりで気配
   else if(!present&&guestShown){guestShown=false;}
 }
-function send(){const v=inp.value.trim();if(v&&window.pywebview){window.pywebview.api.send(v);inp.value='';}}
+function send(){hideMenu();const v=inp.value.trim();if(v&&window.pywebview){window.pywebview.api.send(v);inp.value='';}}
 document.getElementById('send').onclick=send;
 document.getElementById('close').onclick=()=>{window.pywebview&&window.pywebview.api.close();};
-inp.addEventListener('keydown',e=>{if(e.key==='Enter')send();});
+// ── @メンション候補（宛先入力の補助）。挿入語(茶々/客人/二人とも)は既存 resolve_addressee がそのまま振り分ける ──
+const mention=document.getElementById('mention');
+let menuOpen=false,menuSel=0,menuItems=[];
+function candidates(filter){
+  const present=(performance.now()-lastGuestSeen)<90000;     // 来訪中らしい間だけ客人/両方を出す
+  const c=[{ins:'茶々',h:'住人'}];
+  if(present){c.push({ins:'客人',h:guestName||'来訪中'});c.push({ins:'二人とも',h:'みんなに'});}
+  const f=(filter||'').trim();
+  return f?c.filter(x=>x.ins.indexOf(f)>=0||(x.h&&x.h.indexOf(f)>=0)):c;
+}
+function mentionToken(){
+  const pos=inp.selectionStart,upto=inp.value.slice(0,pos),at=upto.lastIndexOf('@');
+  if(at<0)return null;
+  const frag=upto.slice(at+1);
+  return /\s/.test(frag)?null:{at,frag};
+}
+function hideMenu(){menuOpen=false;mention.style.display='none';}
+function renderMenu(){
+  mention.innerHTML=menuItems.map((x,i)=>'<div class="mi'+(i===menuSel?' sel':'')+'" data-i="'+i+'"><span>@'+esc(x.ins)+'</span><span class="h">'+esc(x.h||'')+'</span></div>').join('');
+  mention.style.display='block';menuOpen=true;
+  mention.querySelectorAll('.mi').forEach(el=>el.onclick=()=>applyMention(menuItems[+el.dataset.i]));
+}
+function updateMenu(){
+  const t=mentionToken();
+  if(!t){hideMenu();return;}
+  menuItems=candidates(t.frag);
+  if(!menuItems.length){hideMenu();return;}
+  if(menuSel>=menuItems.length)menuSel=0;
+  renderMenu();
+}
+function applyMention(cand){
+  const t=mentionToken();if(!t||!cand)return;
+  const v=inp.value,pos=inp.selectionStart,before=v.slice(0,t.at)+cand.ins+' ';
+  inp.value=before+v.slice(pos);
+  inp.setSelectionRange(before.length,before.length);
+  hideMenu();inp.focus();
+}
+inp.addEventListener('input',()=>{menuSel=0;updateMenu();});
+inp.addEventListener('keydown',e=>{
+  if(menuOpen&&menuItems.length){
+    if(e.key==='ArrowDown'){e.preventDefault();menuSel=(menuSel+1)%menuItems.length;renderMenu();return;}
+    if(e.key==='ArrowUp'){e.preventDefault();menuSel=(menuSel-1+menuItems.length)%menuItems.length;renderMenu();return;}
+    if(e.key==='Enter'||e.key==='Tab'){e.preventDefault();applyMention(menuItems[menuSel]);return;}
+    if(e.key==='Escape'){e.preventDefault();hideMenu();return;}
+  }
+  if(e.key==='Enter')send();
+});
 setInterval(tick,150);
 // ── 茶々の描画（ADR-0010 骨/皮）: SPRITE シートがあればコマ送り、無ければ procedural ──
 const SPRITE = /*SPRITE*/null;
