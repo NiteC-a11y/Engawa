@@ -1,0 +1,17 @@
+# secrets / local config（鍵を絶対にコミットしない）
+.env
+.env.local
+.claude/settings.local.json
+
+# python
+__pycache__/
+*.py[cod]
+
+# sqlite（永続化導入時に必要なら個別に外す）
+*.db
+
+# editor / os
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

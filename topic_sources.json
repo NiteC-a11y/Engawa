@@ -1,0 +1,21 @@
+{
+  "_comment": "客人の世間話ネタの取得先ホワイトリスト（ADR-0014）。ここを編集すれば源を足せる（コード不要）。kind=local はコード生成・無取得 / kind=rss は取得（url と domain 必須・host が domain に一致＋https のときだけ取得）。設定に載った源しか fetch しない＝この設定そのものが whitelist。env ENGAWA_TOPIC_CONFIG で別ファイルに差し替え可。",
+  "sources": [
+    {
+      "name": "時節",
+      "kind": "local",
+      "enabled": true,
+      "note": "二十四節気＋旬。ネット不要・常に在庫・縁側の世界観に馴染む土台"
+    },
+    {
+      "name": "暮らしコラム例",
+      "kind": "rss",
+      "enabled": false,
+      "url": "https://example.jp/suppl/rss",
+      "domain": "example.jp",
+      "tone": "暮らし",
+      "persona": ["ご隠居", "行商人"],
+      "note": "やわらかニュースの枠。実在URLを精査し domain を合わせて enabled:true に。NHK等の硬い時事は縁側に合わないので避ける（精査結果より）"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "_comment": "茶々のスプライト（ADR-0010 の皮）。Gemini 生成の三毛猫アニメ列(8コマ・座布団なし)をグレー背景キー抜き→高さ正規化→64高に整列したもの。state→コマ: 0=平常/1=尻尾ふり/2=笑顔/3=見上げ/4=ウインク/5=目閉じ笑/6=伏し目/7=びっくり口開け。frame_w/h はシート1コマpx・表示サイズ/位置は scene から自動算出・呼吸(CSS breathe)は猫だけなので有効。sheet 無し/欠損は procedural にフォールバック。env ENGAWA_SPRITE_CONFIG で差し替え可。",
+  "enabled": true,
+  "sheet": "chacha.png",
+  "frame_w": 80,
+  "frame_h": 64,
+  "scale": 2,
+  "animations": {
+    "idle":      {"frames": [0], "fps": 1},
+    "blink":     {"frames": [0], "fps": 1},
+    "talk":      {"frames": [2], "fps": 1},
+    "listen":    {"frames": [3], "fps": 1},
+    "attentive": {"frames": [2], "fps": 1}
+  }
+}
