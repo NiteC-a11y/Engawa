@@ -346,8 +346,8 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   .who{opacity:.55;margin-right:4px;font-size:11px}
   #bar{display:flex;gap:6px;padding:8px;background:#1f1916}
   /* 宛先ドロップダウン（左・3人会話の入力補助。@ は日本語IMEで打ちにくいのでセレクトで選ぶ） */
-  #addr{padding:8px 6px;border:1px solid #5a4a3a;border-radius:6px;background:#2e2620;color:#f0e9e0;
-    font-size:12px;max-width:42%;cursor:pointer}
+  #addr{padding:8px 4px;border:1px solid #5a4a3a;border-radius:6px;background:#2e2620;color:#f0e9e0;
+    font-size:12px;flex:0 0 auto;max-width:8em;cursor:pointer}
   #in{flex:1;padding:8px;border:1px solid #5a4a3a;border-radius:6px;background:#2e2620;color:#f0e9e0;font-size:13px}
   #send{padding:8px 13px;border:0;border-radius:6px;background:#caa46b;color:#2a2320;cursor:pointer}
 </style></head>
@@ -427,12 +427,12 @@ const addr=document.getElementById('addr');
 let addrKey=null;
 function refreshAddr(){
   const present=(performance.now()-lastGuestSeen)<90000;     // 来訪中らしい間だけ客人/二人ともを出す
-  const key=present?('1|'+guestName):'0';                    // 在/不在＋客人名が変わった時だけ作り直す（操作を壊さない）
+  const key=present?'1':'0';                                 // 在/不在が変わった時だけ作り直す（操作を壊さない・幅も一定）
   if(key===addrKey) return; addrKey=key;
   const cur=addr.value;
   let html='<option value="">茶々へ</option>';
   if(present){
-    html+='<option value="客人さん、">'+esc(guestName?('客人へ（'+guestName+'）'):'客人へ')+'</option>';
+    html+='<option value="客人さん、">客人へ</option>';      // 人格名は入れない（横幅が暴れて入力欄が潰れるため）
     html+='<option value="二人とも、">二人ともへ</option>';
   }
   addr.innerHTML=html; addr.value=present?cur:'';            // 客人が去ったら茶々へ戻す
