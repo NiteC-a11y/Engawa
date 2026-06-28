@@ -321,19 +321,21 @@ def room_resident_prompt(window, kind):
 
 
 # ── ゲーム（ADR-0017）。AIプレイヤーへ「状態＋合法手」を見せ、手の語だけ返させる ──────
+_STATE_SKIP = ("legal_actions", "raw_legal_actions", "actions", "state")   # 手の一覧/内部表現の冗長キーは除く
+
+
 def describe_state(state):
-    """ゲームの読める状態(raw_obs の dict)を1行に。手の一覧は別に出すので除く。表示/プロンプト兼用。"""
+    """ゲームの読める状態(raw_obs の dict)を1行に。表示/プロンプト兼用。"""
     if not isinstance(state, dict):
         return str(state)
-    parts = [f"{k}: {v}" for k, v in state.items()
-             if k not in ("legal_actions", "raw_legal_actions")]
-    return " / ".join(parts)
+    return " / ".join(f"{k}: {v}" for k, v in state.items() if k not in _STATE_SKIP)
 
 
-def game_move_prompt(name, state, legal_moves):
-    """AIプレイヤーへの注入。今の状況と打てる手を見せ、手の語だけを短く返させる（説明・台詞は不要）。"""
-    return (f"あなたは「{name}」。いまゲーム中で、あなたの番です。\n"
+def game_move_prompt(name, slot, state, legal_moves):
+    """AIプレイヤーへの注入。**自分のスロット**を明示し、状況と打てる手を見せ、手の語だけ短く返させる。"""
+    return (f"あなたは「{name}」、このゲームの player{slot} です。あなたの番です。\n"
             f"今の状況: {describe_state(state)}\n"
+            f"あなたの手札は上の『player{slot} hand』（無ければ『hand』）。他人の手札ではなく**自分の**手で判断する。\n"
             f"打てる手: {list(legal_moves)}\n"
             "この中から1つだけ選び、その手の語だけを短く答えてください（説明や台詞は不要）。")
 

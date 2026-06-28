@@ -314,10 +314,10 @@ class Scheduler:
         game_rlcard.register_rlcard_games()
         return game.make(game_id, num_players)
 
-    def _ai_decider(self, agent, name):
-        """AIプレイヤーの手番: 状態＋合法手を見せて手を選ばせる（不正は GameSession が先頭へフォールバック）。"""
+    def _ai_decider(self, agent, name, slot):
+        """AIプレイヤーの手番: 自分のスロット＋状態＋合法手を見せて手を選ばせる（不正は先頭へフォールバック）。"""
         async def decide(state, legal_moves):
-            reply = await agent.prompt(sources.game_move_prompt(name, state, legal_moves))
+            reply = await agent.prompt(sources.game_move_prompt(name, slot, state, legal_moves))
             return game.parse_move(reply, legal_moves)
         return decide
 
@@ -342,8 +342,8 @@ class Scheduler:
             n = adapter.num_players
             players = []
             if not watch:
-                players.append(game.Player("私"))        # 人間（観戦時は入れない＝全AI）
-            players.append(game.Player("茶々", self._ai_decider(self.resident, "茶々")))
+                players.append(game.Player("私"))        # 人間（観戦時は入れない＝全AI）。slot 0
+            players.append(game.Player("茶々", self._ai_decider(self.resident, "茶々", len(players))))
             self._game_guests = []
             while len(players) < n:                      # 残りスロットを客人(codex)で埋める
                 persona = random.choice(sources.GUEST_PERSONAS)
@@ -353,7 +353,8 @@ class Scheduler:
                     self.view.system("  （客人が来られず中止）")
                     await self._cleanup_game_guests(); return
                 self._game_guests.append(agent)
-                players.append(game.Player(f"客人〔{persona}〕", self._ai_decider(agent, persona)))
+                slot = len(players)                      # 追加位置＝RLCard の player id（自分の手札参照に使う）
+                players.append(game.Player(f"客人〔{persona}〕", self._ai_decider(agent, persona, slot)))
             label = game.games().get(game_id, {}).get("label", game_id)
             self.view.system(f"  〔{label}〕開始（{'観戦＝全部AI' if watch else 'あなたも参加'}・{n}人）")
             self.game = game.GameSession(
