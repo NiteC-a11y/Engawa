@@ -1,5 +1,10 @@
 {
   "_comment": "茶々の挙動設定。優先順位は env(ENGAWA_*) > この値 > コード既定。APIキーは入れない(adr/0002)。env ENGAWA_CONFIG でパス差し替え可。欠損/壊れは全部コード既定へフォールバック。config.py が解決する。",
+  "model": {
+    "_comment": "住人(茶々=Claude)/客人(codex)のモデル。resident は子 env ANTHROPIC_MODEL、guest は CODEX_CONFIG 経由。空/未指定はアダプタ既定。常用は sonnet（短い独り言に十分・サブスク枠が軽い・別名で最新Sonnetに追従）。実験は env で上書き（例 ENGAWA_MODEL=opus）。客人を固定するなら guest に gpt-5-codex 等。",
+    "resident": "sonnet",
+    "guest": ""
+  },
   "guest": {
     "_comment": "自発来訪。from_hour=開始時刻(既定15=夕方/time_of_day準拠・0で終日)。prob=tickあたりの素確率(低め＝来ない日がある)。召喚 /codex はこのゲートを受けない。",
     "from_hour": 15,

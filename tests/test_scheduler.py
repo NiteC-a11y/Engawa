@@ -17,6 +17,8 @@ class FakeResident:
         self.prompts = []
         self.cancels = 0
         self.closed = False
+        self.model = None           # 我々が要求したモデル（/model 表示で使う）
+        self.reported_model = None  # アダプタ報告の実モデル（同上・実 AcpAgent と同じ属性）
 
     async def prompt(self, text, on_chunk=None):
         self.prompts.append(text)
@@ -80,6 +82,27 @@ class TestUserInput(unittest.IsolatedAsyncioTestCase):
         await s.on_user_input("/nope")
         self.assertTrue(any("作法" in (m or "") for m in _systems(v)))
         self.assertEqual(len(r.prompts), 0)   # 茶々には流さない
+
+    async def test_model_command_shows_requested(self):
+        s, r, v = _make()
+        r.model = "claude-opus-4-8"            # ENGAWA_MODEL 指定相当・アダプタ報告は無し
+        await s.on_user_input("/model")
+        systems = _systems(v)
+        self.assertTrue(any("claude-opus-4-8" in (m or "") for m in systems))  # 指定値を表示
+        self.assertTrue(any("codex" in (m or "") for m in systems))            # 客人(codex)行も
+        self.assertEqual(len(r.prompts), 0)   # 縁側操作＝茶々には流さない
+
+    async def test_model_command_prefers_reported(self):
+        s, r, v = _make()
+        r.model = "claude-opus-4-8"
+        r.reported_model = "Claude Opus（opus）"   # アダプタ報告（真実）があれば優先
+        await s.on_user_input("/model")
+        self.assertTrue(any("アダプタ報告" in (m or "") for m in _systems(v)))
+
+    async def test_model_command_unknown_when_unset(self):
+        s, r, v = _make()                      # model/reported とも None
+        await s.on_user_input("/model")
+        self.assertTrue(any("不明" in (m or "") for m in _systems(v)))
 
 
 class TestArcAndGuest(unittest.IsolatedAsyncioTestCase):

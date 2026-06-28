@@ -71,6 +71,23 @@ class TestModelEnv(unittest.TestCase):
         self.assertIsNone(acp._model_env("CODEX_CONFIG", "", json_key="model"))
 
 
+class TestSessionModel(unittest.TestCase):
+    def test_picks_current_with_name(self):
+        result = {"sessionId": "s1", "models": {"currentModelId": "opus", "availableModels": [
+            {"modelId": "opus", "name": "Claude Opus", "description": "x"},
+            {"modelId": "haiku", "name": "Claude Haiku"}]}}
+        self.assertEqual(acp._session_model(result), "Claude Opus（opus）")
+
+    def test_id_only_when_no_name(self):
+        result = {"models": {"currentModelId": "x", "availableModels": []}}
+        self.assertEqual(acp._session_model(result), "x")
+
+    def test_none_when_absent(self):
+        self.assertIsNone(acp._session_model({"sessionId": "s1"}))   # アダプタが models を返さない版
+        self.assertIsNone(acp._session_model({"models": {}}))
+        self.assertIsNone(acp._session_model({"models": {"currentModelId": ""}}))
+
+
 class TestChildEnv(unittest.TestCase):
     def test_drops_api_key(self):
         env = acp._child_env({"ANTHROPIC_API_KEY": "sk", "PATH": "/x"},

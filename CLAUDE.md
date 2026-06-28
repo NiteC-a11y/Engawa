@@ -52,7 +52,7 @@
 - **認証**: 先に `claude` と codex(ChatGPT) にサブスクでログイン。API キーは子 env から除去（adr/0002）。
 - **主な env つまみ**: `ENGAWA_UI=web` / `ENGAWA_MODEL`（茶々=Claude のモデル・例 `opus`/`claude-opus-4-8`/`opus[1m]`）,`ENGAWA_CODEX_MODEL`（客人=codex のモデル）/ `ENGAWA_GUEST_PROB`,`ENGAWA_GUEST_FROM_HOUR`（自発来訪）/ `ENGAWA_TOPIC_PROB`,`ENGAWA_TOPIC_REFRESH_MIN`,`ENGAWA_TOPIC_CONFIG`（トピック）/ `ENGAWA_UI_CORNER`,`ENGAWA_UI_EASYDRAG`（窓）/ `ENGAWA_SPRITE_CONFIG`（スプライト）/ `ENGAWA_TICK_MIN/MAX`,`ENGAWA_ARC_PROB`（間合い）。**これらは `engawa.json` にも書ける＝永続（env が優先・adr原則4のconfig主導）**
   - モデル指定の仕組み: 住人は子 env の `ANTHROPIC_MODEL`（Claude Code が尊重）、客人は `CODEX_CONFIG`（codex-acp が Codex 設定へマージ）に載せる。**未指定はアダプタ既定のまま（現状の挙動を変えない）**。サブスク認証でも有効。
-- **スラッシュ**: `/codex <人格>`（客人召喚）/ `/arc [雀|猫|風]`（箱庭再生・デバッグ）/ `/help` / `/quit`
+- **スラッシュ**: `/codex <人格>`（客人召喚）/ `/arc [雀|猫|風]`（箱庭再生・デバッグ）/ `/model`（今のモデル表示・住人/客人）/ `/help` / `/quit`
 
 ---
 

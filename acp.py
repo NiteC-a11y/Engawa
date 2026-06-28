@@ -72,6 +72,22 @@ def _child_env(base, drop_keys, extra_env=None):
     return env
 
 
+def _session_model(result):
+    """session/new 応答からエージェント報告の現在モデルを拾う（ACP の SessionModelState。版依存・未対応/欠損は None）。
+    availableModels に name があれば 'name（id）'、無ければ id。アダプタが返さなければ None（＝こちらは実物を知らない）。"""
+    ms = result.get("models") if isinstance(result, dict) else None
+    if not isinstance(ms, dict):
+        return None
+    cur = ms.get("currentModelId")
+    if not cur:
+        return None
+    for m in ms.get("availableModels") or []:
+        if isinstance(m, dict) and m.get("modelId") == cur:
+            name = m.get("name")
+            return f"{name}（{cur}）" if name and name != cur else str(cur)
+    return str(cur)
+
+
 def setup_persona_dir():
     d = pathlib.Path(tempfile.mkdtemp(prefix="engawa_chacha_"))
     (d / "CLAUDE.md").write_text(PERSONA_CLAUDE_MD, encoding="utf-8")
@@ -203,14 +219,16 @@ class ACPClient:
 
 class AcpAgent:
     """process＋ACPClient＋sessionId＋capabilities の Facade。spawn() が Factory。"""
-    def __init__(self, proc, client, session_id, caps, tasks, persona_dir=None, model=None):
+    def __init__(self, proc, client, session_id, caps, tasks, persona_dir=None,
+                 model=None, reported_model=None):
         self.proc = proc
         self.client = client
         self.sessionId = session_id
         self.caps = caps
         self._tasks = tasks
         self._persona_dir = persona_dir
-        self.model = model or None                  # 実際に要求したモデル（未指定は None＝アダプタ既定）
+        self.model = model or None                  # 我々が要求したモデル（未指定は None＝アダプタ既定）
+        self.reported_model = reported_model or None  # アダプタが session/new で報告した実モデル（版依存・無ければ None）
         self.last_stop_reason = None
 
     @classmethod
@@ -238,8 +256,10 @@ class AcpAgent:
                 raise RuntimeError(f"session/new 失敗: {sess['error']}")
         except ConnectionError as e:                 # adapter が握手中に落ちた（EOF で reader が pending 解放）
             raise RuntimeError(f"adapter との接続が確立できなかった（起動/認証失敗の可能性）: {e}")
-        sid = sess["result"]["sessionId"]
-        return cls(proc, client, sid, caps, tasks, persona_dir, model)
+        result = sess["result"]
+        sid = result["sessionId"]
+        return cls(proc, client, sid, caps, tasks, persona_dir, model,
+                   reported_model=_session_model(result))
 
     @classmethod
     async def spawn_resident(cls, model=None):

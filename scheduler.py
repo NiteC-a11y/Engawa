@@ -144,6 +144,7 @@ class Scheduler:
             self.view.system("  ふつうに打って Enter → 茶々に話しかける")
             self.view.system("  /arc [雀|猫|風]  → 箱庭アークを今すぐ再生（デバッグ）")
             self.view.system("  /codex <人格>    → 客人(codex)を呼ぶ（到着→世間→辞去の短い来訪）")
+            self.view.system("  /model           → 今のモデルを表示（住人=Claude / 客人=codex）")
             self.view.system("  /quit            → 縁側を閉じる")
         elif cmd == "/arc":
             await self._play_arc_now(parts[1] if len(parts) > 1 else None)
@@ -151,6 +152,16 @@ class Scheduler:
             rest = line.split(maxsplit=1)
             persona = rest[1].strip() if len(rest) > 1 else "気まぐれな旅の客"
             await self._summon_guest(persona)
+        elif cmd == "/model":                            # 縁側への操作＝茶々には流さない（人格を汚さない・ADR-0007）
+            r = self.resident
+            if r.reported_model:                         # アダプタが実モデルを報告した＝真実（未指定でも分かる）
+                self.view.system(f"  茶々(住人): {r.reported_model}（アダプタ報告）")
+            elif r.model:                                # こちらが ENGAWA_MODEL で要求した値
+                self.view.system(f"  茶々(住人): {r.model}（指定）")
+            else:                                        # 未指定かつアダプタ未報告＝こちらは実物を知らない
+                self.view.system("  茶々(住人): 不明（未指定・アダプタ未報告）— 確実に固定するなら ENGAWA_MODEL を設定")
+            guest = config.get_str("ENGAWA_CODEX_MODEL", "model", "guest", "")
+            self.view.system(f"  客人(codex): {guest + '（指定）' if guest else '未指定（来訪時にアダプタ既定）'}")
         else:
             self.view.system(f"  はて、そんな作法（{cmd}）は知らんな。/help どうぞ。")
 
