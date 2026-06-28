@@ -65,7 +65,10 @@
 - [x] **Inc2**: `game_rlcard.py`（RLCardAdapter・**rlcard 依存はここだけ**）＋step方式＋AI-only観戦。実 rlcard で3人BJ完走を隔離venvで検証。rlcard は**任意依存**（無くてもコア app/テストは動く・adapter テストは skip）
 - [x] **Inc3**: 実 LLM プレイヤー（茶々=resident・state＋合法手→手）＋`/blackjack [見る]`＋console＋tickペース。**A方式＝基本 私＋茶々（観戦は茶々のみ）で codex 不要**、ゲームが人数を要求する時だけ客人(codex)で埋めて終局で破棄。手番プロンプトに自分のスロットを明示（全員の手札が見える blackjack 対策）。配線は FakeGame＋fake codex で全116 PASS
   - [ ] **実機 E2E（ユーザー）**: `pip install rlcard` → `/blackjack 見る`（茶々がディーラーと・codex不要）/`/blackjack`（私+茶々）。**実 claude が合法手(hit/stand)をちゃんと選ぶか**・パース外し時のフォールバック頻度・テンポ
-- [ ] **Inc4**: web の札UI（既存 canvas に pixel-art カード・伏せ札クリック等）。今は console/ログのテキスト表示
+- [x] **Inc4a**: 観戦表示を View ポート化（game_open/update/close）＋構造化スナップショット。console はテキスト維持。BlackjackRender.snapshot。
+- [x] **Inc4b**: **観戦窓（別ウィンドウ・カード描画）**。WebView が対局開始で第2窓(GAME_HTML・緑フェルトの札卓)を本窓の隣に生成→snapshot を poll してカード描画→終局で閉じる。作れない環境は本窓ログへフォールバック。JS は node --check OK。
+  - [ ] **実機の見た目確認（ユーザー）**: web 起動→`/blackjack 見る` で隣に札卓窓が出てカードが見えるか／位置・サイズ感／終局で閉じるか
+- [ ] （任意）観戦窓に手番リアクション台詞・対局時の hit/stand ボタン（今は本窓でテキスト入力）／pixel-art カード化
 - [ ] （任意）UNO/ポーカー等を増やす（`game_rlcard.register_rlcard_games` に1行）／PettingZoo アダプタ（盤ゲーム）／手番のリアクション台詞
 
 ## Open Questions（spec §15）

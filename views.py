@@ -202,6 +202,18 @@ class WebView(View):
         self._inq = queue.Queue()       # JS send → inputs() （ConsoleView の stdin 相当）
         self._window = None             # frameless の×ボタン用（close のみ）
         self.api = _WebApi(self)        # JS から見える窓口（poll/send/close）
+        # 観戦窓（ADR-0017 Inc4b）。対局中だけ隣に出す第2窓
+        self._game_window = None
+        self._game_api = None
+        self._game_snap = None          # 最新スナップショット（カード描画用）
+        self._game_lines = []           # snapshot 無しゲームのテキスト用
+        self._game_rev = 0
+        self._corner = "br"             # 観戦窓の配置（run_web が set_layout で設定）
+        self._main_wh = (340, 360)      # メイン窓サイズ（配置計算用・既定）
+
+    def set_layout(self, corner, main_w, main_h):
+        self._corner = corner
+        self._main_wh = (int(main_w), int(main_h))
 
     def _bump(self):
         self._rev += 1
@@ -248,14 +260,65 @@ class WebView(View):
             self._trim()
 
     def game_open(self, title):
-        pass                                   # Inc4b で隣に観戦窓を生成（今は本窓ログへ流す）
+        """対局開始: 隣に観戦窓（第2窓）を生成。失敗してもゲームは継続（lines は本窓ログへ落ちる）。"""
+        if self._game_window is not None:
+            return
+        with self._lock:
+            self._game_snap = None
+            self._game_lines = []
+            self._game_rev = 0
+        self._game_api = _GameApi(self)
+        gw, gh = 380, 320
+        x, y = self._game_xy(gw, gh)
+        try:
+            import webview
+            self._game_window = webview.create_window(
+                str(title), html=GAME_HTML, js_api=self._game_api,
+                width=gw, height=gh, x=x, y=y,
+                frameless=True, on_top=True, easy_drag=True, resizable=True)
+        except Exception:
+            self._game_window = None           # 第2窓を作れない環境では本窓ログにフォールバック
 
-    def game_update(self, snapshot, lines):    # Inc4a 暫定: 文字表現を本窓ログへ（Inc4b で観戦窓のカード描画へ）
-        for ln in (lines or []):
-            self.system(ln)
+    def _game_xy(self, gw, gh, gap=12):
+        try:
+            import webview
+            scr = webview.screens[0]
+            sw, sh = int(scr.width), int(scr.height)
+        except Exception:
+            sw, sh = 1920, 1080
+        mw, mh = self._main_wh
+        mx, my = corner_xy(sw, sh, mw, mh, self._corner)
+        x = (mx - gw - gap) if self._corner.endswith("r") else (mx + mw + gap)   # 右隅→左へ / 左隅→右へ
+        y = (my + mh - gh) if self._corner.startswith("b") else my               # 下隅→下端合わせ
+        return (max(0, x), max(0, y))
+
+    def game_update(self, snapshot, lines):
+        with self._lock:
+            if snapshot is not None:
+                self._game_snap = snapshot
+            if lines:
+                self._game_lines.extend(lines)
+                if len(self._game_lines) > 60:
+                    del self._game_lines[:len(self._game_lines) - 60]
+            self._game_rev += 1
+        if self._game_window is None:          # 第2窓が無ければ本窓ログへ（フォールバック）
+            for ln in (lines or []):
+                self.system(ln)
 
     def game_close(self):
-        pass
+        w = self._game_window
+        self._game_window = None
+        if w is not None:
+            try:
+                w.destroy()
+            except Exception:
+                pass
+
+    def game_poll(self, since):                # 観戦窓の JS から（_GameApi 経由）
+        with self._lock:
+            if self._game_rev <= since:
+                return {"rev": self._game_rev}
+            return {"rev": self._game_rev, "snap": self._game_snap, "lines": list(self._game_lines)}
 
     def _trim(self, cap=120):
         if len(self._log) > cap:
@@ -331,6 +394,84 @@ class _WebApi:
         self._v.send(text, to); return True
     def close(self):
         self._v.close(); return True
+
+
+class _GameApi:
+    """観戦窓の JS から呼べる窓口（poll だけ）。"""
+    def __init__(self, view):
+        self._v = view
+    def poll(self, since):
+        return self._v.game_poll(since)
+
+
+# 観戦窓（ADR-0017 Inc4b）。snapshot を poll してカードを描く小窓。札卓っぽい緑フェルト。
+GAME_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;height:100%;background:#33503f;color:#f0ece2;overflow:hidden;
+    font-family:system-ui,"Yu Gothic UI",sans-serif;user-select:none}
+  #app{height:100vh;box-sizing:border-box;border:1px solid #20382b;padding:8px 10px;cursor:move}
+  .label{font-size:12px;opacity:.8;margin:0 0 6px;text-align:center;letter-spacing:2px}
+  .row{display:flex;align-items:center;gap:4px;margin:7px 0;min-height:38px}
+  .row.dealer{border-bottom:1px dashed rgba(255,255,255,.22);padding-bottom:9px;margin-bottom:10px}
+  .who{width:84px;font-size:13px;flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .val{margin-left:6px;font-size:13px;opacity:.85;min-width:34px}
+  .row.cur{background:rgba(255,255,255,.10);border-radius:7px}
+  .card{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
+    width:26px;height:36px;background:#fbfaf6;border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.4)}
+  .card.red{color:#c83b2e}.card.blk{color:#23201c}
+  .card b{font-weight:700;font-size:13px;line-height:1}.card i{font-style:normal;font-size:11px;line-height:1}
+  .card.back{background:repeating-linear-gradient(45deg,#7a8fae 0 4px,#67809f 4px 8px)}
+  .badge{margin-left:8px;font-size:12px;padding:1px 8px;border-radius:10px}
+  .badge.win{background:#2e7d4f}.badge.lose{background:#9a3b32}.badge.draw{background:#6b6256}
+  #txt{font-size:12px;white-space:pre-wrap;opacity:.9}
+</style></head><body><div id="app">
+  <div class="label" id="title">観戦</div>
+  <div id="table"></div>
+  <div id="txt"></div>
+</div>
+<script>
+let since=0;
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function cardEl(c){
+  const suit=c[0], rank=c.slice(1), red=(suit==='♥'||suit==='♦');
+  return '<span class="card '+(red?'red':'blk')+'"><b>'+esc(rank)+'</b><i>'+esc(suit)+'</i></span>';
+}
+function back(){return '<span class="card back"></span>';}
+function render(s){
+  document.getElementById('title').textContent='観戦：'+s.label;
+  document.getElementById('txt').textContent='';
+  const d=s.dealer;
+  let dc=d.cards.map(cardEl).join('');
+  if(d.hidden) dc+=back();
+  let h='<div class="row dealer"><span class="who">ディーラー</span>'+dc
+       +'<span class="val">'+(d.hidden?'':('= '+d.value))+'</span></div>';
+  for(const p of s.players){
+    const bcls=p.outcome==='勝ち'?'win':(p.outcome==='負け'?'lose':'draw');
+    h+='<div class="row player'+(p.current?' cur':'')+'">'
+      +'<span class="who">'+esc(p.name)+'</span>'
+      +p.cards.map(cardEl).join('')
+      +'<span class="val">'+p.value+'</span>'
+      +(p.outcome?'<span class="badge '+bcls+'">'+esc(p.outcome)+'</span>':'')
+      +'</div>';
+  }
+  document.getElementById('table').innerHTML=h;
+}
+function renderText(lines){
+  document.getElementById('table').innerHTML='';
+  document.getElementById('txt').textContent=(lines||[]).join('\n');
+}
+async function tick(){
+  try{
+    const r=await window.pywebview.api.poll(since);
+    if(r && r.rev>since){
+      since=r.rev;
+      if(r.snap) render(r.snap);
+      else if(r.lines) renderText(r.lines);
+    }
+  }catch(e){}
+}
+setInterval(tick,250);
+</script></body></html>"""
 
 
 WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">

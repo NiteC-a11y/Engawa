@@ -80,6 +80,7 @@ def run_web():
     easy_drag = os.environ.get("ENGAWA_UI_EASYDRAG", "0") in ("1", "true", "True")
     loop = asyncio.new_event_loop()
     view = views.WebView()
+    view.set_layout(corner, WEB_W, WEB_H)             # 観戦窓(第2窓)を本窓の隣へ置くため
     window = webview.create_window("茶々の縁側", html=views.build_web_html(), js_api=view.api,
                                    width=WEB_W, height=WEB_H, frameless=True,
                                    easy_drag=easy_drag, on_top=True, resizable=False)

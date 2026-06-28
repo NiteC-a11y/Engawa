@@ -469,6 +469,10 @@ class Scheduler:
             except (asyncio.CancelledError, Exception):
                 pass
             await self._cleanup_game_guests()            # ゲーム中に終了した時の客人(codex)を刈る
+            try:
+                self.view.game_close()                   # 対局中に終了した時は観戦窓も閉じる
+            except Exception:
+                pass
             visiting = self.active if self.active not in self.sources else None  # 召喚客人は registry 外
             for s in list(self.sources) + [self.idle] + ([visiting] if visiting else []):
                 try:                                     # shutdown teardown（codex leak の最終防波堤）
