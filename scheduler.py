@@ -24,6 +24,7 @@ ARC_START_PROB = config.get_float("ENGAWA_ARC_PROB", "timing", "arc_prob", 0.30,
 MUTTER_PROB = config.get_float("ENGAWA_MUTTER_PROB", "timing", "mutter_prob", 0.6, lo=0, hi=1)
 ACTIVE_BEAT_MIN = config.get_float("ENGAWA_ACTIVE_BEAT_MIN", "timing", "active_beat_min", 5, lo=1)   # アーク/来訪 進行中のビート間隔（短め＝会話が流れる）
 ACTIVE_BEAT_MAX = config.get_float("ENGAWA_ACTIVE_BEAT_MAX", "timing", "active_beat_max", 12, lo=1)
+GAME_RESULT_LINGER = config.get_float("ENGAWA_GAME_LINGER", "timing", "game_result_linger", 8, lo=0)  # 終局の結果を見せてから観戦窓を閉じるまでの秒
 TICK_MIN, TICK_MAX = min(TICK_MIN, TICK_MAX), max(TICK_MIN, TICK_MAX)                       # min>max の設定ミスを正す
 ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX = min(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX), max(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 
@@ -48,6 +49,7 @@ class Scheduler:
         self.room = None                                 # 3人会話の部屋（来訪中だけ・ADR-0015 Inc2）
         self.game = None                                 # ゲームのセッション（対局中だけ・ADR-0017 Inc3）
         self._game_guests = []                           # ゲームのために召喚した客人(codex)＝終局で破棄
+        self._game_linger = GAME_RESULT_LINGER           # 結果を見せてから観戦窓を閉じるまでの秒（テストは0）
         self._game_render = None                         # ゲーム固有の表示器（adapter.render 由来）
         self._game_names = []                            # 各スロットの表示名（結果表示で使う）
         self.cooldowns = {s.key: 0 for s in source_list}
@@ -369,9 +371,12 @@ class Scheduler:
             self.view.system(f"  〔{label}〕開始（{who}・{n}人）")
 
             def on_move(name, move, ad, slot):
-                lines = [render.move(name, move, ad, slot)] if render is not None else [f"  {name} → {move}"]
-                cur = ad.current_player() if not ad.is_over() else None
-                self._game_emit(ad, lines, current_slot=cur, over=ad.is_over())
+                try:                                      # 表示が転けてもゲーム進行は止めない
+                    lines = [render.move(name, move, ad, slot)] if render is not None else [f"  {name} → {move}"]
+                    cur = ad.current_player() if not ad.is_over() else None
+                    self._game_emit(ad, lines, current_slot=cur, over=ad.is_over())
+                except Exception:
+                    self.view.system(f"  {name} → {move}")
             self.game = game.GameSession(adapter, players, on_move=on_move)
             self.view.game_open(label)                    # web は隣に観戦窓を開く（console は何もしない）
             self.game.begin()
@@ -414,7 +419,9 @@ class Scheduler:
             else:
                 lines = ["  〔結果〕 " + " / ".join(f"{nm}: {r}" for nm, r in zip(names, g.adapter.result()))]
                 snap = None
-            self.view.game_update(snap, lines)
+            self.view.game_update(snap, lines)            # 結果（ディーラー公開＋勝敗）を先に出し…
+            if self._game_linger:                         # …数秒見せてから閉じる（即閉じだと結果が見えない）
+                await asyncio.sleep(self._game_linger)
             self.view.game_close()                        # web は観戦窓を閉じる
         self._game_render = None
         await self._cleanup_game_guests()

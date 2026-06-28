@@ -300,6 +300,7 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
         s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
                             views.CaptureView(), spawn_codex=_codex_factory(created))
         s._make_game = make or (lambda gid, n: FakeGame(n))   # rlcard を使わせない（人数は尊重）
+        s._game_linger = 0                                    # 終局 linger をテストでは無効（sleep しない）
         return s
 
     @staticmethod
