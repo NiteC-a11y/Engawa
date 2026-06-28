@@ -233,6 +233,28 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("最近どう" in p for p in prompts))  # 双方向: codex に人間の発話が届く
         self.assertTrue(any("ここまでのやり取り" in p for p in prompts))  # transcript 同梱
 
+    async def test_room_closes_during_lock_wait_no_crash(self):
+        # 辞去レース回帰: on_user_input が drive_lock 待ちの間に tick が部屋を閉じても落ちず通常入力へ
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("近所の物知りなご隠居")
+        before = len(s.resident.prompts)
+        gate = asyncio.Event()
+
+        async def holder():                       # tick の「沈黙→辞去」を擬似（ロックを握って部屋を閉じる）
+            async with s.drive_lock:
+                gate.set()
+                await asyncio.sleep(0.03)         # on_user_input を drive_lock 待ちに入らせる隙
+                await s._end_visit()              # self.room=None・codex 破棄
+
+        h = asyncio.create_task(holder())
+        await gate.wait()                         # holder がロックを保持したのを確認
+        await s.on_user_input("おーい")           # outer check は通過→ロック待ち→内側で room=None を検知して落とす
+        await h
+        self.assertIsNone(s.room)                 # 部屋は閉じている
+        self.assertTrue(created[0].closed)        # codex 破棄済み
+        self.assertGreater(len(s.resident.prompts), before)   # 通常の茶々への話しかけに落ちた（例外なし）
+
     async def test_silence_makes_guest_leave_and_dispose(self):
         created = []
         s = self._scheduler(created)

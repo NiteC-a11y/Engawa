@@ -139,13 +139,15 @@ class Scheduler:
             await self._command(line)
             return
         self.last_user_ts = time.time()
-        if self.room is not None and not self.room.closed:   # 3人会話＝人間が宛先を決めて駆動（ADR-0015）
-            async with self.drive_lock:                      # tick と直列化（部屋の状態機械を保護）
-                await self.room.on_human(line)
-                if self.room.closed:
-                    await self._end_visit()
-            self.last_user_ts = time.time()
-            return
+        if self.room is not None:                            # 3人会話の可能性（ADR-0015）
+            async with self.drive_lock:                      # tick と直列化。ロック内で部屋の有無を確定
+                if self.room is not None and not self.room.closed:   # 待機中に tick が辞去した場合に備え再確認
+                    await self.room.on_human(line)
+                    if self.room.closed:
+                        await self._end_visit()
+                    self.last_user_ts = time.time()
+                    return
+            # 部屋が閉じていた（沈黙で辞去等）→ 通常の話しかけに落とす
         if self.speaking:                                # 進行中の注入だけを畳む（ambient・cancel優先）
             await self.resident.cancel()                 # session/cancel → stopReason=cancelled
             self.view.system("[茶々がこちらを向いた]")
