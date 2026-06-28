@@ -126,19 +126,30 @@ class ACPClient:
         msg.update({"error": error} if error else {"result": result})
         await self._send(msg)
 
+    def _fail_pending(self, exc):
+        """応答待ちの future を全て例外で畳む。transport が閉じた時の永久 await を防ぐ。"""
+        pending, self._pending = self._pending, {}
+        for fut in pending.values():
+            if not fut.done():
+                fut.set_exception(exc)
+
     async def reader(self):
-        while True:
-            raw = await self.proc.stdout.readline()
-            if not raw:
-                break
-            line = raw.decode("utf-8", "replace").strip()
-            if not line:
-                continue
-            try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            await self._dispatch(msg)
+        try:
+            while True:
+                raw = await self.proc.stdout.readline()
+                if not raw:
+                    break
+                line = raw.decode("utf-8", "replace").strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                await self._dispatch(msg)
+        finally:
+            # stdout EOF / 例外 / cancel いずれでも pending を解放（adapter 死亡で request が永久待ちになるのを防ぐ）
+            self._fail_pending(ConnectionError("ACP transport closed"))
 
     async def _dispatch(self, msg):
         if "id" in msg and ("result" in msg or "error" in msg):
@@ -186,16 +197,19 @@ class AcpAgent:
         client = ACPClient(proc)
         tasks = [asyncio.create_task(client.reader()),
                  asyncio.create_task(drain_stderr(proc))]
-        init = await client.request("initialize", {"protocolVersion": 1,
-            "clientCapabilities": {"fs": {"readTextFile": False, "writeTextFile": False},
-                                   "terminal": False},
-            "clientInfo": {"name": client_name, "version": client_version}})
-        if "error" in init:
-            raise RuntimeError(f"initialize 失敗: {init['error']}")
-        caps = (init.get("result") or {}).get("agentCapabilities", {})  # 応答から読む（TECH_RULES §2）
-        sess = await client.request("session/new", {"cwd": str(cwd), "mcpServers": []})
-        if "error" in sess:
-            raise RuntimeError(f"session/new 失敗: {sess['error']}")
+        try:
+            init = await client.request("initialize", {"protocolVersion": 1,
+                "clientCapabilities": {"fs": {"readTextFile": False, "writeTextFile": False},
+                                       "terminal": False},
+                "clientInfo": {"name": client_name, "version": client_version}})
+            if "error" in init:
+                raise RuntimeError(f"initialize 失敗: {init['error']}")
+            caps = (init.get("result") or {}).get("agentCapabilities", {})  # 応答から読む（TECH_RULES §2）
+            sess = await client.request("session/new", {"cwd": str(cwd), "mcpServers": []})
+            if "error" in sess:
+                raise RuntimeError(f"session/new 失敗: {sess['error']}")
+        except ConnectionError as e:                 # adapter が握手中に落ちた（EOF で reader が pending 解放）
+            raise RuntimeError(f"adapter との接続が確立できなかった（起動/認証失敗の可能性）: {e}")
         sid = sess["result"]["sessionId"]
         return cls(proc, client, sid, caps, tasks, persona_dir)
 

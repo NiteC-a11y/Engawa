@@ -15,7 +15,7 @@
 | 客人アダプタ | `npx -y @agentclientprotocol/codex-acp` | Codex を ACP化（P4） |
 | 天気 | Open-Meteo（APIキー不要、`urllib` のみ） | 大阪 lat 34.6937 / lon 135.5023 |
 | UI（P5） | pywebview + HTML/JS canvas | frameless + on_top。adr/0009 |
-| 永続化 | SQLite | spec §11。residents/guests/events/messages/sessions |
+| 永続化（**予定・未実装**） | SQLite | spec §11。residents/guests/events/messages/sessions。**現状はメモリのみ**（Backlog 技術的負債） |
 
 外部依存は最小に。天気は標準ライブラリのみで取る（requests等を足さない）。
 
@@ -35,6 +35,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 
 ### 規約
 - **capability は initialize 応答を読んで分岐する。** agentごとに違う（fork/resume/list/promptQueueing 等）。固定で仮定しない。
+  - 現状: `agentCapabilities` を保存するだけ（`acp.py`）。実際の **capability 分岐は未配線**＝必要になった時に足す。
 - **session/cancel は通知**（jsonrpc/method/params のみ、id を付けない）。受領後 in-flight の session/prompt は **stopReason=cancelled で正常終了**する（エラーではない）。エラー扱いしないこと。
 - **住人セッションは長命**：session/new は起動時1回。以後 prompt を同一 sessionId に積む。adr/0005
 - **客人セッションは使い捨て**：来訪ごとに session/new → 数往復 → 破棄。滞在は往復数で上限を切る。adr/0008
@@ -68,7 +69,8 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 
 - **セッションに同時1ターン**。`turn_lock`（asyncio.Lock）で直列化する。
 - **ユーザー割り込みは cancel 優先**：ユーザー入力が来たら、進行中が ambient なら session/cancel を送って畳んでから、ユーザー発話を投入。adr/0006
-- **promptQueueing** は環境イベント同士の整列に使う。ユーザー割り込みには使わない（待たせない）。
+- **promptQueueing** は環境イベント同士の整列に使う想定。ユーザー割り込みには使わない（待たせない）。
+  - 現状: **promptQueueing は未配線**。同時1ターンの直列化は §5 の `turn_lock`＋Scheduler 制御で実現している（promptQueueing 経路は存在しない＝二重キューを足さないこと）。
 - 会話直後 `QUIET_AFTER_USER` 秒は環境つぶやきを控える。会話中に独り言で割り込ませない。
 
 ---

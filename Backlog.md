@@ -48,7 +48,7 @@
   - [x] 差し替え機構＋state→アニメ配線: `sprite.json`（リポジトリ直下・config／env `ENGAWA_SPRITE_CONFIG`）＝frame_w/h・scale・animations{idle/blink/talk/listen/attentive: frames,fps}。Python が PNG を **data URI で HTML へ注入**（`build_web_html`）、JS が `chaState()`→コマ切り出しで blit（`imageSmoothing` 無効）。**シート無し/欠損は procedural にフォールバック**（コード不触で皮交換）。Python ユニット＋JS `node --check`（procedural/injected 両経路）＋全8スイート緑＋frameless 窓で実描画 GUI スモーク OK
   - [x] **placeholder ドット絵を生成・有効化**（6/27）: Pillow で 32x32×7コマ（idle×2/blink/talk×2/listen=耳ピン/attentive=目大）の茶々(猫)を生成→`chacha.png`（リポジトリ直下）＋`sprite.json` enabled:true で稼働。質は仮（再描画の下敷き用）。生成器は scratchpad の gen_sprite.py
   - [x] 表示サイズ・位置を自動算出（6/27）: スプライト使用時は `#cha` の表示寸法/位置を scene 高さと frame_w/h から JS が計算（`scale` は収まる範囲で整数クランプ＝省略で最大フィット・内部は等倍でクリスプ）。どんなコマ寸法のシートを置いても CSS を毎回いじらず収まる
-  - [x] 本番の絵に差し替え（6/28・Gemini 三毛猫）= ユーザーが Gemini で「猫だけ・座布団なし・グレー背景」の8コマアニメ列を生成 → 私が grayキー抜き→高さ正規化→64高に整列して `chacha.png`(80×64×8)化、`sprite.json` で state→コマ割当。抜き手順は scratchpad の extract_seq.py（gray proximity key・市松焼込みは色キー・座布団付き版は flood不可だった等の知見あり）。Aseprite 購入不要だった
+  - [x] 本番の絵に差し替え（6/28・Gemini 三毛猫）= ユーザーが Gemini で「猫だけ・座布団なし・グレー背景」の8コマアニメ列を生成 → 私が grayキー抜き→高さ正規化→64高に整列して 8コマシート化、さらに「コマ0由来の目/口/耳差分」2コマ(8,9)を自作追加して **`chacha.png`(80×64×**10**＝800×64)** に、`sprite.json` で state→コマ割当。抜き手順は scratchpad の extract_seq.py（gray proximity key・市松焼込みは色キー・座布団付き版は flood不可だった等の知見あり）。Aseprite 購入不要だった
     - ⚠ AI の8コマは「連続アニメ」でなく「別々の表情ポートレート」＝コマ間が不連続でループするとぴくつく。対策で**各 state を単一コマ＋CSS呼吸(scaleY・座布団無いので浮かない)**に。割当: idle/blink=0, talk/attentive=2(笑顔), listen=3(見上げ)。fast 切替(2↔7)はやめた
     - [ ] （任意）滑らかなまばたき: 「コマ0の目だけ閉じた版」を私が自作すれば顔を変えず目パチが足せる（procedural の手法を実コマに適用）
   - [ ] （構想）背景の時間帯バージョン: Gemini で朝/昼/夕/夜の和室(猫なし・座布団は背景に)→ `tod` で切替・茶々スプライトを上に合成。背景も差し替え可能アセット化（sprite.json と同じ思想）
