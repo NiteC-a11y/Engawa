@@ -310,6 +310,14 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   /* 単一フレームのスプライト用：下端固定の縦伸縮＝呼吸（座布団は動かさず猫がふくらむ） */
   #cha.breathe{transform-origin:bottom center;animation:breathe 4s ease-in-out infinite}
   @keyframes breathe{0%,100%{transform:translateX(-50%) scaleY(1)}50%{transform:translateX(-50%) scaleY(.98)}}
+  /* 茶々をダブルクリックした時の「ニャー」吹き出し（頭上にふわっと出て消える） */
+  #nya{position:absolute;left:50%;bottom:140px;transform:translateX(-50%);z-index:30;pointer-events:none;
+    opacity:0;font-size:15px;font-weight:bold;color:#3a2a1a;background:rgba(255,255,255,.88);
+    padding:1px 9px;border-radius:11px;white-space:nowrap}
+  #nya.show{animation:nyaPop 1.1s ease-out}
+  @keyframes nyaPop{0%{opacity:0;transform:translate(-50%,6px) scale(.7)}
+    20%{opacity:1;transform:translate(-50%,0) scale(1.06)}40%{transform:translate(-50%,0) scale(1)}
+    100%{opacity:0;transform:translate(-50%,-26px) scale(1)}}
   /* 接地影：浮き感を消す（スプライトの足元に敷く） */
   #chashadow{position:absolute;left:50%;transform:translateX(-50%);height:9px;display:none;z-index:1;
     background:rgba(0,0,0,.22);border-radius:50%;filter:blur(3px)}
@@ -326,7 +334,7 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 <body><div id="app">
   <div id="scene" class="pywebview-drag-region"><div class="shoji"></div><div class="floor"></div>
     <div id="kehai"></div><div id="chashadow"></div>
-    <canvas id="cha" width="74" height="74"></canvas></div>
+    <canvas id="cha" width="74" height="74"></canvas><div id="nya">ニャー</div></div>
   <button id="close" title="閉じる">×</button>
   <div id="log"></div>
   <div id="bar"><input id="in" placeholder="話しかける…（/help /codex /quit）" autocomplete="off">
@@ -350,6 +358,8 @@ async function tick(){
   if(busy||!window.pywebview) return; busy=true;
   try{
     const r=await window.pywebview.api.poll(since);
+    // append 前に「下端付近にいるか」を見る。上へスクロールして履歴を見ている時は引き戻さない
+    const stick=log.scrollHeight-log.scrollTop-log.clientHeight<48;
     for(const it of r.items){
       let el=seen[it.id];
       if(!el){el=document.createElement('div');el.className='item';log.appendChild(el);seen[it.id]=el;}
@@ -364,7 +374,8 @@ async function tick(){
         }
       }
     }
-    since=r.cursor; log.scrollTop=log.scrollHeight;
+    since=r.cursor;
+    if(r.items.length&&stick) log.scrollTop=log.scrollHeight;   // 新着があり下端追従中の時だけ最下部へ
   }catch(e){}finally{busy=false;}
   updateGuest();
 }
@@ -452,6 +463,14 @@ if(SPRITE&&SPRITE.frame_w){                       // 表示サイズ・位置を
   g.imageSmoothingEnabled=false;
 }
 requestAnimationFrame(SPRITE?drawSheet:drawChacha);   // シートがあればコマ送り、無ければ procedural
+// 茶々をダブルクリック → ニャー（吹き出し＋こっち見てにっこり）。LLM/客人を介さないクライアント完結の小ネタ＝トークン消費なし・即反応
+function meow(){
+  const nya=document.getElementById('nya'), scene=document.getElementById('scene');
+  nya.style.bottom=(scene.clientHeight-cv.offsetTop+2)+'px';   // 茶々の頭の真上に出す（procedural/sprite どちらの寸法でも追従）
+  nya.classList.remove('show'); void nya.offsetWidth; nya.classList.add('show');   // 連打でも頭から再生
+  chacha.lastUser=performance.now();                            // 反応＝既存 attentive（こっち見てにっこり）
+}
+cv.addEventListener('dblclick',meow);
 </script></body></html>
 """
 
