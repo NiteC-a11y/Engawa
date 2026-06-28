@@ -1,0 +1,13 @@
+{
+  "_comment": "サンプル（テンプレート）。実体 .claude/settings.local.json は git 非追跡（machine/session 依存）。Engawa 開発でよく使う安全な compile/run/test/git 系の permission allow 例を一般化したもの。スクラッチパッドの検証スクリプトはセッション毎にパスが変わるので allowlist せず都度承認する想定。Claude Code がそのまま読むファイルではない（コピーして settings.local.json として使う／参考にする）。",
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile *)",
+      "Bash(PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8 python *)",
+      "Bash(cat)",
+      "PowerShell(python -m py_compile *)",
+      "PowerShell(Get-CimInstance *)",
+      "PowerShell(git *)"
+    ]
+  }
+}
