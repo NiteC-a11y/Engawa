@@ -56,5 +56,47 @@ class TestTransportClose(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(client._pending)
 
 
+class TestModelEnv(unittest.TestCase):
+    def test_resident_model_plain_id(self):
+        self.assertEqual(acp._model_env("ANTHROPIC_MODEL", "claude-opus-4-8"),
+                         {"ANTHROPIC_MODEL": "claude-opus-4-8"})
+
+    def test_guest_model_json_wrapped(self):
+        self.assertEqual(acp._model_env("CODEX_CONFIG", "gpt-5-codex", json_key="model"),
+                         {"CODEX_CONFIG": '{"model": "gpt-5-codex"}'})
+
+    def test_empty_model_is_none(self):
+        # 未指定（空）はアダプタ既定のまま＝注入なし（現状維持）
+        self.assertIsNone(acp._model_env("ANTHROPIC_MODEL", ""))
+        self.assertIsNone(acp._model_env("CODEX_CONFIG", "", json_key="model"))
+
+
+class TestChildEnv(unittest.TestCase):
+    def test_drops_api_key(self):
+        env = acp._child_env({"ANTHROPIC_API_KEY": "sk", "PATH": "/x"},
+                             ("ANTHROPIC_API_KEY",))
+        self.assertNotIn("ANTHROPIC_API_KEY", env)   # 課金事故防止（adr/0002）
+        self.assertEqual(env["PATH"], "/x")
+
+    def test_injects_extra_env(self):
+        env = acp._child_env({"PATH": "/x"}, (), {"ANTHROPIC_MODEL": "opus"})
+        self.assertEqual(env["ANTHROPIC_MODEL"], "opus")
+
+    def test_skips_none_values(self):
+        env = acp._child_env({"PATH": "/x"}, (), None)
+        self.assertNotIn("ANTHROPIC_MODEL", env)
+        env2 = acp._child_env({"PATH": "/x"}, (), {"X": None})
+        self.assertNotIn("X", env2)
+
+    def test_drop_then_inject_independent(self):
+        # API キーは除去しつつモデルは載る
+        env = acp._child_env({"ANTHROPIC_API_KEY": "sk", "OPENAI_API_KEY": "sk2"},
+                             ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
+                             {"CODEX_CONFIG": '{"model": "gpt-5-codex"}'})
+        self.assertNotIn("ANTHROPIC_API_KEY", env)
+        self.assertNotIn("OPENAI_API_KEY", env)
+        self.assertEqual(env["CODEX_CONFIG"], '{"model": "gpt-5-codex"}')
+
+
 if __name__ == "__main__":
     unittest.main()

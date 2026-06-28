@@ -35,7 +35,7 @@ async def run_console():
         print("[x]", e)
         print("    認証エラーなら、先に `claude` で本命サブスクにログインのこと。")
         return 1
-    print(f"[ok] 縁側が開きました（session={resident.sessionId[:8]}…）\n")
+    print(f"[ok] 縁側が開きました（session={resident.sessionId[:8]}… / 茶々={resident.model or '既定'}）\n")
     await _build(resident, views.ConsoleView()).run()
     print("[*] 縁側を閉じます。茶々はまた留守番。")
     return 0
@@ -49,7 +49,7 @@ async def _serve_web(view):
         view.system(f"[x] {e}")
         view.system("認証エラーなら、先に `claude` で本命サブスクにログインのこと。")
         return
-    view.system(f"[ok] 縁側が開きました（{resident.sessionId[:8]}…）話しかけてみて")
+    view.system(f"[ok] 縁側が開きました（{resident.sessionId[:8]}… / 茶々={resident.model or '既定'}）話しかけてみて")
     await _build(resident, view).run()
 
 

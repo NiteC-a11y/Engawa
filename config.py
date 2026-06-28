@@ -69,3 +69,7 @@ def get_int(env, section, key, default, lo=None, hi=None):
 
 def get_float(env, section, key, default, lo=None, hi=None):
     return get(env, section, key, default, float, lo, hi)
+
+
+def get_str(env, section, key, default=""):
+    return get(env, section, key, default, str)

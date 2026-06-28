@@ -59,6 +59,19 @@ class TestConfigResolve(unittest.TestCase):
         os.environ["E_N"] = "-10"
         self.assertEqual(config.get_int("E_N", "topic", "refresh_min", 30, lo=1), 1)
 
+    # ── 文字列（モデル選択つまみ）──
+    def test_get_str_from_env(self):
+        os.environ["E_M"] = "claude-opus-4-8"
+        self.assertEqual(config.get_str("E_M", "model", "resident", ""), "claude-opus-4-8")
+
+    def test_get_str_default_empty(self):
+        # 未指定は空文字＝アダプタ既定のまま（現状維持）
+        self.assertEqual(config.get_str("ABSENT", "model", "resident", ""), "")
+
+    def test_get_str_from_json(self):
+        config._CFG = {"model": {"guest": "gpt-5-codex"}}
+        self.assertEqual(config.get_str("ABSENT", "model", "guest", ""), "gpt-5-codex")
+
 
 if __name__ == "__main__":
     unittest.main()

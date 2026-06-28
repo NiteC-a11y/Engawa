@@ -67,6 +67,7 @@
 - [ ] 「茶々が反応しない（……）」の UI 表現（既読スルー感）
 
 ## 技術的負債 / 要確認
+- [x] モデルを config で選択可能に（6/28）＝住人(Claude)は子 env `ANTHROPIC_MODEL`（Claude Code が尊重・`opus`/`claude-opus-4-8`/`opus[1m]`）、客人(codex)は `CODEX_CONFIG` の `{"model":…}`（codex-acp が Codex 設定へマージ）。つまみ `ENGAWA_MODEL`/`ENGAWA_CODEX_MODEL`（engawa.json `model.{resident,guest}` 可・env 優先）。**未指定はアダプタ既定のまま＝現状維持**。`acp.py` `_model_env`/`_child_env`＋`config.get_str`、起動行に `茶々=<model>` 表示。ユニット10件追加(全55 PASS)。実機での実モデル切替確認はユーザー（GUI/実 adapter）。codex 側 `CODEX_CONFIG` 経由は web 調べ・実 codex での効きは未実測（無指定なら無害）
 - [x] 常設テストの復帰（codexレビュー S3・6/28）＝stdlib `unittest` で GUI/ネット不要の回帰テストを `tests/` に新設。views(`collapse_ws`/`corner_xy`)・config clamp(S4)・sources(whitelist `_host_allowed`/RSS `_parse_rss_titles`/`time_of_day`/`build_context`/narration)・acp(EOF→`ConnectionError` S1)・`Scheduler`＋`CaptureView`＋fake resident/codex(user入力・cancel優先・arc結了・客人3ビート使い捨て)。実行 `python -m unittest discover -s tests -t .`（45件 PASS）。以前 PASS 記録のあった JS `node --check`/実 E2E はこの stdlib スイートには含めない（別軸）
 - [x] session/cancel の実機 claude-code-acp 挙動（stopReason=cancelled が返るか）（確認済 6/27：cancelled で返る・エラーにならない）
 - [ ] cmd /c の裏の node 取り残し → 本番常駐では **Job Object 化**で確実に刈る（`taskkill /PID /T /F` は実装済み＝acp.py `shutdown_process`。taskkill 失敗時/孤立子の最終保険として Job Object を被せる）

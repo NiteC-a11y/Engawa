@@ -15,10 +15,18 @@ import shutil
 import sys
 import tempfile
 
+import config   # モデル選択つまみ（env > engawa.json > 既定）
+
 ADAPTER_RESIDENT = os.environ.get(
     "ENGAWA_ACP_CMD", "npx -y @agentclientprotocol/claude-agent-acp").split()
 ADAPTER_GUEST = os.environ.get(
     "ENGAWA_CODEX_CMD", "npx -y @agentclientprotocol/codex-acp").split()
+
+# モデル選択（未指定＝空文字＝アダプタ既定のまま・現状維持）。
+#   住人(Claude): 子 env の ANTHROPIC_MODEL を Claude Code が尊重（opus / claude-opus-4-8 / opus[1m] 等）。
+#   客人(codex):  codex-acp の CODEX_CONFIG（JSON を Codex セッション設定へマージ）に {"model": …} を載せる。
+RESIDENT_MODEL = config.get_str("ENGAWA_MODEL", "model", "resident", "")
+GUEST_MODEL = config.get_str("ENGAWA_CODEX_MODEL", "model", "guest", "")
 
 PERSONA_CLAUDE_MD = """# あなたの人格
 
@@ -42,6 +50,26 @@ def resolve_command(cmd_parts):
     if os.name == "nt" and resolved.lower().endswith((".cmd", ".bat")):
         return ["cmd", "/c", resolved, *rest]
     return [resolved, *rest]
+
+
+def _model_env(var, model, *, json_key=None):
+    """モデル指定を子プロセス env の1エントリへ。未指定（空）は None＝アダプタ既定のまま（現状維持）。
+    json_key 指定時は {var: '{"<json_key>": model}'}（codex の CODEX_CONFIG 用）、それ以外は素の id を載せる。"""
+    if not model:
+        return None
+    if json_key:
+        return {var: json.dumps({json_key: model}, ensure_ascii=False)}
+    return {var: model}
+
+
+def _child_env(base, drop_keys, extra_env=None):
+    """子プロセス env を組む: base から drop_keys を除去（課金事故防止）し、extra_env を上書き（None 値は無視）。"""
+    env = dict(base)
+    for k in drop_keys:
+        env.pop(k, None)
+    if extra_env:
+        env.update({k: v for k, v in extra_env.items() if v is not None})
+    return env
 
 
 def setup_persona_dir():
@@ -175,21 +203,21 @@ class ACPClient:
 
 class AcpAgent:
     """process＋ACPClient＋sessionId＋capabilities の Facade。spawn() が Factory。"""
-    def __init__(self, proc, client, session_id, caps, tasks, persona_dir=None):
+    def __init__(self, proc, client, session_id, caps, tasks, persona_dir=None, model=None):
         self.proc = proc
         self.client = client
         self.sessionId = session_id
         self.caps = caps
         self._tasks = tasks
         self._persona_dir = persona_dir
+        self.model = model or None                  # 実際に要求したモデル（未指定は None＝アダプタ既定）
         self.last_stop_reason = None
 
     @classmethod
     async def spawn(cls, cmd, *, cwd, client_name="engawa", client_version="0.4.0",
-                    drop_keys=("ANTHROPIC_API_KEY",), persona_dir=None):
-        env = dict(os.environ)
-        for k in drop_keys:
-            env.pop(k, None)                        # 課金事故防止（adr/0002）
+                    drop_keys=("ANTHROPIC_API_KEY",), persona_dir=None,
+                    extra_env=None, model=None):
+        env = _child_env(os.environ, drop_keys, extra_env)   # 課金事故防止(adr/0002)＋モデル等の注入
         proc = await asyncio.create_subprocess_exec(
             *resolve_command(cmd),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
@@ -211,23 +239,30 @@ class AcpAgent:
         except ConnectionError as e:                 # adapter が握手中に落ちた（EOF で reader が pending 解放）
             raise RuntimeError(f"adapter との接続が確立できなかった（起動/認証失敗の可能性）: {e}")
         sid = sess["result"]["sessionId"]
-        return cls(proc, client, sid, caps, tasks, persona_dir)
+        return cls(proc, client, sid, caps, tasks, persona_dir, model)
 
     @classmethod
-    async def spawn_resident(cls):
-        """住人（茶々）= claude-code-acp。persona 用 cwd に CLAUDE.md を置いて起動。"""
+    async def spawn_resident(cls, model=None):
+        """住人（茶々）= claude-code-acp。persona 用 cwd に CLAUDE.md を置いて起動。
+        model 指定（無指定は config の ENGAWA_MODEL/既定）を ANTHROPIC_MODEL で子に渡す。"""
         persona_dir = setup_persona_dir()
+        model = model or RESIDENT_MODEL
         return await cls.spawn(ADAPTER_RESIDENT, cwd=persona_dir,
-                               client_name="engawa-resident", persona_dir=persona_dir)
+                               client_name="engawa-resident", persona_dir=persona_dir,
+                               extra_env=_model_env("ANTHROPIC_MODEL", model), model=model)
 
     @classmethod
-    async def spawn_guest(cls):
+    async def spawn_guest(cls, model=None):
         """客人（codex）= codex-acp。人格は CLAUDE.md でなく召喚時に prompt へ動的注入（adr/0008）。
-        OPENAI_API_KEY も除去し ChatGPT ログイン認証で動かす（事故防止）。cwd に CLAUDE.md は置かない。"""
+        OPENAI_API_KEY も除去し ChatGPT ログイン認証で動かす（事故防止）。cwd に CLAUDE.md は置かない。
+        model 指定（無指定は config の ENGAWA_CODEX_MODEL/既定）を CODEX_CONFIG の {"model":…} で子に渡す。"""
         guest_dir = pathlib.Path(tempfile.mkdtemp(prefix="engawa_guest_"))
+        model = model or GUEST_MODEL
         return await cls.spawn(ADAPTER_GUEST, cwd=guest_dir, client_name="engawa-guest",
                                drop_keys=("ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
-                               persona_dir=guest_dir)
+                               persona_dir=guest_dir,
+                               extra_env=_model_env("CODEX_CONFIG", model, json_key="model"),
+                               model=model)
 
     async def prompt(self, text, on_chunk=None):
         """1ターン注入。応答の本文テキストを返す。stopReason は last_stop_reason に保持（cancel 時 'cancelled'）。"""
