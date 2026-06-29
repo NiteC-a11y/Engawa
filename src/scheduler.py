@@ -257,7 +257,7 @@ class Scheduler:
             self.view.system("  ふつうに打って Enter → 茶々に話しかける")
             self.view.system("  /arc [雀|猫|風]  → 箱庭アークを今すぐ再生")
             self.view.system("  /codex <人格>    → 客人(codex)を呼ぶ（到着→世間→辞去の短い来訪）")
-            self.view.system("  /blackjack [見る] → ブラックジャック（私+茶々／「見る」で茶々がディーラーと・要 rlcard）")
+            self.view.system("  /game <id> [見る] → ゲーム（id=blackjack/uno/leduc・「見る」で観戦・要 rlcard。/blackjack は別名）")
             self.view.system("  /model           → 今のモデルを表示（住人=Claude / 客人=codex）")
             self.view.system("  /quit            → 縁側を閉じる")
         elif cmd == "/arc":
@@ -266,7 +266,12 @@ class Scheduler:
             rest = line.split(maxsplit=1)
             persona = rest[1].strip() if len(rest) > 1 else "気まぐれな旅の客"
             await self._summon_guest(persona)
-        elif cmd in ("/blackjack", "/bj"):
+        elif cmd == "/game":                             # 汎用ゲーム起動: /game <id> [見る]
+            rest = [p for p in parts[1:] if p not in ("見る", "観戦", "watch")]
+            gid = rest[0].lower() if rest else ""
+            watch = any(w in line for w in ("見る", "観戦", "watch"))
+            await self._start_game(gid, watch)           # 空/不明 id は _start_game が一覧を出す
+        elif cmd in ("/blackjack", "/bj"):               # /game blackjack の別名（従来コマンド維持）
             watch = any(w in line for w in ("見る", "観戦", "watch"))   # 「/bj 見る」で観戦(全AI)
             await self._start_game("blackjack", watch)
         elif cmd == "/model":                            # 縁側への操作＝茶々には流さない（人格を汚さない・ADR-0007）
@@ -400,6 +405,19 @@ class Scheduler:
         game_rlcard.register_rlcard_games()
         return game.make(game_id, num_players)
 
+    def _known_games(self):
+        """登録済みゲーム一覧（id→meta）。検証/一覧用。rlcard 未導入でも作れる（factory は呼ばないため）。"""
+        import game_rlcard
+        game_rlcard.register_rlcard_games()
+        return game.games()
+
+    def _list_games(self, known, unknown=None):
+        if unknown:
+            self.view.system(f"  そんなゲーム（{unknown}）は知らんな。")
+        avail = " / ".join(f"{k}（{v['label']}）" for k, v in known.items())
+        self.view.system(f"  遊べるの: {avail}")
+        self.view.system("  使い方: /game <id> [見る]（例: /game uno、/game blackjack 見る）")
+
     def _ai_decider(self, agent, name, slot):
         """AIプレイヤーの手番: 自分のスロット＋状態＋合法手を見せて手を選ばせる（不正は先頭へフォールバック）。"""
         async def decide(state, legal_moves):
@@ -412,7 +430,12 @@ class Scheduler:
         ゲームが要求する人数に足りない時だけ客人で埋める。"""
         if self.game is not None:
             self.view.system("  もうゲーム中や。"); return
-        want = 1 if watch else 2                         # 観戦=茶々のみ / 参加=私+茶々（codex は基本不要）
+        known = self._known_games()                      # 検証＋対応人数(min,max)の取得
+        meta = known.get(game_id)
+        if meta is None:                                 # 空/不明 id → 遊べる一覧を出す
+            self._list_games(known, unknown=game_id or None); return
+        lo, hi = meta["players"]
+        want = min(hi, lo if watch else max(2, lo))      # 観戦=最少AIだけ / 参加=私+茶々(最低2)。min を下回らず max も超えない
         try:
             adapter = self._make_game(game_id, want)
         except ImportError:

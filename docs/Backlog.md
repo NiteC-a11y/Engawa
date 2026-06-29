@@ -76,7 +76,8 @@
   - [ ] **実機の見た目確認（ユーザー）**: web 起動→`/blackjack 見る` で隣に札卓窓が出てカードが見えるか／位置・サイズ感／×で閉じるか
   - [x] **本窓×で観戦窓が残る不具合（実装6/29・ユーザー報告／実機OK 6/29）**＝本窓の×（`WebView.close()`）が本窓だけ destroy し観戦窓(第2窓)を残すと、`webview.start()` が返らず scheduler の teardown（finally の `view.game_close()`）に入れない＝観戦窓が残りプロセスも生き続ける。`close()` 冒頭で `game_close()` を呼び**両窓を畳んでから**本窓を閉じるよう修正。テスト `test_views.TestWebViewCloseClosesGameWindow`(2件)。**実機確認: 本体終了と同時に観戦窓も閉じるのを確認（ユーザー 6/29）**。
 - [ ] （任意）観戦窓に手番リアクション台詞・対局時の hit/stand ボタン（今は本窓でテキスト入力）／pixel-art カード化
-- [ ] （任意）UNO/ポーカー等を増やす（`game_rlcard.register_rlcard_games` に1行）／PettingZoo アダプタ（盤ゲーム）／手番のリアクション台詞
+- [x] **UNO/レダックポーカーを起動可能に（6/29）**＝アダプタは元から登録済み（`game_rlcard.py`）だったが起動コマンドが `/blackjack` しか無かった。**汎用 `/game <id> [見る]`** を追加（`/blackjack`/`/bj` は別名で維持）。空/不明 id は遊べる一覧を出す。観戦/参加の人数は登録メタ `(min,max)` に**クランプ**（leduc 等2人最少のゲームを観戦 want=1 で壊さない）。UNO/leduc は**カード描画(render)未対応＝観戦窓は move をテキスト表示**（GAME_HTML の `renderText` フォールバック）／console は本窓テキスト。LLM プレイヤーの注入・手パースはゲーム非依存なのでそのまま動く。実 rlcard スモークで uno/leduc/blackjack の `legal_moves` 取得を確認。テスト `test_scheduler.TestGameMode`(+5件・/game uno・不明 id 一覧・id 省略・/blackjack 別名・人数クランプ)。**残: 実 LLM が UNO の手(色-数/ワイルド)をちゃんと選ぶかの実機 E2E（ユーザー）**。
+  - [ ] （任意）UNO/leduc の**カード/盤面 render**（観戦窓を blackjack 同様に絵で）／**PettingZoo アダプタ**（盤ゲーム＝新規 `game_pettingzoo.py`・AEC/action mask・任意依存追加・三目/connect4 が軽い）／手番のリアクション台詞
 
 ## Open Questions（spec §15）
 - [ ] 長命セッションの compaction 戦略 / fork 閾値（Naraku の外部状態方式を流用できるか）

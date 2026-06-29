@@ -397,6 +397,47 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
             await s._tick(sources.build_context(None, []))
         self.assertIsNone(s.game)
 
+    # ── 汎用 /game <id> [見る]（UNO/leduc を登録済みアダプタから起動）─────────────
+    def _capture_make(self, s):
+        calls = []
+        s._make_game = lambda gid, n: (calls.append((gid, n)), FakeGame(n))[1]
+        return calls
+
+    async def test_game_command_starts_uno(self):
+        s = self._sched([])
+        calls = self._capture_make(s)
+        await s.on_user_input("/game uno")            # 参加＝私+茶々（uno は2人固定）
+        self.assertIsNotNone(s.game)
+        self.assertEqual(calls[0], ("uno", 2))        # 登録済み uno が起動
+
+    async def test_game_command_unknown_lists(self):
+        s = self._sched([])
+        await s.on_user_input("/game shogi")          # 未登録
+        sys = self._systems(s.view)
+        self.assertTrue(any("知らん" in (m or "") for m in sys))
+        self.assertTrue(any("遊べるの" in (m or "") for m in sys))
+        self.assertIsNone(s.game)                     # 起動しない
+
+    async def test_game_command_no_id_lists(self):
+        s = self._sched([])
+        await s.on_user_input("/game")                # id 省略 → 一覧
+        self.assertTrue(any("遊べるの" in (m or "") for m in self._systems(s.view)))
+        self.assertIsNone(s.game)
+
+    async def test_blackjack_alias_still_works(self):
+        s = self._sched([])
+        calls = self._capture_make(s)
+        await s.on_user_input("/blackjack")
+        self.assertIsNotNone(s.game)
+        self.assertEqual(calls[0][0], "blackjack")    # 別名でも blackjack が起動
+
+    async def test_watch_clamps_to_min_players(self):
+        # leduc は最少2人。観戦でも want=1 にせず min を割らない（1人で rlcard を作って落ちるのを防ぐ）
+        s = self._sched([])
+        calls = self._capture_make(s)
+        await s.on_user_input("/game leduc 見る")
+        self.assertEqual(calls[0], ("leduc", 2))
+
     async def test_fills_guests_only_when_game_needs_more(self):
         # 人数が足りないゲーム（3人固定）の時だけ客人で埋め、終局で破棄
         created = []
