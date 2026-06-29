@@ -13,28 +13,30 @@
 
 まず以下を正本として読む。
 
-- `C:\dev\Engawa\engawa_main.py`
-- `C:\dev\Engawa\acp.py`
-- `C:\dev\Engawa\scheduler.py`
-- `C:\dev\Engawa\sources.py`
-- `C:\dev\Engawa\views.py`
-- `C:\dev\Engawa\config.py`
-- `C:\dev\Engawa\engawa.json`
-- `C:\dev\Engawa\sprite.json`
-- `C:\dev\Engawa\topic_sources.json`
+- `C:\dev\Engawa\src\engawa_main.py`
+- `C:\dev\Engawa\src\acp.py`
+- `C:\dev\Engawa\src\scheduler.py`
+- `C:\dev\Engawa\src\sources.py`
+- `C:\dev\Engawa\src\views.py`
+- `C:\dev\Engawa\src\config.py`
+- `C:\dev\Engawa\engawa.json`（root 維持）
+- `C:\dev\Engawa\assets\sprite.json`
+- `C:\dev\Engawa\topic_sources.json`（root 維持）
 
-`engawa_p1_acp_poc.py`, `engawa_p2_ambient.py`, `engawa_p3_interactive.py`, `legacy\app.py` は現行の中心ではなく、基準点または旧実装として扱う。
+> レイアウト（ADR-0018）: コードは `src/`・実使用アセットは `assets/`・PoC基準点は `poc/`・文書は `docs/`。設定（`engawa.json` / `topic_sources.json`）と `CLAUDE.md` は root 維持。
+
+`poc\engawa_p1_acp_poc.py`, `poc\engawa_p2_ambient.py`, `poc\engawa_p3_interactive.py`, `legacy\app.py` は現行の中心ではなく、基準点または旧実装として扱う。
 
 ## ドキュメントレビュー対象
 
 以下をソースコードと照合する。
 
 - `C:\dev\Engawa\CLAUDE.md`
-- `C:\dev\Engawa\TECH_RULES.md`
-- `C:\dev\Engawa\Backlog.md`
-- `C:\dev\Engawa\engawa-acp-spec.md`
-- `C:\dev\Engawa\adr\README.md`
-- `C:\dev\Engawa\adr\*.md`
+- `C:\dev\Engawa\docs\TECH_RULES.md`
+- `C:\dev\Engawa\docs\Backlog.md`
+- `C:\dev\Engawa\docs\engawa-acp-spec.md`
+- `C:\dev\Engawa\docs\adr\README.md`
+- `C:\dev\Engawa\docs\adr\*.md`
 
 `CLAUDE.md` は現行全体像の正本。`engawa-acp-spec.md` は ADR-0016 により旧構想として降格済みなので、現行仕様として扱わない。
 
@@ -68,10 +70,10 @@ rg --files C:\dev\Engawa
 主要 Python ファイルは pycache を作らない形で構文確認する。
 
 ```powershell
-python -B -c "import pathlib; files=['acp.py','config.py','engawa_main.py','scheduler.py','sources.py','views.py']; root=pathlib.Path(r'C:\dev\Engawa'); [compile((root/f).read_text(encoding='utf-8'), str(root/f), 'exec') for f in files]; print('OK', len(files))"
+python -B -c "import pathlib; files=['acp.py','config.py','engawa_main.py','scheduler.py','sources.py','views.py']; root=pathlib.Path(r'C:\dev\Engawa\src'); [compile((root/f).read_text(encoding='utf-8'), str(root/f), 'exec') for f in files]; print('OK', len(files))"
 ```
 
-スプライト枚数を確認する場合は PNG IHDR と `sprite.json` の `frame_w` / `frame_h` を照合する。
+スプライト枚数を確認する場合は PNG IHDR と `assets/sprite.json` の `frame_w` / `frame_h` を照合する。
 
 ## 出力形式
 

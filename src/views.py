@@ -712,7 +712,10 @@ cv.addEventListener('dblclick',meow);
 
 
 def _sprite_config_path():
-    return SPRITE_CONFIG or os.path.join(os.path.dirname(os.path.abspath(__file__)), "sprite.json")
+    # sprite.json と chacha.png は assets/。src/ から見て親の assets/（シートは sprite.json 隣で解決）。
+    return SPRITE_CONFIG or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "assets", "sprite.json")
 
 
 def _load_sprite():

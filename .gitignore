@@ -16,5 +16,5 @@ Thumbs.db
 .vscode/
 .idea/
 
-# 素材置き場（直下の Gemini 生成画像。現行アプリは chacha.png を使用）
-/Gemini_Generated_Image_*.png
+# 素材置き場（Gemini 生成の生画像。現行アプリは assets/chacha.png を使用）
+/assets/raw/

@@ -21,5 +21,6 @@
 | 0015 | 客人(visitor)に人間アンカーで有界な3人会話を解禁（環境イベントに相互作用モード） | Accepted（方向確定・実装は別途） |
 | 0016 | ドキュメントの正本を CLAUDE.md に定め、spec v1 を旧構想として降格 | Accepted |
 | 0017 | ゲームは Game ポート＋RLCard アダプタで受け、AI が既存ゲームに参加（初の任意外部依存 rlcard） | Accepted（実装中） |
+| 0018 | リポジトリを src/・assets/・poc/・docs/ に整理（設定と CLAUDE.md は root 維持） | Accepted（実施済み） |
 
 形式は Michael Nygard 風（背景 / 決定 / 代替案 / 影響 / 備考）。

@@ -167,8 +167,10 @@ def _fetch_rss(source):
 
 
 def _topic_config_path():
-    return TOPIC_CONFIG or os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                        "topic_sources.json")
+    # topic_sources.json はリポジトリ直下。src/ から見て親ディレクトリ。
+    return TOPIC_CONFIG or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "topic_sources.json")
 
 
 def _load_topic_sources():

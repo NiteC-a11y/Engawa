@@ -44,7 +44,7 @@
   - [x] 入力欄（通常テキスト＋スラッシュ）を UI に（6/27 修正: 自分の発言を `あなた ›` で表示エコー＝web は端末と違い入力が自動表示されず「コメントが消える」バグだった。`send()` でログに積む。往復テスト#9 で再発防止）
   - [x] 段階導入の第一段＝枠ありウィンドウ
   - [x] 茶々 procedural アニメ（6/27・ADR-0010 の「骨」）＝まばたき/耳ピク/尻尾/胴体ゆらり（idle）＋話す＝ぴょこぴょこ/前のめり、客人来訪＝耳ピン、話しかけ＝こっち見る。state は poll（kind/voice/done/live）から JS が推定（Python は `kind` を1個足すだけ）。この state→動きの配線は Increment 3 の Aseprite 差し替え後も流用。JS は node --check 済み
-  - 起動メモ（cmd）: `set "ENGAWA_UI=web" && python engawa_main.py`（`$env:` は PowerShell 専用・cmd は `set`。空白混入回避でクォート）
+  - 起動メモ（cmd）: `set "ENGAWA_UI=web" && python src/engawa_main.py`（`$env:` は PowerShell 専用・cmd は `set`。空白混入回避でクォート）
 - [x] Increment 2: frameless + on_top + 画面隅へ配置固定（6/27）＝`create_window(frameless=True, on_top=True, resizable=False)`、起動後 `_screen_size()`(webview.screens→ctypes)＋`corner_xy()` で隅へ `move`（`ENGAWA_UI_CORNER` br/bl/tr/tl・既定 br）。透過なし（ADR-0009）。タイトルバー喪失の補い＝scene に `pywebview-drag-region`（掴んで移動・効かない時 `ENGAWA_UI_EASYDRAG=1` で全面ドラッグ）＋右上×ボタン（`api.close`→`window.destroy`）、`/quit` でも窓を閉じる配線。corner_xy/close は unit、新パラメータ＋隅配置は実機スモークで例外なし（3072x1728 で右下算出確認）
   - [x] 実機の見た目/操作 確認（6/27・ユーザー）: 高DPI(3072x1728)でも右下に正しく収まり、scene ドラッグ移動・on_top 前面維持・×/`/quit` 閉じ すべて OK
 - [x] Increment 3: スプライト差し替え機構＋仮の皮（6/27）

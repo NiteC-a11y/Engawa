@@ -1,6 +1,4 @@
 # Claude に読ませない／コンテキストに含めないファイル（gitignore 記法）
 
-# 直下の Gemini 生成画像（素材置き場。現行アプリは chacha.png を使用）
-#   Gemini_Generated_Image_93in7j93in7j93in.png
-#   Gemini_Generated_Image_hwkg0hwkg0hwkg0h.png
-/Gemini_Generated_Image_*.png
+# Gemini 生成の生画像（素材置き場。現行アプリは assets/chacha.png を使用）
+/assets/raw/
