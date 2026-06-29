@@ -158,17 +158,20 @@ class Scheduler:
         if self.active is not None:                      # (1) 進行中アークを前へ
             await self._emit(await self.active.next_phase(ctx))
             return
-        if random.random() < ARC_START_PROB:             # (2) 新アーク抽選（gate＋cooldown）
+        guest = next((s for s in self.sources if s.key == "guest"), None)
+        if guest is not None and self.cooldowns.get("guest", 0) <= 0 and guest.eligible(ctx):
+            guest.reset()                                # (2a) 自発来訪は arc 抽選から独立に判定
+            self.active = guest                          #      ＝prob が実効の per-tick 率（arc と競合させない・夕方×prob×cooldown だけ）
+            await self._start_room(guest.persona)        #      3人会話の部屋を開く（ADR-0015）
+            return
+        if random.random() < ARC_START_PROB:             # (2b) 箱庭アーク抽選（guest を除く・gate＋cooldown）
             eligible = [s for s in self.sources
-                        if s.eligible(ctx) and self.cooldowns.get(s.key, 0) <= 0]
+                        if s.key != "guest" and s.eligible(ctx) and self.cooldowns.get(s.key, 0) <= 0]
             if eligible:
                 chosen = random.choice(eligible)
                 chosen.reset()
                 self.active = chosen
-                if chosen.key == "guest":                # 自発来訪 → 3人会話の部屋を開く（ADR-0015）
-                    await self._start_room(chosen.persona)
-                else:
-                    await self._emit(await self.active.next_phase(ctx))   # 箱庭アークは起を即出す
+                await self._emit(await self.active.next_phase(ctx))   # 箱庭アークは起を即出す
                 return
         narr = await self.idle.next_phase(ctx)           # (3) 天気つぶやき/移ろい or 沈黙
         if narr is not None and (narr.kind == "transition" or random.random() < MUTTER_PROB):

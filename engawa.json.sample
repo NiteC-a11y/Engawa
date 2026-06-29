@@ -7,7 +7,7 @@
     "guest": ""
   },
   "guest": {
-    "_comment": "自発来訪。from_hour=開始時刻(既定15=夕方/time_of_day準拠・0で終日)。prob=tickあたりの素確率(低め＝来ない日がある)。召喚 /codex はこのゲートを受けない。",
+    "_comment": "自発来訪。from_hour=開始時刻(既定15=夕方/time_of_day準拠・0で終日)。prob=tickあたりの来訪確率＝**arc 抽選から独立**なのでこの値がほぼ実効レート(0.05で間隔ざっくり数十分・来訪後は20tickのcooldown)。頻繁にしたいなら 0.1〜0.2 へ。召喚 /codex はこのゲートを受けない。",
     "from_hour": 15,
     "prob": 0.05
   },

@@ -247,6 +247,64 @@ def _codex_factory(created, line="ごめんやす"):
     return spawn
 
 
+class TestAutonomousGuestVisit(unittest.IsolatedAsyncioTestCase):
+    """自発来訪は arc 抽選から独立に判定（prob が実効 per-tick 率・arc と競合しない）。
+    以前は arc_prob × prob × 競合 で三重に間引かれ『殆ど来ない』だった（ユーザー報告 6/29）。"""
+    def _sched(self, created):
+        spawn = _codex_factory(created)
+        return sched.Scheduler(FakeResident(), sources.default_sources(spawn_codex=spawn),
+                               sources.WeatherSource(), views.CaptureView(), spawn_codex=spawn)
+
+    def _force(self, prob, from_hour, arc_prob):
+        saved = (sources.GUEST_VISIT_PROB, sources.GUEST_VISIT_FROM_HOUR, sched.ARC_START_PROB)
+        sources.GUEST_VISIT_PROB = prob
+        sources.GUEST_VISIT_FROM_HOUR = from_hour
+        sched.ARC_START_PROB = arc_prob
+        return saved
+
+    def _restore(self, saved):
+        sources.GUEST_VISIT_PROB, sources.GUEST_VISIT_FROM_HOUR, sched.ARC_START_PROB = saved
+
+    async def test_visits_independent_of_arc_lottery(self):
+        created = []
+        s = self._sched(created)
+        saved = self._force(prob=1.0, from_hour=0, arc_prob=0.0)   # arc 抽選は絶対外す
+        try:
+            ctx = sources.build_context(None, []); ctx["hour"] = 12
+            await s._tick(ctx)                       # arc_prob=0 でも来訪する＝抽選と無関係に独立判定
+            self.assertIsNotNone(s.room)             # 部屋が開いた
+            self.assertEqual(len(created), 1)        # codex を spawn
+        finally:
+            self._restore(saved)
+            if s.room is not None:
+                await s._end_visit()                 # 後始末（使い捨て codex を破棄）
+
+    async def test_respects_from_hour(self):
+        created = []
+        s = self._sched(created)
+        saved = self._force(prob=1.0, from_hour=15, arc_prob=0.0)
+        try:
+            ctx = sources.build_context(None, []); ctx["hour"] = 9   # from_hour 前 → 来ない
+            await s._tick(ctx)
+            self.assertIsNone(s.room)
+            self.assertEqual(len(created), 0)
+        finally:
+            self._restore(saved)
+
+    async def test_respects_cooldown(self):
+        created = []
+        s = self._sched(created)
+        s.cooldowns["guest"] = 5                     # 来訪直後相当（クールダウン中）
+        saved = self._force(prob=1.0, from_hour=0, arc_prob=0.0)
+        try:
+            ctx = sources.build_context(None, []); ctx["hour"] = 12
+            await s._tick(ctx)                       # prob=1 でも cooldown 中は来ない（連続来訪を防ぐ）
+            self.assertIsNone(s.room)
+            self.assertEqual(len(created), 0)
+        finally:
+            self._restore(saved)
+
+
 class TestParseAddr(unittest.TestCase):
     def test_marker(self):
         self.assertEqual(sched._parse_addr("\x00guest\x00やあ"), ("guest", "やあ"))
