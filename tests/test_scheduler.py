@@ -531,7 +531,8 @@ class TestArcInterruptible(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(s.active.key, "雀")
         # 完走ブロックしていた頃は起→承→転→結を全部 inject していた。今は1本も inject しない（tick が前進させる）
         self.assertEqual(len(r.prompts), 0)
-        self.assertTrue(any("再生" in (m or "") for m in self._systems(v)))
+        # デバッグ表記は出さない＝成功時は無言で active に載るだけ（窓を汚さない）
+        self.assertFalse(any("debug" in (m or "") for m in self._systems(v)))
 
     async def test_bargein_works_during_arc(self):
         s, r, v, arc = self._make_with_arc("雀")

@@ -530,8 +530,7 @@ class Scheduler:
             if self.active is not None or self.room is not None or self.game is not None:
                 self.view.system("  （今は別のことをしとる。落ち着いてから /arc してな）"); return
             arc.reset()
-            self.active = arc
-            self.view.system(f"  〔debug〕{arc.key} を再生（実天気={ctx['desc'] or '不明'}）")
+            self.active = arc                        # 自然アーク同様、起が ~1s 後に出る（デバッグ表記は出さず窓を汚さない）
         self._next_at = time.time()                  # 次スライス(≤1s)で 起 を出す。以降 tick が前進＝割り込み可
 
     # ── 実行 ──────────────────────────────────────────────
