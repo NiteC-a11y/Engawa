@@ -46,5 +46,32 @@ class TestCornerXy(unittest.TestCase):
         self.assertGreaterEqual(y, 0)
 
 
+class _FakeWindow:
+    def __init__(self):
+        self.destroyed = False
+
+    def destroy(self):
+        self.destroyed = True
+
+
+class TestWebViewCloseClosesGameWindow(unittest.TestCase):
+    """本窓の×（close）で観戦窓(第2窓)も畳む。残ると webview.start が返らず teardown に入れない。"""
+    def test_close_destroys_both_windows(self):
+        v = views.WebView()
+        main, game = _FakeWindow(), _FakeWindow()
+        v._window, v._game_window = main, game
+        v.close()
+        self.assertTrue(main.destroyed)        # 本窓
+        self.assertTrue(game.destroyed)        # 観戦窓も
+        self.assertIsNone(v._game_window)      # game_close が参照を外す
+
+    def test_close_without_game_window_ok(self):
+        v = views.WebView()
+        main = _FakeWindow()
+        v._window = main
+        v.close()                              # 観戦窓なし → 例外なく本窓だけ
+        self.assertTrue(main.destroyed)
+
+
 if __name__ == "__main__":
     unittest.main()

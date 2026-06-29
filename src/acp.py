@@ -36,6 +36,9 @@ SESSION_TIMEOUT = config.get_float("ENGAWA_ACP_SESSION_TIMEOUT", "acp", "session
 PROMPT_TIMEOUT = config.get_float("ENGAWA_ACP_PROMPT_TIMEOUT", "acp", "prompt_timeout", 240, lo=1)
 SEND_TIMEOUT = config.get_float("ENGAWA_ACP_SEND_TIMEOUT", "acp", "send_timeout", 10, lo=1)
 CANCEL_TIMEOUT = config.get_float("ENGAWA_ACP_CANCEL_TIMEOUT", "acp", "cancel_timeout", 10, lo=1)
+# cancel 通知後、in-flight prompt の cancelled 応答をこの秒数だけ待つ（adapter が握り潰しても backstop の
+#   prompt_timeout=240 まで待たせない・ADR-0006 安全弁の上限化）。短すぎると正規の cancelled 応答前に打ち切る。
+CANCEL_GRACE = config.get_float("ENGAWA_ACP_CANCEL_GRACE", "acp", "cancel_grace", 10, lo=1)
 
 
 class ACPTimeoutError(TimeoutError):
@@ -169,12 +172,15 @@ class ACPClient:
         self.proc.stdin.write((json.dumps(obj, ensure_ascii=False) + "\n").encode())
         await self.proc.stdin.drain()
 
-    async def request(self, method, params, timeout=None):
+    async def request(self, method, params, timeout=None, on_start=None):
         """1往復。timeout(秒・None=無期限) 経過で ACPTimeoutError。timeout/例外いずれでも
-        _pending から必ず外す（残骸＋遅延応答の取り違えを防ぐ・EOF 経路の ConnectionError は素通し）。"""
+        _pending から必ず外す（残骸＋遅延応答の取り違えを防ぐ・EOF 経路の ConnectionError は素通し）。
+        on_start(rid) は _pending 登録直後に呼ぶ（呼び側が rid を掴んで後から abort_pending で畳むため）。"""
         rid = self._next_id()
         fut = asyncio.get_running_loop().create_future()
         self._pending[rid] = fut
+        if on_start is not None:
+            on_start(rid)
         try:
             await asyncio.wait_for(
                 self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params}),
@@ -205,6 +211,18 @@ class ACPClient:
         for fut in pending.values():
             if not fut.done():
                 fut.set_exception(exc)
+
+    def abort_pending(self, rid, *, result=None, exc=None):
+        """進行中の特定 request(rid) を外から決着させる（cancel 後の bounded wait 用）。
+        result 指定で合成応答／exc 指定で例外。既に決着済み or 不在なら no-op
+        （adapter が後から本物を返しても _dispatch は pop 済みで無視＝二重決着しない）。"""
+        fut = self._pending.pop(rid, None)
+        if fut is None or fut.done():
+            return
+        if exc is not None:
+            fut.set_exception(exc)
+        else:
+            fut.set_result(result)
 
     async def reader(self):
         try:
@@ -259,6 +277,8 @@ class AcpAgent:
         self.model = model or None                  # 我々が要求したモデル（未指定は None＝アダプタ既定）
         self.reported_model = reported_model or None  # アダプタが session/new で報告した実モデル（版依存・無ければ None）
         self.last_stop_reason = None
+        self._prompt_rid = None                      # in-flight prompt の request id（cancel 後の bounded wait 用）
+        self._expedite_task = None                   # cancel 後に in-flight prompt を畳む grace タスク
 
     @classmethod
     async def spawn(cls, cmd, *, cwd, client_name="engawa", client_version="0.4.0",
@@ -346,24 +366,48 @@ class AcpAgent:
         try:
             resp = await self.client.request("session/prompt",
                 {"sessionId": self.sessionId, "prompt": [{"type": "text", "text": text}]},
-                timeout=PROMPT_TIMEOUT if timeout is None else timeout)
+                timeout=PROMPT_TIMEOUT if timeout is None else timeout,
+                on_start=lambda rid: setattr(self, "_prompt_rid", rid))
         except ACPTimeoutError:
             self.last_stop_reason = "timeout"
             raise
         finally:
             self.client.on_chunk = None
+            self._prompt_rid = None
         self.last_stop_reason = "error" if "error" in resp else (resp.get("result") or {}).get("stopReason")
         return "".join(buf)
 
     async def cancel(self):
-        """進行中ターンを畳む通知（id無し）。in-flight prompt は stopReason=cancelled で正常終了。
-        通知が書けなくても致命ではない（prompt の timeout が backstop）ので例外は飲む。"""
+        """進行中ターンを畳む通知（id無し）。in-flight prompt は通常 stopReason=cancelled で正常終了。
+        通知が書けなくても致命ではない（prompt の timeout が backstop）ので例外は飲む。
+        adapter が cancelled 応答を返さない/遅い時に prompt の全 timeout(240s) まで待たせないよう、
+        in-flight prompt を CANCEL_GRACE 秒で『cancelled』として畳む bounded wait を仕込む（ADR-0006 安全弁の上限化）。"""
+        rid = self._prompt_rid                       # この瞬間に喋っていたターン（barge-in が畳む対象）
         try:
             await self.client.notify("session/cancel", {"sessionId": self.sessionId})
         except Exception:
             pass
+        if rid is not None:
+            if self._expedite_task is not None and not self._expedite_task.done():
+                self._expedite_task.cancel()
+            self._expedite_task = asyncio.create_task(self._expedite_cancel(rid))
+
+    async def _expedite_cancel(self, rid):
+        """cancel 通知後 CANCEL_GRACE 秒待っても in-flight prompt(rid) が決着しなければ、
+        こちらから stopReason=cancelled で畳む（adapter の cancelled 応答が来ない/遅い時の上限）。
+        timeout でなく cancelled にするのは、barge-in はユーザー起因の意図的中断で、住人の段階再起動
+        カウンタを進めるべきでないため（本当のハングは続く新ターンが PROMPT_TIMEOUT で検出する）。
+        既に決着済み or 別ターンに切り替わっていれば abort_pending が no-op。"""
+        try:
+            await asyncio.sleep(CANCEL_GRACE)
+        except asyncio.CancelledError:
+            return
+        self.client.abort_pending(
+            rid, result={"jsonrpc": "2.0", "id": rid, "result": {"stopReason": "cancelled"}})
 
     async def close(self):
+        if self._expedite_task is not None and not self._expedite_task.done():
+            self._expedite_task.cancel()                     # cancel 後 grace 待ちの残タスクを畳む
         for t in self._tasks:
             t.cancel()
         for t in self._tasks:

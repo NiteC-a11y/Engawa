@@ -67,7 +67,8 @@
   - [ ] **実機 E2E（ユーザー）**: `pip install rlcard` → `/blackjack 見る`（茶々がディーラーと・codex不要）/`/blackjack`（私+茶々）。**実 claude が合法手(hit/stand)をちゃんと選ぶか**・パース外し時のフォールバック頻度・テンポ
 - [x] **Inc4a**: 観戦表示を View ポート化（game_open/update/close）＋構造化スナップショット。console はテキスト維持。BlackjackRender.snapshot。
 - [x] **Inc4b**: **観戦窓（別ウィンドウ・カード描画）**。WebView が対局開始で第2窓(GAME_HTML・緑フェルトの札卓)を本窓の隣に生成→snapshot を poll してカード描画→終局で閉じる。作れない環境は本窓ログへフォールバック。JS は node --check OK。
-  - [ ] **実機の見た目確認（ユーザー）**: web 起動→`/blackjack 見る` で隣に札卓窓が出てカードが見えるか／位置・サイズ感／終局で閉じるか
+  - [ ] **実機の見た目確認（ユーザー）**: web 起動→`/blackjack 見る` で隣に札卓窓が出てカードが見えるか／位置・サイズ感／×で閉じるか
+  - [x] **本窓×で観戦窓が残る不具合（実装6/29・ユーザー報告）**＝本窓の×（`WebView.close()`）が本窓だけ destroy し観戦窓(第2窓)を残すと、`webview.start()` が返らず scheduler の teardown（finally の `view.game_close()`）に入れない＝観戦窓が残りプロセスも生き続ける。`close()` 冒頭で `game_close()` を呼び**両窓を畳んでから**本窓を閉じるよう修正。テスト `test_views.TestWebViewCloseClosesGameWindow`(2件)。
 - [ ] （任意）観戦窓に手番リアクション台詞・対局時の hit/stand ボタン（今は本窓でテキスト入力）／pixel-art カード化
 - [ ] （任意）UNO/ポーカー等を増やす（`game_rlcard.register_rlcard_games` に1行）／PettingZoo アダプタ（盤ゲーム）／手番のリアクション台詞
 
@@ -88,7 +89,7 @@
 - [ ] cmd /c の裏の node 取り残し → 本番常駐では **Job Object 化**で確実に刈る（`taskkill /PID /T /F` は実装済み＝acp.py `shutdown_process`。taskkill 失敗時/孤立子の最終保険として Job Object を被せる）
 - [x] **ACP 握手失敗時の teardown 漏れ＋一時dir の刈り残し（codexレビュー S2・実装6/29）**＝`AcpAgent.spawn()` の握手失敗（timeout/EOF/error）を `except BaseException` で受け、task cancel＋`shutdown_process(proc)` を必ず走らせて再 raise。`spawn_resident`/`spawn_guest` は失敗時に temp dir を `shutil.rmtree(..., ignore_errors=True)`。`close()` も `_persona_dir` を rmtree。テスト: `test_acp.TestCloseRemovesPersonaDir`。※「cmd /c の裏の node 取り残し（Job Object 化）」は別軸で未対応のまま
 - [~] **ACP request/prompt に用途別 timeout（codexレビュー S1・主要部実装6/29）**＝`ACPClient.request(timeout=)` で per-request timeout→`ACPTimeoutError`、timeout/例外いずれでも pending を pop。用途別: init120/session60/prompt240/send・cancel10 秒（`acp` 節で config 可変・初回 npx を見込み寛容）。受け側を **2系統ポリシー**で結線: 住人=ターン破棄→連続 `resident_restart_at`(既定2) で再起動→失敗で縁側を閉じる（長命セッション=文脈を一過性遅延で捨てない・ADR-0005）／客人=「急ぎの用で去る」定型退場（ハング client は二度叩かない・`sources.guest_timeout_leave`）／ゲーム=席を立ってお開き。`_tick_loop`・`run()` に保険 net。テスト: `test_acp.TestRequestTimeout` ＋ `test_scheduler.TestTimeoutRecovery`(5件)。
-  - [ ] 残: **cancel 後の in-flight prompt の短い bounded wait**（今は prompt の全 timeout が backstop＝最悪その秒数待つ）。cancel と in-flight prompt の連携で 5〜15秒へ。
+  - [x] **cancel 後の in-flight prompt の短い bounded wait**（実装6/29）＝`AcpAgent.cancel()` が notify 送出時に in-flight prompt の rid を掴み、`CANCEL_GRACE`(既定10s・`acp.cancel_grace`/`ENGAWA_ACP_CANCEL_GRACE`) 後も未決着なら `ACPClient.abort_pending(rid, result=cancelled)` で合成 `stopReason=cancelled` として畳む。これで adapter が cancelled 応答を握り潰しても prompt の全 timeout(240s)を待たない。**timeout でなく cancelled**（良性）にして住人の段階再起動カウンタを誤って進めない（本当のハングは続く新ターンが PROMPT_TIMEOUT で検出）。後から本物の応答が来ても `_dispatch` は pop 済みで無視＝二重決着なし。`request(on_start=)`/`abort_pending`/`_expedite_cancel` 追加、`close()` で grace タスクを畳む。テスト: `test_acp.TestCancelBoundedWait`(2件)＋`TestAbortPending`(2件)。全133 PASS。
 - [ ] 茶々用 CLAUDE.md は persona/ 等の別ディレクトリに置く運用（リポジトリの CLAUDE.md と同名衝突回避）
 - [ ] SQLite 永続化の実装（spec §11：residents/guests/events/messages/sessions）
 - [ ] 環境イベントの「体感ナレーション」層（気温の生値→体感語、前ティック差分、時刻×気温）

@@ -85,6 +85,54 @@ class TestRequestTimeout(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(issubclass(acp.ACPTimeoutError, TimeoutError))
 
 
+class TestAbortPending(unittest.IsolatedAsyncioTestCase):
+    async def test_result_resolves_future(self):
+        client = acp.ACPClient(_HangProc())
+        fut = asyncio.get_running_loop().create_future()
+        client._pending[7] = fut
+        client.abort_pending(7, result={"result": {"stopReason": "cancelled"}})
+        self.assertEqual((await fut)["result"]["stopReason"], "cancelled")
+        self.assertFalse(client._pending)                 # pop 済み（残骸なし）
+
+    async def test_noop_when_absent_or_done(self):
+        client = acp.ACPClient(_HangProc())
+        client.abort_pending(99, result={"x": 1})         # 不在 → 例外なく no-op
+        done = asyncio.get_event_loop().create_future()
+        done.set_result("keep")
+        client._pending[1] = done
+        client.abort_pending(1, result={"x": 1})          # 決着済み → 触らない
+        self.assertEqual(done.result(), "keep")
+
+
+class TestCancelBoundedWait(unittest.IsolatedAsyncioTestCase):
+    async def test_cancel_expedites_inflight_prompt(self):
+        """adapter が cancelled 応答を返さなくても、cancel 後 CANCEL_GRACE 秒で
+        in-flight prompt が stopReason=cancelled で畳まれる（PROMPT_TIMEOUT=240 を待たない・S1 残）。"""
+        grace0 = acp.CANCEL_GRACE
+        acp.CANCEL_GRACE = 0.05
+        try:
+            client = acp.ACPClient(_HangProc())
+            agent = acp.AcpAgent(client.proc, client, "sid", {}, [])
+            task = asyncio.create_task(agent.prompt("やあ"))
+            await asyncio.sleep(0.02)                       # prompt が _pending に載る
+            self.assertIsNotNone(agent._prompt_rid)
+            self.assertTrue(client._pending)
+            await agent.cancel()                           # notify＋grace タスク仕込み
+            text = await asyncio.wait_for(task, timeout=2)  # 240 でなく grace で返る
+            self.assertEqual(text, "")                      # チャンク無し（adapter は何も返してない）
+            self.assertEqual(agent.last_stop_reason, "cancelled")
+            self.assertFalse(client._pending)               # pop 済み
+        finally:
+            acp.CANCEL_GRACE = grace0
+
+    async def test_cancel_noop_when_idle(self):
+        """喋っていない（in-flight prompt 無し）時の cancel は grace タスクを仕込まない。"""
+        client = acp.ACPClient(_HangProc())
+        agent = acp.AcpAgent(client.proc, client, "sid", {}, [])
+        await agent.cancel()
+        self.assertIsNone(agent._expedite_task)
+
+
 class TestCloseRemovesPersonaDir(unittest.IsolatedAsyncioTestCase):
     async def test_close_rmtrees_persona_dir(self):
         import pathlib

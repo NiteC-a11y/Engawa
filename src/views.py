@@ -374,7 +374,8 @@ class WebView(View):
         self._window = window           # frameless の×ボタンから閉じるため
 
     def close(self):
-        if self._window is not None:    # ×ボタン → 窓を閉じる（webview.start が返り teardown へ）
+        self.game_close()               # 観戦窓(第2窓)が残ると webview.start が返らず teardown に入れない → 先に畳む
+        if self._window is not None:    # ×ボタン → 本窓を閉じる（両窓 destroy で webview.start が返り teardown へ）
             try:
                 self._window.destroy()
             except Exception:
