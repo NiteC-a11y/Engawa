@@ -36,6 +36,7 @@
 > コードは `src/`・実使用アセットは `assets/`・PoC基準点は `poc/`・文書は `docs/`。ユーザーが触る設定（`engawa.json` / `topic_sources.json`）と本 `CLAUDE.md` は **root 維持**。設定/アセットは `src/` から **repo-root 基準**で解決（`config.py` / `sources.py` / `views.py` の `_path()`）。
 - `src/engawa_main.py` — 起動口（composition root）。console / `ENGAWA_UI=web` で隅の縁側窓。
 - `src/acp.py` / `src/sources.py` / `src/scheduler.py` / `src/views.py` — 現行構成（event-source/scheduler・adr/0013）。`views.py` に `ConsoleView` と `WebView`（pywebview・poll方式）。
+- `src/conversation.py` — 3人会話の部屋（State パターン・adr/0015 **Inc1/Inc2 実装済み**）。`src/game.py` + `src/game_rlcard.py` — ゲームの Port＆Adapter（adr/0017。rlcard は `game_rlcard` に隔離・任意依存）。
 - `assets/sprite.json` + `assets/chacha.png` — 茶々スプライト（差し替え可能な皮・adr/0010）。今は Gemini 三毛猫ベース10コマ（口パク/まばたき/にっこり/耳ピンは0基準の自作差分）。`assets/raw/` は Gemini 生成元 PNG（gitignore・現行は chacha.png を使用）。
 - `topic_sources.json`（root） — 客人の世間話トピックの取得先ホワイトリスト（config主導・adr/0014）。
 - `engawa.json`（root・**個人設定＝gitignore**／雛形は `engawa.json.sample`） + `src/config.py` — アプリ挙動の設定（model/guest/間合い/topic）。優先順位 **env(ENGAWA_*) > engawa.json > 既定**。キーは入れない(adr/0002)。`.env`/`.env.example` と同じ流儀（端末ごとに調整・全キー任意＝消せばコード既定）。
@@ -80,7 +81,7 @@
 
 1. **課金事故を出さない。** 子プロセスから API キー（`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`）を必ず除去。サブスク認証で動かす（adr/0002）。
 2. **茶々を「住人」から外さない。** コーディング助手化・過剰な長文・毎ターン律儀な名言は人格破壊。「黙っていい・短くていい」。
-3. **AI同士の*自律・無際限*会話に戻さない。** 客人は環境イベント＝来訪（常駐させない・滞在は有界・adr/0008）。※「人間アンカーで有界な3人会話」は **adr/0015 で別途解禁の方向**（自律往復は依然禁止）。
+3. **AI同士の*自律・無際限*会話に戻さない。** 客人は環境イベント＝来訪（常駐させない・滞在は有界・adr/0008）。※「人間アンカーで有界な3人会話」は **adr/0015 で Inc1/Inc2 実装済み**（部屋＝State パターンで必ず人間待ちへ戻る・自律往復は依然禁止）。
 4. **設計判断を勝手に覆さない。** adr/ に却下理由付きで残る。変えるなら新 ADR（Superseded で旧を残す）。取得先/アセットはコードに埋めず config（`topic_sources.json` / `sprite.json`）。
 5. **LLM/ツール仕様は思い込みで書かず、都度確認する。** ACPのcapabilityは initialize 応答を読んで分岐。
 
@@ -101,7 +102,7 @@
 
 P1〜P5 は実装・主要経路は実 codex/resident E2E 済み。残りは磨きと新章:
 
-- **【大物・adr/0015】3人会話の解禁**: 客人(visitor)に *人間アンカーで有界な* 3人会話（私↔茶々／私↔客人／茶々↔客人／3人 の全組合せ）。「部屋」方式・宛先で応答者が決まる。方向は確定、実装は別途。**最難関＝ターン管理**（連続AIターン上限で自律往復に戻さない）。
+- **【大物・adr/0015】3人会話**: 客人(visitor)に *人間アンカーで有界な* 3人会話（私↔茶々／私↔客人／茶々↔客人／3人 の全組合せ）。「部屋」方式・宛先で応答者が決まる。**Inc1/Inc2 実装済み**（`src/conversation.py`＝State パターン／Scheduler 結線・`docs/Backlog.md:37-38`）。**残り Inc3＝cancel優先の部屋内統合・茶々の room ストリーミング・実 codex の3人会話 E2E（実機）**。**最難関＝ターン管理**（連続AIターン上限で自律往復に戻さない）。
 - **【仕上げ】茶々スプライト微調整**: Gemini 三毛猫(8コマ・座布団なし)＋自作差分2＝**現行10コマ**。AI 故にコマ間が不連続なので、今は各 state **単一コマ＋CSS呼吸**で運用（ぴくつき回避）。まばたきは「コマ0の目だけ閉じ版」を自作すれば滑らかに足せる。生成→抜き手順は Backlog 参照。
 - **【構想】背景の時間帯バージョン**: Gemini で朝/昼/夕/夜の和室を作り、`tod` で切替・茶々を上に合成（環境反応の核と地続き）。
 - **【トピック】やわらかRSS の実 URL 精査**（tenki.jp サプリ等・今は時節 local のみ稼働で十分弾む）。
