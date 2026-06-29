@@ -23,7 +23,8 @@ def _build(resident, view):
     return sched.Scheduler(resident,
                            sources.default_sources(spawn_codex=acp.AcpAgent.spawn_guest),
                            sources.WeatherSource(), view,
-                           spawn_codex=acp.AcpAgent.spawn_guest)
+                           spawn_codex=acp.AcpAgent.spawn_guest,
+                           spawn_resident=acp.AcpAgent.spawn_resident)   # timeout 段階回復の再起動用
 
 
 async def run_console():

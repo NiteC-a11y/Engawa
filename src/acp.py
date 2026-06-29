@@ -28,6 +28,20 @@ ADAPTER_GUEST = os.environ.get(
 RESIDENT_MODEL = config.get_str("ENGAWA_MODEL", "model", "resident", "")
 GUEST_MODEL = config.get_str("ENGAWA_CODEX_MODEL", "model", "guest", "")
 
+# ACP 1往復の用途別 timeout（秒・config 可変）。adapter が生きたまま無応答でも永久待ちにしない（S1）。
+#   init/session は初回 npx ダウンロード＋認証を見込んで寛容に。prompt はモデル次第で長め。
+#   short すぎると初回起動や遅い応答を誤って中断するので、既定は寛容＋engawa.json/env で調整可。
+INIT_TIMEOUT = config.get_float("ENGAWA_ACP_INIT_TIMEOUT", "acp", "init_timeout", 120, lo=1)
+SESSION_TIMEOUT = config.get_float("ENGAWA_ACP_SESSION_TIMEOUT", "acp", "session_timeout", 60, lo=1)
+PROMPT_TIMEOUT = config.get_float("ENGAWA_ACP_PROMPT_TIMEOUT", "acp", "prompt_timeout", 240, lo=1)
+SEND_TIMEOUT = config.get_float("ENGAWA_ACP_SEND_TIMEOUT", "acp", "send_timeout", 10, lo=1)
+CANCEL_TIMEOUT = config.get_float("ENGAWA_ACP_CANCEL_TIMEOUT", "acp", "cancel_timeout", 10, lo=1)
+
+
+class ACPTimeoutError(TimeoutError):
+    """ACP の1往復が制限時間内に返らなかった（adapter は生きているが final response を返さない 等）。
+    呼び出し側はこれを「その agent は無応答」シグナルとして握り潰さず処理する（住人=段階回復／客人=退場）。"""
+
 PERSONA_CLAUDE_MD = """# あなたの人格
 
 あなたは「縁側」というチャット空間に住む一人格「茶々（ちゃちゃ）」です。
@@ -155,15 +169,30 @@ class ACPClient:
         self.proc.stdin.write((json.dumps(obj, ensure_ascii=False) + "\n").encode())
         await self.proc.stdin.drain()
 
-    async def request(self, method, params):
+    async def request(self, method, params, timeout=None):
+        """1往復。timeout(秒・None=無期限) 経過で ACPTimeoutError。timeout/例外いずれでも
+        _pending から必ず外す（残骸＋遅延応答の取り違えを防ぐ・EOF 経路の ConnectionError は素通し）。"""
         rid = self._next_id()
-        fut = asyncio.get_event_loop().create_future()
+        fut = asyncio.get_running_loop().create_future()
         self._pending[rid] = fut
-        await self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params})
-        return await fut
+        try:
+            await asyncio.wait_for(
+                self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params}),
+                timeout=SEND_TIMEOUT)
+            return await asyncio.wait_for(fut, timeout=timeout)
+        except asyncio.TimeoutError as e:
+            f = self._pending.pop(rid, None)
+            if f is not None and not f.done():
+                f.cancel()
+            raise ACPTimeoutError(f"ACP 応答 timeout: {method}（{timeout}s）") from e
+        except BaseException:                         # EOF(ConnectionError)/cancel 等でも残骸を残さない
+            self._pending.pop(rid, None)
+            raise
 
-    async def notify(self, method, params):
-        await self._send({"jsonrpc": "2.0", "method": method, "params": params})
+    async def notify(self, method, params, timeout=None):
+        await asyncio.wait_for(
+            self._send({"jsonrpc": "2.0", "method": method, "params": params}),
+            timeout=CANCEL_TIMEOUT if timeout is None else timeout)
 
     async def _respond(self, rid, *, result=None, error=None):
         msg = {"jsonrpc": "2.0", "id": rid}
@@ -247,15 +276,28 @@ class AcpAgent:
             init = await client.request("initialize", {"protocolVersion": 1,
                 "clientCapabilities": {"fs": {"readTextFile": False, "writeTextFile": False},
                                        "terminal": False},
-                "clientInfo": {"name": client_name, "version": client_version}})
+                "clientInfo": {"name": client_name, "version": client_version}},
+                timeout=INIT_TIMEOUT)
             if "error" in init:
                 raise RuntimeError(f"initialize 失敗: {init['error']}")
             caps = (init.get("result") or {}).get("agentCapabilities", {})  # 応答から読む（TECH_RULES §2）
-            sess = await client.request("session/new", {"cwd": str(cwd), "mcpServers": []})
+            sess = await client.request("session/new", {"cwd": str(cwd), "mcpServers": []},
+                                        timeout=SESSION_TIMEOUT)
             if "error" in sess:
                 raise RuntimeError(f"session/new 失敗: {sess['error']}")
-        except ConnectionError as e:                 # adapter が握手中に落ちた（EOF で reader が pending 解放）
-            raise RuntimeError(f"adapter との接続が確立できなかった（起動/認証失敗の可能性）: {e}")
+        except BaseException as e:                    # 握手で落ちた（timeout/EOF/error/cancel）→ task と proc を必ず畳む（S2）
+            for t in tasks:
+                t.cancel()
+            for t in tasks:
+                try:
+                    await t
+                except BaseException:
+                    pass
+            await shutdown_process(proc)
+            if isinstance(e, (ConnectionError, ACPTimeoutError)):
+                raise RuntimeError(
+                    f"adapter との接続が確立できなかった（起動/認証/timeout の可能性）: {e}") from e
+            raise
         result = sess["result"]
         sid = result["sessionId"]
         return cls(proc, client, sid, caps, tasks, persona_dir, model,
@@ -267,9 +309,13 @@ class AcpAgent:
         model 指定（無指定は config の ENGAWA_MODEL/既定）を ANTHROPIC_MODEL で子に渡す。"""
         persona_dir = setup_persona_dir()
         model = model or RESIDENT_MODEL
-        return await cls.spawn(ADAPTER_RESIDENT, cwd=persona_dir,
-                               client_name="engawa-resident", persona_dir=persona_dir,
-                               extra_env=_model_env("ANTHROPIC_MODEL", model), model=model)
+        try:
+            return await cls.spawn(ADAPTER_RESIDENT, cwd=persona_dir,
+                                   client_name="engawa-resident", persona_dir=persona_dir,
+                                   extra_env=_model_env("ANTHROPIC_MODEL", model), model=model)
+        except BaseException:
+            shutil.rmtree(persona_dir, ignore_errors=True)   # 起動失敗時の temp dir 刈り（S2）
+            raise
 
     @classmethod
     async def spawn_guest(cls, model=None):
@@ -278,14 +324,19 @@ class AcpAgent:
         model 指定（無指定は config の ENGAWA_CODEX_MODEL/既定）を CODEX_CONFIG の {"model":…} で子に渡す。"""
         guest_dir = pathlib.Path(tempfile.mkdtemp(prefix="engawa_guest_"))
         model = model or GUEST_MODEL
-        return await cls.spawn(ADAPTER_GUEST, cwd=guest_dir, client_name="engawa-guest",
-                               drop_keys=("ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
-                               persona_dir=guest_dir,
-                               extra_env=_model_env("CODEX_CONFIG", model, json_key="model"),
-                               model=model)
+        try:
+            return await cls.spawn(ADAPTER_GUEST, cwd=guest_dir, client_name="engawa-guest",
+                                   drop_keys=("ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
+                                   persona_dir=guest_dir,
+                                   extra_env=_model_env("CODEX_CONFIG", model, json_key="model"),
+                                   model=model)
+        except BaseException:
+            shutil.rmtree(guest_dir, ignore_errors=True)     # 起動失敗時の temp dir 刈り（S2）
+            raise
 
-    async def prompt(self, text, on_chunk=None):
-        """1ターン注入。応答の本文テキストを返す。stopReason は last_stop_reason に保持（cancel 時 'cancelled'）。"""
+    async def prompt(self, text, on_chunk=None, timeout=None):
+        """1ターン注入。応答の本文テキストを返す。stopReason は last_stop_reason に保持（cancel 時 'cancelled'）。
+        timeout(既定 PROMPT_TIMEOUT) 超過は ACPTimeoutError を投げ last_stop_reason='timeout'（呼び出し側が回復）。"""
         buf = []
         def sink(t):
             buf.append(t)
@@ -294,15 +345,23 @@ class AcpAgent:
         self.client.on_chunk = sink
         try:
             resp = await self.client.request("session/prompt",
-                {"sessionId": self.sessionId, "prompt": [{"type": "text", "text": text}]})
+                {"sessionId": self.sessionId, "prompt": [{"type": "text", "text": text}]},
+                timeout=PROMPT_TIMEOUT if timeout is None else timeout)
+        except ACPTimeoutError:
+            self.last_stop_reason = "timeout"
+            raise
         finally:
             self.client.on_chunk = None
         self.last_stop_reason = "error" if "error" in resp else (resp.get("result") or {}).get("stopReason")
         return "".join(buf)
 
     async def cancel(self):
-        """進行中ターンを畳む通知（id無し）。in-flight prompt は stopReason=cancelled で正常終了。"""
-        await self.client.notify("session/cancel", {"sessionId": self.sessionId})
+        """進行中ターンを畳む通知（id無し）。in-flight prompt は stopReason=cancelled で正常終了。
+        通知が書けなくても致命ではない（prompt の timeout が backstop）ので例外は飲む。"""
+        try:
+            await self.client.notify("session/cancel", {"sessionId": self.sessionId})
+        except Exception:
+            pass
 
     async def close(self):
         for t in self._tasks:
@@ -313,3 +372,5 @@ class AcpAgent:
             except (asyncio.CancelledError, Exception):
                 pass
         await shutdown_process(self.proc)
+        if self._persona_dir is not None:                    # temp persona/guest dir を後始末（leak 防止・S2）
+            shutil.rmtree(self._persona_dir, ignore_errors=True)

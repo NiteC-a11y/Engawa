@@ -56,6 +56,46 @@ class TestTransportClose(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(client._pending)
 
 
+class _HangStdin:
+    def write(self, b):
+        pass
+
+    async def drain(self):
+        pass
+
+
+class _HangProc:
+    """応答を返さない adapter（request が timeout する側）。reader は走らせない。"""
+    def __init__(self):
+        self.stdin = _HangStdin()
+
+
+class _DeadProc:
+    returncode = 0          # shutdown_process は returncode!=None で即 return
+
+
+class TestRequestTimeout(unittest.IsolatedAsyncioTestCase):
+    async def test_request_times_out_and_clears_pending(self):
+        client = acp.ACPClient(_HangProc())
+        with self.assertRaises(acp.ACPTimeoutError):          # 無応答 → 永久待ちでなく timeout（S1）
+            await client.request("session/prompt", {}, timeout=0.05)
+        self.assertFalse(client._pending)                     # 残骸を残さない（pop 済み）
+
+    async def test_acp_timeout_is_timeouterror(self):
+        self.assertTrue(issubclass(acp.ACPTimeoutError, TimeoutError))
+
+
+class TestCloseRemovesPersonaDir(unittest.IsolatedAsyncioTestCase):
+    async def test_close_rmtrees_persona_dir(self):
+        import pathlib
+        import tempfile
+        d = pathlib.Path(tempfile.mkdtemp(prefix="engawa_test_"))
+        agent = acp.AcpAgent(_DeadProc(), None, "sid", {}, [], persona_dir=d)
+        self.assertTrue(d.exists())
+        await agent.close()
+        self.assertFalse(d.exists())                          # temp dir を後始末（S2）
+
+
 class TestModelEnv(unittest.TestCase):
     def test_resident_model_plain_id(self):
         self.assertEqual(acp._model_env("ANTHROPIC_MODEL", "claude-opus-4-8"),

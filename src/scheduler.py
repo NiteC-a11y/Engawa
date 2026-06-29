@@ -12,6 +12,7 @@ import asyncio
 import random
 import time
 
+import acp          # ACPTimeoutError（adapter 無応答の受け）
 import config        # 設定解決（env > engawa.json > 既定）
 import conversation  # 3人会話の部屋（State パターン・ADR-0015 Inc2）
 import game          # ゲームの Port&Adapter 核（ADR-0017。rlcard はアダプタに隔離）
@@ -26,6 +27,7 @@ ACTIVE_BEAT_MIN = config.get_float("ENGAWA_ACTIVE_BEAT_MIN", "timing", "active_b
 ACTIVE_BEAT_MAX = config.get_float("ENGAWA_ACTIVE_BEAT_MAX", "timing", "active_beat_max", 12, lo=1)
 TICK_MIN, TICK_MAX = min(TICK_MIN, TICK_MAX), max(TICK_MIN, TICK_MAX)                       # min>max の設定ミスを正す
 ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX = min(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX), max(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
+RESIDENT_TIMEOUT_RESTART_AT = config.get_int("ENGAWA_RESIDENT_TIMEOUT_RESTART_AT", "acp", "resident_restart_at", 2, lo=1)  # 住人 prompt がこの回数連続で timeout したら再起動（それ未満はターン破棄のみ＝文脈温存）
 
 
 def _parse_addr(line):
@@ -38,12 +40,16 @@ def _parse_addr(line):
 
 
 class Scheduler:
-    def __init__(self, resident, source_list, idle, view, spawn_codex=None):
+    def __init__(self, resident, source_list, idle, view, spawn_codex=None, spawn_resident=None):
         self.resident = resident
         self.sources = source_list
         self.idle = idle
         self.view = view
         self._spawn_codex = spawn_codex          # 客人(codex)の async factory（adr/0008）
+        self._spawn_resident = spawn_resident    # 住人(茶々)再起動用 async factory（timeout 段階回復・None=再起動不可）
+        self._resident_timeouts = 0              # 住人 prompt の連続 timeout 回数（成功で 0 復帰）
+        self._guest_timed_out = False            # room 中に客人が無応答だった（→急用で退場）
+        self._room_resident_timeout = False      # room 中に住人が無応答だった（→退場＋段階回復）
         self.active = None                               # 進行中 source（割り込みで消えない）
         self.room = None                                 # 3人会話の部屋（来訪中だけ・ADR-0015 Inc2）
         self.game = None                                 # ゲームのセッション（対局中だけ・ADR-0017 Inc3）
@@ -66,11 +72,19 @@ class Scheduler:
         async with self.turn_lock:
             self.view.turn_start("茶々", narration.kind, narration.label, narration.voice)
             self.speaking = True
+            timed_out = False
+            stop_reason = None
             try:
                 stop_reason = await self.resident.prompt(narration.text, on_chunk=self.view.chunk)
+            except acp.ACPTimeoutError:                  # 茶々が無応答（adapter ハング等）→ 段階回復へ
+                timed_out, stop_reason = True, "timeout"
             finally:
                 self.speaking = False
                 self.view.turn_end()
+            if timed_out:
+                await self._resident_timed_out()
+            else:
+                self._resident_timeouts = 0              # 応答が返った＝健康。カウンタ復帰
             return stop_reason
 
     async def _emit(self, res):
@@ -87,6 +101,33 @@ class Scheduler:
         self.cooldowns[src.key] = src.cooldown_ticks     # close ではなく reset+cooldown（ADR-0013 #2）
         self.active = None
 
+    async def _resident_timed_out(self):
+        """茶々の prompt が timeout（adapter 無応答）。段階的に回復:
+        ターン破棄 → 連続で閾値に達したら再起動 → 再起動も失敗なら縁側を閉じる。
+        1回の timeout で session を捨てない＝長命セッション（文脈が地続き・ADR-0005）を一過性の遅延で吹き飛ばさない。"""
+        self._resident_timeouts += 1
+        if self._resident_timeouts < RESIDENT_TIMEOUT_RESTART_AT:
+            self.view.system("  （茶々はふっと黙り込んだ……ちょっと間があいた）")
+            return
+        if self._spawn_resident is None:                 # 再起動手段が無い → 閉じるしかない
+            self.view.system("  （茶々の応答が戻らへん。縁側を閉じるわ）")
+            self.stop.set()
+            return
+        self.view.system("  （茶々がふっと席を外した……呼び直してくる）")
+        old = self.resident
+        try:
+            self.resident = await self._spawn_resident()
+            self._resident_timeouts = 0
+            self.view.system("  （茶々が戻ってきた）")   # ※新セッション＝以前の文脈は持たない（永続化は別途・Backlog）
+        except Exception:
+            self.view.system("  （茶々を呼び直せなんだ。縁側を閉じるわ）")
+            self.stop.set()
+        finally:
+            try:
+                await old.close()
+            except Exception:
+                pass
+
     # ── ティック ──────────────────────────────────────────
     async def _tick(self, ctx):
         for k in self.cooldowns:
@@ -95,14 +136,20 @@ class Scheduler:
             if self.game.over:
                 await self._end_game()
             elif not self.game.waiting_for_human:
-                await self.game.step()                   # AI が1手（ペースは tick 間隔）
-                if self.game.over:
+                try:
+                    await self.game.step()               # AI が1手（ペースは tick 間隔）
+                except acp.ACPTimeoutError:              # AI(客人/茶々)が無応答 → 席を立った扱いでお開き
+                    await self._abort_game_on_timeout()
+                    return
+                if self.game is not None and self.game.over:
                     await self._end_game()
-                elif self.game.waiting_for_human:
+                elif self.game is not None and self.game.waiting_for_human:
                     self._show_human_turn()
             return
         if self.room is not None:                        # (0) 3人会話の部屋＝人間待ち/沈黙→辞去（State が判断）
             await self.room.on_tick()
+            if await self._check_room_timeout():         # 部屋中に無応答→急用退場で畳んだら終わり
+                return
             if self.room.closed:
                 await self._end_visit()
             return
@@ -153,7 +200,10 @@ class Scheduler:
                     self.topics = await asyncio.to_thread(sources.fetch_topics)
                     self._topics_at = now
             async with self.drive_lock:                  # 召喚と active 駆動を競合させない
-                await self._tick(sources.build_context(self.weather, self.topics))
+                try:
+                    await self._tick(sources.build_context(self.weather, self.topics))
+                except acp.ACPTimeoutError:              # 各経路で処理済み（保険）。tick ループは止めない
+                    pass
             self._next_at = time.time() + self._next_interval()   # 次の間合い（active 中は短い＝会話が流れる）
 
     # ── ユーザー入力（割り込み・cancel優先）──────────────────
@@ -185,8 +235,9 @@ class Scheduler:
             async with self.drive_lock:                      # tick と直列化。ロック内で部屋の有無を確定
                 if self.room is not None and not self.room.closed:   # 待機中に tick が辞去した場合に備え再確認
                     await self.room.on_human(line, to)
-                    if self.room.closed:
-                        await self._end_visit()
+                    if not await self._check_room_timeout():     # 無応答なら急用退場で畳む（畳んだら下の通常入力へ落ちない）
+                        if self.room is not None and self.room.closed:
+                            await self._end_visit()
                     self.last_user_ts = time.time()
                     return
             # 部屋が閉じていた（沈黙で辞去等）→ 通常の話しかけに落とす
@@ -272,6 +323,8 @@ class Scheduler:
             persona, resident_spk, guest_spk,
             on_say=lambda who, text, kind: self.view.say(who, text))
         await self.room.begin()                          # 到着の挨拶＋茶々の反応 → 人間待ち
+        if await self._check_room_timeout():             # 到着の挨拶すら無応答なら即・急用退場で畳む
+            return
         if self.room.closed:                             # 念のため（通常は AwaitingHuman）
             await self._end_visit()
         else:                                            # 沈黙検出のため tick を短間隔に
@@ -284,6 +337,9 @@ class Scheduler:
                 self.speaking = True
                 try:
                     return await self.resident.prompt(sources.room_resident_prompt(window, kind))
+                except acp.ACPTimeoutError:              # 茶々が無応答 → フラグだけ立て、後始末は呼び側で
+                    self._room_resident_timeout = True
+                    return ""
                 finally:
                     self.speaking = False
 
@@ -291,7 +347,11 @@ class Scheduler:
             agent = self.active.agent if self.active is not None else None
             if agent is None:
                 return ""
-            return (await agent.prompt(sources.room_guest_prompt(persona, window, kind))).strip()
+            try:
+                return (await agent.prompt(sources.room_guest_prompt(persona, window, kind))).strip()
+            except acp.ACPTimeoutError:                  # 客人が無応答 → ハング client は二度叩かず急用退場へ
+                self._guest_timed_out = True
+                return ""
 
         return (conversation.Speaker("茶々", resident_say),
                 conversation.Speaker(persona, guest_say))
@@ -308,6 +368,30 @@ class Scheduler:
             self.cooldowns[src.key] = src.cooldown_ticks
             src.reset()
             self.active = None
+
+    async def _check_room_timeout(self):
+        """room 中の無応答（客人/住人）を畳む。客人は『急ぎの用で去る』定型退場（ハング client は二度叩かない）。
+        住人も無応答なら見送りは省いて段階回復へ。いずれも visit 継続不能なので部屋を閉じる。畳んだら True。"""
+        if not (self._guest_timed_out or self._room_resident_timeout):
+            return False
+        resident_dead = self._room_resident_timeout
+        self._guest_timed_out = self._room_resident_timeout = False
+        self.view.system("  " + sources.guest_timeout_leave())   # 客人が急用で去る（定型・local。世界観を壊さない）
+        await self._end_visit()                                   # 部屋を閉じ codex を破棄（taskkill /T /F で確実に殺す）
+        if resident_dead:
+            await self._resident_timed_out()                     # 住人も無応答なら段階回復へ
+        return True
+
+    async def _abort_game_on_timeout(self):
+        """対局中に AI（客人/茶々）が無応答 → 席を立った扱いでお開き（盤面を勝手に進めない）。観戦窓も閉じる。"""
+        self.view.system("  （プレイヤーの返事が途切れた……席を立ったようや。お開きにしよ）")
+        self.game = None
+        self._game_render = None
+        await self._cleanup_game_guests()
+        try:
+            self.view.game_close()
+        except Exception:
+            pass
 
     # ── ゲーム（ADR-0017 Inc3）。GameSession を tick で1手ずつ進める ───────────────
     def _make_game(self, game_id, num_players):
@@ -458,7 +542,10 @@ class Scheduler:
             async for line in self.view.inputs():
                 if line is None:
                     break
-                await self.on_user_input(line)
+                try:
+                    await self.on_user_input(line)
+                except acp.ACPTimeoutError:               # どの経路でも timeout でアプリは落とさない（最終保険）
+                    self.view.system("  （応答が戻らへん……ちょっと間があいた）")
                 if self.stop.is_set():
                     break
         except (KeyboardInterrupt, asyncio.CancelledError):

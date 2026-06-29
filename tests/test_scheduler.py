@@ -6,6 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+import acp
 import scheduler as sched
 import sources
 import views
@@ -29,6 +30,23 @@ class FakeResident:
 
     async def cancel(self):
         self.cancels += 1
+
+    async def close(self):
+        self.closed = True
+
+
+class TimeoutResident:
+    """prompt が必ず ACPTimeoutError を投げる住人（無応答 adapter の代役）。"""
+    def __init__(self):
+        self.closed = False
+        self.model = None
+        self.reported_model = None
+
+    async def prompt(self, text, on_chunk=None):
+        raise acp.ACPTimeoutError("resident timeout")
+
+    async def cancel(self):
+        pass
 
     async def close(self):
         self.closed = True
@@ -382,6 +400,83 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
         s.view.events.clear()
         await s.on_user_input("hi")
         self.assertTrue(any("他のプレイヤーの番" in (m or "") for m in self._systems(s.view)))
+
+
+class TestTimeoutRecovery(unittest.IsolatedAsyncioTestCase):
+    """ACP timeout（adapter 無応答）の段階回復: 住人=ターン破棄→再起動→閉じる／客人=急用退場／ゲーム=お開き。"""
+
+    @staticmethod
+    def _systems(v):
+        return [m for (t, m, _l) in v.events if t == "system"]
+
+    async def test_resident_first_timeout_abandons_turn_keeps_session(self):
+        old = TimeoutResident()
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView())
+        await s.on_user_input("おーい")               # 1回目 → ターン破棄（< 閾値2・落とさない）
+        self.assertIs(s.resident, old)                # session 維持（再起動しない＝文脈温存）
+        self.assertFalse(s.stop.is_set())
+        self.assertEqual(s._resident_timeouts, 1)
+        self.assertTrue(any("黙り込んだ" in (m or "") for m in self._systems(s.view)))
+
+    async def test_resident_restart_after_threshold(self):
+        old = TimeoutResident()
+        healthy = FakeResident()
+
+        async def spawn_resident():
+            return healthy
+
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView(),
+                            spawn_resident=spawn_resident)
+        await s.on_user_input("おーい")               # 1
+        await s.on_user_input("おーい")               # 2 → 閾値で再起動
+        self.assertIs(s.resident, healthy)            # 新しい住人に差し替わった
+        self.assertTrue(old.closed)                   # 旧住人は close
+        self.assertEqual(s._resident_timeouts, 0)     # カウンタ復帰
+
+    async def test_resident_closes_engawa_when_no_restart_factory(self):
+        old = TimeoutResident()
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView())  # spawn_resident=None
+        await s.on_user_input("おーい")               # 1（まだ閉じない）
+        self.assertFalse(s.stop.is_set())
+        await s.on_user_input("おーい")               # 2 → 閾値・再起動不可 → 縁側を閉じる
+        self.assertTrue(s.stop.is_set())
+
+    async def test_guest_timeout_leaves_gracefully(self):
+        created = []
+
+        class TimeoutCodex:
+            def __init__(self):
+                self.closed = False
+                self.reported_model = None
+                self.prompts = []
+
+            async def prompt(self, text, on_chunk=None):
+                raise acp.ACPTimeoutError("guest timeout")
+
+            async def close(self):
+                self.closed = True
+
+        async def spawn():
+            c = TimeoutCodex()
+            created.append(c)
+            return c
+
+        s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
+                            views.CaptureView(), spawn_codex=spawn)
+        await s._summon_guest("ご隠居")
+        self.assertIsNone(s.room)                     # 急用退場で部屋は閉じた
+        self.assertIsNone(s.active)
+        self.assertTrue(created[0].closed)            # ハングした codex も close（taskkill 相当）
+        self.assertTrue(any("客人は" in (m or "") for m in self._systems(s.view)))  # 去り際の定型ナレ
+
+    async def test_game_aborts_on_ai_timeout(self):
+        s = sched.Scheduler(TimeoutResident(), [], sources.WeatherSource(), views.CaptureView())
+        s._make_game = lambda gid, n: FakeGame(n)
+        await s._start_game("blackjack", watch=True)  # 全AI（茶々のみ）
+        self.assertIsNotNone(s.game)
+        await s._tick(sources.build_context(None, []))    # 茶々が打とうとして timeout → お開き
+        self.assertIsNone(s.game)
+        self.assertIn("game_close", [t for (t, _a, _b) in s.view.events])  # 観戦窓も閉じる
 
 
 if __name__ == "__main__":
