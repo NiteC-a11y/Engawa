@@ -39,7 +39,8 @@
   - 決定（6/28）: 宛先=名前メンション＋既定茶々／連続AIターン上限=2手（ADR-0015 実装メモ）
   - [x] **Inc1**: 会話エンジン `conversation.py`（State: Greeting→AwaitingHuman⇄Responding→Leaving→Closed。AwaitingHuman は tick で AI を動かさない＝自律往復が起き得ない／Responding は cap 手で必ず人間待ちへ）。Speaker(Strategy/DI)・resolve_addressee(純関数)・Transcript(value)。ユニット17件
   - [x] **Inc2**: Scheduler/GuestSource 結線（`/codex`・自発来訪が部屋を開く・codex/茶々の双方に transcript window を渡し双方向化・`view.say` で確定発話を一様表示・沈黙で辞去・codex 使い捨て維持）。統合テスト5件。全84 PASS・web JS node --check OK
-  - [ ] **Inc3**: cancel優先(ADR-0006)の部屋内統合（今は短いターンを直列化＝人間は待つ）／茶々の room ストリーミング（今は確定行表示）／**実 codex の3人会話 E2E（実機・ユーザー）**／表示・スプライト演出の磨き／idle_leave_ticks 等の調整
+  - [ ] **Inc3**: cancel優先(ADR-0006)の部屋内統合（今は短いターンを直列化＝人間は待つ）／茶々の room ストリーミング（今は確定行表示）／**実 codex の3人会話 E2E（実機・ユーザー）**／表示・スプライト演出の磨き
+    - [x] **客人がせわしない（沈黙ですぐ辞去）を緩和（6/29・ユーザー報告）**＝`idle_leave_ticks` を 4→**8**（来訪中tick 5〜12s なので ~20-48s→~40-96s）にし、**config つまみ化**（`guest.idle_leave_ticks`/`ENGAWA_GUEST_IDLE_LEAVE`・scheduler から Room へ注入）。話しかければリセット・有界は維持。テスト `test_scheduler`（しきい値前は居座る／沈黙継続で辞去・値非依存化）。
 
 ## P5 — ドット絵UI（Increment 1 済み 6/27）
 - [x] **Increment 1: 最小の実UI**（6/27）＝`views.WebView`（poll 方式・ADR-0013 の View 差し替え）＋`engawa_main` web モード（`ENGAWA_UI=web`。webview メインスレッド／Scheduler 別スレッド+loop／窓閉じで signal_close→teardown）。出力は `_log`＋rev 差分を JS が poll、入力は `queue.Queue`。茶々の lazy 表示・改行畳み・客人 voice 表示も ConsoleView と揃え。WebView 12件＋全7スイート PASS。**実窓 GUI 起動は未（GUI ブロックのため手元検証はユーザー）**

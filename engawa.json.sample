@@ -7,9 +7,10 @@
     "guest": ""
   },
   "guest": {
-    "_comment": "自発来訪。from_hour=開始時刻(既定15=夕方/time_of_day準拠・0で終日)。prob=tickあたりの来訪確率＝**arc 抽選から独立**なのでこの値がほぼ実効レート(0.05で間隔ざっくり数十分・来訪後は20tickのcooldown)。頻繁にしたいなら 0.1〜0.2 へ。召喚 /codex はこのゲートを受けない。",
+    "_comment": "自発来訪。from_hour=開始時刻(既定15=夕方/time_of_day準拠・0で終日)。prob=tickあたりの来訪確率＝**arc 抽選から独立**なのでこの値がほぼ実効レート(0.05で間隔ざっくり数十分・来訪後は20tickのcooldown)。頻繁にしたいなら 0.1〜0.2 へ。idle_leave_ticks=来訪中に人間沈黙がこのtick数続いたら客人が辞去(来訪中tickは5〜12s。既定8≒40〜96s。大きいほど長居・話しかければリセット・有界は維持)。召喚 /codex はこのゲートを受けない。",
     "from_hour": 15,
-    "prob": 0.05
+    "prob": 0.05,
+    "idle_leave_ticks": 8
   },
   "timing": {
     "_comment": "間合い。tick_min/max=何もない時のつぶやき間隔(秒)。active_beat_min/max=アーク/来訪が進行中のビート間隔(秒・短め＝会話が流れる)。arc_prob=新アーク抽選。quiet_after_user=会話直後の沈黙(秒・来訪は止めない)。mutter_prob=天気つぶやき確率。",

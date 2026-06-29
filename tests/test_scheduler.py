@@ -404,13 +404,27 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         created = []
         s = self._scheduler(created)
         await s._summon_guest("近所の物知りなご隠居")
-        for _ in range(8):
+        for _ in range(sched.GUEST_IDLE_LEAVE_TICKS + 3):     # しきい値に依存しない（沈黙が続けば必ず辞去）
             await s._tick(sources.build_context(None, []))
             if s.room is None:
                 break
         self.assertIsNone(s.room)                              # 辞去して部屋が閉じた（有界）
         self.assertIsNone(s.active)
         self.assertTrue(created[0].closed)                    # codex 破棄（使い捨て・ADR-0008）
+
+    async def test_guest_lingers_until_idle_threshold(self):
+        # すぐ帰らない＝沈黙が idle_leave_ticks 続くまでは居座る（せわしなさの解消・有界は維持）
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("近所の物知りなご隠居")
+        for _ in range(sched.GUEST_IDLE_LEAVE_TICKS - 1):     # しきい値の手前までは
+            await s._tick(sources.build_context(None, []))
+        self.assertIsNotNone(s.room)                          # まだ居る（すぐ帰らない）
+        for _ in range(3):                                    # あと数tick沈黙が続けば辞去
+            await s._tick(sources.build_context(None, []))
+            if s.room is None:
+                break
+        self.assertIsNone(s.room)
 
 
 class TestGameMode(unittest.IsolatedAsyncioTestCase):
