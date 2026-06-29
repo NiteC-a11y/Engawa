@@ -52,6 +52,24 @@ class TimeoutResident:
         self.closed = True
 
 
+class ErrorResident:
+    """prompt が timeout 以外の例外を投げる住人（adapter 死亡=ConnectionError／不正状態 の代役）。"""
+    def __init__(self, exc=None):
+        self.closed = False
+        self.model = None
+        self.reported_model = None
+        self._exc = exc or RuntimeError("boom")
+
+    async def prompt(self, text, on_chunk=None):
+        raise self._exc
+
+    async def cancel(self):
+        pass
+
+    async def close(self):
+        self.closed = True
+
+
 class FakeArc:
     """箱庭アークの代役。起→承→転→結を順に返す（key で /arc から選べる）。"""
     def __init__(self, key="雀"):
@@ -437,6 +455,69 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
         calls = self._capture_make(s)
         await s.on_user_input("/game leduc 見る")
         self.assertEqual(calls[0], ("leduc", 2))
+
+    async def test_game_window_close_aborts_game(self):
+        # 観戦窓×（GAME_CLOSE_REQUEST）で対局を畳んで縁側へ戻る（ゲームモードのまま固まらない）
+        s = self._sched([])
+        await s._start_game("blackjack", watch=False)
+        self.assertIsNotNone(s.game)
+        await s.on_user_input(views.GAME_CLOSE_REQUEST)
+        self.assertIsNone(s.game)                          # お開き＝縁側へ復帰
+        self.assertIn("game_close", [t for (t, _a, _b) in s.view.events])   # 観戦窓も閉じる
+        self.assertTrue(any("お開き" in (m or "") for m in self._systems(s.view)))
+
+    async def test_game_close_request_noop_without_game(self):
+        s = self._sched([])
+        await s.on_user_input(views.GAME_CLOSE_REQUEST)    # ゲーム中でない（結果表示の×等）
+        self.assertIsNone(s.game)                          # 何も起きない（例外なし・メッセージも出さない）
+        self.assertFalse(any("お開き" in (m or "") for m in self._systems(s.view)))
+
+    # ── 異常系: 対局中のエラーで tick ループを殺さない（永久停止を防ぐ）────────────
+    async def test_tick_survives_ai_error_in_game(self):
+        # AI の手番で prompt が timeout 以外の例外 → お開き（_tick は例外を投げ返さない＝ループは死なない）
+        s = sched.Scheduler(ErrorResident(ValueError("boom")), [], sources.WeatherSource(),
+                            views.CaptureView())
+        s._make_game = lambda gid, n: FakeGame(n)
+        await s._start_game("blackjack", watch=True)       # 全AI（茶々のみ）
+        self.assertIsNotNone(s.game)
+        await s._tick(sources.build_context(None, []))     # ここで例外が漏れたらテストは ERROR で落ちる
+        self.assertIsNone(s.game)                          # お開きで縁側へ復帰
+        self.assertIn("game_close", [t for (t, _a, _b) in s.view.events])
+        self.assertTrue(any("お開き" in (m or "") for m in self._systems(s.view)))
+
+    async def test_tick_survives_adapter_error_in_game(self):
+        # adapter 側（rlcard 相当）が手の適用で例外 → 同じくお開き（AI 経由でなく盤側の異常）
+        class BrokenGame(FakeGame):
+            def play(self, move):
+                raise RuntimeError("adapter broke")
+        s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(), views.CaptureView())
+        s._make_game = lambda gid, n: BrokenGame(n)
+        await s._start_game("blackjack", watch=True)
+        self.assertIsNotNone(s.game)
+        await s._tick(sources.build_context(None, []))     # adapter.play が raise → お開き
+        self.assertIsNone(s.game)
+        self.assertTrue(any("お開き" in (m or "") for m in self._systems(s.view)))
+
+    # ── 異常系: 対局中の /codex は弾く（room と game の同時成立を防ぐ）─────────────
+    async def test_codex_refused_during_game(self):
+        created = []
+        s = self._sched(created)
+        await s._start_game("blackjack", watch=False)      # 私+茶々（codex 不要）
+        self.assertIsNotNone(s.game)
+        await s.on_user_input("/codex 近所のご隠居")
+        self.assertIsNone(s.room)                          # 部屋は立たない
+        self.assertIsNotNone(s.game)                       # 対局は継続
+        self.assertEqual(len(created), 0)                  # codex を spawn しない
+        self.assertTrue(any("対局中" in (m or "") for m in self._systems(s.view)))
+
+    async def test_codex_allowed_when_no_game(self):
+        # 正常系: 対局中でなければ従来どおり客人が上がる（ガードが過剰に弾かない）
+        created = []
+        s = self._sched(created)
+        await s._summon_guest("近所のご隠居")
+        self.assertIsNotNone(s.room)                       # 部屋が立つ
+        self.assertEqual(len(created), 1)                  # codex を1体 spawn
+        await s._end_visit()                               # 後始末（使い捨て codex を破棄）
 
     async def test_fills_guests_only_when_game_needs_more(self):
         # 人数が足りないゲーム（3人固定）の時だけ客人で埋め、終局で破棄

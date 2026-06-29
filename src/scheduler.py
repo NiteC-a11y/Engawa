@@ -17,6 +17,7 @@ import config        # 設定解決（env > engawa.json > 既定）
 import conversation  # 3人会話の部屋（State パターン・ADR-0015 Inc2）
 import game          # ゲームの Port&Adapter 核（ADR-0017。rlcard はアダプタに隔離）
 import sources
+import views         # GAME_CLOSE_REQUEST（観戦窓×→お開きの制御トークン・入力 wire 形式の共有）
 
 TICK_MIN = config.get_float("ENGAWA_TICK_MIN", "timing", "tick_min", 35, lo=1)
 TICK_MAX = config.get_float("ENGAWA_TICK_MAX", "timing", "tick_max", 70, lo=1)
@@ -133,18 +134,19 @@ class Scheduler:
         for k in self.cooldowns:
             self.cooldowns[k] = max(0, self.cooldowns[k] - 1)
         if self.game is not None:                        # (0a) 対局中＝AIの番なら1手進める（人間の番/終局は待つ）
-            if self.game.over:
-                await self._end_game()
-            elif not self.game.waiting_for_human:
-                try:
-                    await self.game.step()               # AI が1手（ペースは tick 間隔）
-                except acp.ACPTimeoutError:              # AI(客人/茶々)が無応答 → 席を立った扱いでお開き
-                    await self._abort_game_on_timeout()
-                    return
-                if self.game is not None and self.game.over:
+            try:
+                if self.game.over:
                     await self._end_game()
-                elif self.game is not None and self.game.waiting_for_human:
-                    self._show_human_turn()
+                elif not self.game.waiting_for_human:
+                    await self.game.step()               # AI が1手（ペースは tick 間隔）
+                    if self.game is not None and self.game.over:
+                        await self._end_game()
+                    elif self.game is not None and self.game.waiting_for_human:
+                        self._show_human_turn()
+            except acp.ACPTimeoutError:                  # AI(客人/茶々)が無応答 → 席を立った扱いでお開き
+                await self._abort_game_on_timeout()
+            except Exception:                            # adapter 死亡/不正状態 等 → 盤を進めずお開き（tick ループを殺さない）
+                await self._abort_game_on_error()
             return
         if self.room is not None:                        # (0) 3人会話の部屋＝人間待ち/沈黙→辞去（State が判断）
             await self.room.on_tick()
@@ -208,6 +210,8 @@ class Scheduler:
 
     # ── ユーザー入力（割り込み・cancel優先）──────────────────
     async def on_user_input(self, line):
+        if line == views.GAME_CLOSE_REQUEST:                 # 観戦窓×（ユーザー操作）→ 対局を畳んで縁側へ戻す
+            await self._abort_game(); return
         to, line = _parse_addr(line or "")                   # web チップの明示宛先を本文と分離（C方式・console は無印）
         line = line.strip()
         if not line:
@@ -298,6 +302,8 @@ class Scheduler:
         到着を今すぐ、以降は tick で展開。客人来訪中は重ねない（断る）。"""
         if self._spawn_codex is None:
             self.view.system("  [P4] codex 接続が未設定（spawn_codex 無し）。"); return
+        if self.game is not None and not self.game.over:             # 対局中は客人を上げない（room と game の同時成立を防ぐ）
+            self.view.system("  今は対局中や。終わってからな。"); return
         if self.active is not None and self.active.key == "guest":   # 既に客人 → 重ねない
             self.view.system("  今は別の客人が来とる。ちょっと待ってな。"); return
         self.last_user_ts = time.time()                  # 召喚も user 活動（直後の独り言を抑制）
@@ -387,16 +393,33 @@ class Scheduler:
             await self._resident_timed_out()                     # 住人も無応答なら段階回復へ
         return True
 
-    async def _abort_game_on_timeout(self):
-        """対局中に AI（客人/茶々）が無応答 → 席を立った扱いでお開き（盤面を勝手に進めない）。観戦窓も閉じる。"""
-        self.view.system("  （プレイヤーの返事が途切れた……席を立ったようや。お開きにしよ）")
+    async def _teardown_game(self, msg):
+        """対局を畳んで縁側へ戻す共通処理（state クリア＋客人破棄＋観戦窓クローズ）。
+        これを通さず view.game_close だけだと Scheduler.game が残り『ゲームモードのまま復帰不能』になる。"""
+        if msg:
+            self.view.system(msg)
         self.game = None
         self._game_render = None
         await self._cleanup_game_guests()
         try:
-            self.view.game_close()
+            self.view.game_close()                       # ×経由なら既に閉じてる＝no-op
         except Exception:
             pass
+
+    async def _abort_game_on_timeout(self):
+        """対局中に AI（客人/茶々）が無応答 → 席を立った扱いでお開き（盤面を勝手に進めない）。観戦窓も閉じる。"""
+        await self._teardown_game("  （プレイヤーの返事が途切れた……席を立ったようや。お開きにしよ）")
+
+    async def _abort_game_on_error(self):
+        """対局中に想定外のエラー（adapter 死亡=ConnectionError・rlcard の不正状態 等）→ 盤を進めずお開き。
+        これを通さず例外が `_tick` を抜けると `_tick_loop` が死に、ゲームモードのまま永久停止する。"""
+        await self._teardown_game("  （対局でなんぞ起きた……お開きにするわ）")
+
+    async def _abort_game(self):
+        """ユーザーが対局を切り上げた（観戦窓×）→ お開きにして縁側へ戻す。対局中でなければ何もしない。"""
+        if self.game is None:                            # 終局後の結果表示を×で閉じただけ＝畳むものは無い
+            return
+        await self._teardown_game("  （お開き。縁側に戻るわ）")
 
     # ── ゲーム（ADR-0017 Inc3）。GameSession を tick で1手ずつ進める ───────────────
     def _make_game(self, game_id, num_players):

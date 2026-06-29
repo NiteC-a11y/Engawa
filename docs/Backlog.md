@@ -75,10 +75,14 @@
 - [x] **Inc4b**: **観戦窓（別ウィンドウ・カード描画）**。WebView が対局開始で第2窓(GAME_HTML・緑フェルトの札卓)を本窓の隣に生成→snapshot を poll してカード描画→終局で閉じる。作れない環境は本窓ログへフォールバック。JS は node --check OK。
   - [ ] **実機の見た目確認（ユーザー）**: web 起動→`/blackjack 見る` で隣に札卓窓が出てカードが見えるか／位置・サイズ感／×で閉じるか
   - [x] **本窓×で観戦窓が残る不具合（実装6/29・ユーザー報告／実機OK 6/29）**＝本窓の×（`WebView.close()`）が本窓だけ destroy し観戦窓(第2窓)を残すと、`webview.start()` が返らず scheduler の teardown（finally の `view.game_close()`）に入れない＝観戦窓が残りプロセスも生き続ける。`close()` 冒頭で `game_close()` を呼び**両窓を畳んでから**本窓を閉じるよう修正。テスト `test_views.TestWebViewCloseClosesGameWindow`(2件)。**実機確認: 本体終了と同時に観戦窓も閉じるのを確認（ユーザー 6/29）**。
+  - [x] **観戦窓×で「ゲームモードのまま復帰不能」になる不具合（実装6/29・ユーザー報告）**＝観戦窓の×（`_GameApi.close`）が `view.game_close()` で**窓を destroy するだけ**で `Scheduler.game` を残していた＝以後ずっと対局中扱い（平文入力は全部「手」・縁側に戻れず `/quit` でアプリごと閉じるしかない）。観戦窓×を **`WebView.request_game_abort()`**（窓を閉じる＋入力チャネル `_inq` に制御トークン `views.GAME_CLOSE_REQUEST` を積む・スレッド安全）に変更し、scheduler は `on_user_input` 冒頭でそれを受けて **`_abort_game`（お開き＝state クリア＋客人破棄＋観戦窓クローズ→縁側へ）**。`_abort_game_on_timeout` と共通の `_teardown_game` に整理。テスト `test_scheduler`(対局中×でお開き／非対局時 no-op)＋`test_views.TestGameWindowAbort`(窓を閉じ合図を積む)。
+  - [x] **対局中に固まる別経路2つ（実装6/29・上記調査で判明）**＝①**tick ループの脆さ**: `_tick` の game ブロックを `try/except` で囲み、**timeout 以外の例外**（adapter 死亡=ConnectionError／rlcard 不正状態 等）も `_abort_game_on_error` でお開きに（例外が `_tick` を抜けて `_tick_loop` を殺す＝永久停止を防ぐ）。②**`/codex` の game ガード**: `_summon_guest` 冒頭で対局中なら「今は対局中や」で弾く（room と game の同時成立を防ぐ）。テスト: `test_scheduler` に異常系（AI手番の例外でお開き／adapter.play 例外でお開き／対局中 /codex 拒否）＋正常系（非対局時 /codex は通る）の4件。全150 PASS。
 - [ ] （任意）観戦窓に手番リアクション台詞・対局時の hit/stand ボタン（今は本窓でテキスト入力）／pixel-art カード化
 - [x] **UNO/レダックポーカーを起動可能に（6/29）**＝アダプタは元から登録済み（`game_rlcard.py`）だったが起動コマンドが `/blackjack` しか無かった。**汎用 `/game <id> [見る]`** を追加（`/blackjack`/`/bj` は別名で維持）。空/不明 id は遊べる一覧を出す。観戦/参加の人数は登録メタ `(min,max)` に**クランプ**（leduc 等2人最少のゲームを観戦 want=1 で壊さない）。UNO/leduc は**カード描画(render)未対応＝観戦窓は move をテキスト表示**（GAME_HTML の `renderText` フォールバック）／console は本窓テキスト。LLM プレイヤーの注入・手パースはゲーム非依存なのでそのまま動く。実 rlcard スモークで uno/leduc/blackjack の `legal_moves` 取得を確認。テスト `test_scheduler.TestGameMode`(+5件・/game uno・不明 id 一覧・id 省略・/blackjack 別名・人数クランプ)。**残: 実 LLM が UNO の手(色-数/ワイルド)をちゃんと選ぶかの実機 E2E（ユーザー）**。
   - [ ] （任意）UNO/leduc の**カード/盤面 render**（観戦窓を blackjack 同様に絵で）／**PettingZoo アダプタ**（盤ゲーム＝新規 `game_pettingzoo.py`・AEC/action mask・任意依存追加・三目/connect4 が軽い）／手番のリアクション台詞
-
+- [ ] **（設計オープン）対局中に茶々/客人へ話しかける（人→AI 雑談チャネル）**＝今は対局中の平文入力は**全部「手」**として解釈され、雑談する口が無い（ADR-0017）。やるなら**ユーザーに `/say` を覚えさせず、対局中だけ内部で「手か雑談か」を仕分ける**方向（自分の番×合法手→手／それ以外→茶々への雑談。今の拒否メッセージ「その手は出せん」「他のプレイヤーの番」が雑談に化ける）。
+  - **本当の難所は仕分けでなく並行性**: 茶々は同じ長命セッションで手も選ぶ。tick が裏で `茶々.prompt(手番)` を回す所へ雑談 `茶々.prompt` を被せると**同一 ACP セッションに prompt 2本同時＝チャンク混線/pending 取り違え**で壊れる。雑談注入をゲーム手番進行と**直列化**（`drive_lock` で囲む等・召喚/対局開始と同じ流儀）が必須要件。
+  - 候補と論点（**まだ決め打ちしない＝もっと良い設計の余地あり**）: ①内部仕分け（move-first・else 雑談／打ち損じが雑談化する軽微な弊害）②明示 `/say <text>`（堅いが口を覚える必要）③web の宛先チップで茶々宛を雑談へ（web 限定）。客人は席埋めゲームでしか居ないのでまず茶々だけが現実的。並行性の直列化はどの案でも共通で要る。
 ## Open Questions（spec §15）
 - [ ] 長命セッションの compaction 戦略 / fork 閾値（Naraku の外部状態方式を流用できるか）
 - [ ] /codex <自由テキスト> のプロンプトインジェクション（配布時のみ要対策。検討メモ 6/27）

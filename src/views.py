@@ -15,6 +15,10 @@ import threading
 
 SPRITE_CONFIG = os.environ.get("ENGAWA_SPRITE_CONFIG", "")   # 茶々スプライト設定（既定 sprite.json）
 
+# 観戦窓×→入力チャネルに流す制御トークン（scheduler が「対局を畳んで縁側へ戻す」合図に使う）。
+#   入力キュー(_inq)経由＝スレッド安全。ESC 始まりで通常入力/宛先マーカー(\x00)と衝突しない。
+GAME_CLOSE_REQUEST = "\x1b__engawa_game_close__"
+
 
 def collapse_ws(s):
     """ASCII 空白・改行の連なりを半角1個に畳み前後を削る（全角空白は保つ）。客人の声の1行化用。"""
@@ -314,6 +318,12 @@ class WebView(View):
             except Exception:
                 pass
 
+    def request_game_abort(self):
+        """観戦窓の×（ユーザー操作）: 窓を閉じ、scheduler にも対局終了を伝える（対局中なら お開き＝縁側へ戻す）。
+        単に窓を destroy するだけだと Scheduler.game が残り「ゲームモードのまま復帰不能」になるのを防ぐ。"""
+        self.game_close()
+        self._inq.put(GAME_CLOSE_REQUEST)   # 入力チャネル経由でスレッド安全に scheduler へ
+
     def game_poll(self, since):                # 観戦窓の JS から（_GameApi 経由）
         with self._lock:
             if self._game_rev <= since:
@@ -404,7 +414,7 @@ class _GameApi:
     def poll(self, since):
         return self._v.game_poll(since)
     def close(self):
-        self._v.game_close(); return True
+        self._v.request_game_abort(); return True   # 窓を閉じ scheduler に対局終了も伝える
 
 
 # 観戦窓（ADR-0017 Inc4b）。snapshot を poll してカードを描く小窓。札卓っぽい緑フェルト。

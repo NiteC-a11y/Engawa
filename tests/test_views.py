@@ -73,5 +73,18 @@ class TestWebViewCloseClosesGameWindow(unittest.TestCase):
         self.assertTrue(main.destroyed)
 
 
+class TestGameWindowAbort(unittest.TestCase):
+    """観戦窓の×は窓を閉じるだけでなく、scheduler に『対局を畳んで縁側へ』を入力チャネルで伝える
+    （View だけ閉じると Scheduler.game が残り「ゲームモードのまま復帰不能」になるのを防ぐ）。"""
+    def test_game_api_close_aborts_and_signals(self):
+        v = views.WebView()
+        gw = _FakeWindow()
+        v._game_window = gw
+        views._GameApi(v).close()              # 観戦窓の×ボタン相当
+        self.assertTrue(gw.destroyed)          # 窓は閉じる
+        self.assertIsNone(v._game_window)
+        self.assertEqual(v._inq.get_nowait(), views.GAME_CLOSE_REQUEST)  # scheduler への合図を積む
+
+
 if __name__ == "__main__":
     unittest.main()
