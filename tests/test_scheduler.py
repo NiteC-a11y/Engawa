@@ -52,6 +52,32 @@ class TimeoutResident:
         self.closed = True
 
 
+class FakeArc:
+    """箱庭アークの代役。起→承→転→結を順に返す（key で /arc から選べる）。"""
+    def __init__(self, key="雀"):
+        self.key = key
+        self.cooldown_ticks = 3
+        self.reset_calls = 0
+        self._phases = ["起", "承", "転", "結"]
+        self._i = 0
+
+    def reset(self):
+        self.reset_calls += 1
+        self._i = 0
+
+    def eligible(self, ctx):
+        return True
+
+    async def next_phase(self, ctx):
+        if self._i >= len(self._phases):
+            return None
+        ph = self._phases[self._i]; self._i += 1
+        return sources.Narration(ph, "arc")
+
+    async def close(self):
+        pass
+
+
 def _make():
     resident = FakeResident()
     view = views.CaptureView()
@@ -477,6 +503,52 @@ class TestTimeoutRecovery(unittest.IsolatedAsyncioTestCase):
         await s._tick(sources.build_context(None, []))    # 茶々が打とうとして timeout → お開き
         self.assertIsNone(s.game)
         self.assertIn("game_close", [t for (t, _a, _b) in s.view.events])  # 観戦窓も閉じる
+
+
+class TestArcInterruptible(unittest.IsolatedAsyncioTestCase):
+    """/arc は完走までブロックせず active に載せて即 return する＝再生中も barge-in が通る。"""
+    def _systems(self, view):
+        return [m for (t, m, _l) in view.events if t == "system"]
+
+    def _make_with_arc(self, key="雀"):
+        resident = FakeResident()
+        view = views.CaptureView()
+        arc = FakeArc(key)
+        s = sched.Scheduler(resident, [arc], sources.WeatherSource(), view)
+        return s, resident, view, arc
+
+    async def asyncSetUp(self):
+        self._fw = sources.fetch_weather
+        sources.fetch_weather = lambda: None          # ネットワークを叩かない（天気 None）
+
+    async def asyncTearDown(self):
+        sources.fetch_weather = self._fw
+
+    async def test_arc_loads_active_and_returns(self):
+        s, r, v, arc = self._make_with_arc("雀")
+        await s.on_user_input("/arc 雀")
+        self.assertIs(s.active, arc)                  # tick 駆動の active に載った
+        self.assertEqual(s.active.key, "雀")
+        # 完走ブロックしていた頃は起→承→転→結を全部 inject していた。今は1本も inject しない（tick が前進させる）
+        self.assertEqual(len(r.prompts), 0)
+        self.assertTrue(any("再生" in (m or "") for m in self._systems(v)))
+
+    async def test_bargein_works_during_arc(self):
+        s, r, v, arc = self._make_with_arc("雀")
+        await s.on_user_input("/arc 雀")
+        s.speaking = True                             # 起を喋っている最中を擬似
+        await s.on_user_input("おーい")               # 再生中の話しかけ
+        self.assertEqual(r.cancels, 1)                # cancel優先で畳む（ADR-0006）
+        self.assertTrue(any("こちらを向いた" in (m or "") for m in self._systems(v)))
+        self.assertIn("おーい", " ".join(r.prompts))  # ユーザー発話が茶々へ届く
+        self.assertIs(s.active, arc)                  # active(source) は触らない＝QUIET 明けに背景継続
+
+    async def test_arc_refused_when_busy(self):
+        s, r, v, arc = self._make_with_arc("雀")
+        s.active = FakeArc("猫")                       # 既に別アーク進行中
+        await s.on_user_input("/arc 雀")
+        self.assertEqual(s.active.key, "猫")           # 載せ替えない
+        self.assertTrue(any("別のこと" in (m or "") for m in self._systems(v)))
 
 
 if __name__ == "__main__":

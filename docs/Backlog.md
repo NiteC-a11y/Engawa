@@ -14,6 +14,8 @@
   - 直し: `ConsoleView` のヘッダを遅延出力化＝`turn_start` では出さず、**最初の可視文字が来た時に初めて出す**。0チャンク（割り込み）や空白のみのターンはヘッダごと出ない（ANSI 消去に頼らずコンソール非依存）。改行畳み（6/27・persona「ひと続き」担保）と同じ状態機械に統合
   - 検証: 13件 PASS（割り込みシーケンスの出力 byte 一致＝marker→ユーザー返答のみ・空ヘッダ無し）
 - [x] スラッシュ未実装コマンドの応答が自然か（/codex スタブ、/help、/quit）（自動検証OK 6/27）
+- [x] **/arc 再生中に割り込みが効かない不具合（実装6/29・ユーザー報告）**＝`_play_arc_now` が `while True` でアーク完走までブロックしていて、その間 `on_user_input` が返らず入力ループが空かない＝再生中の話しかけが完走後まで処理されなかった（「[茶々がこちらを向いた]」が出ない）。**tick 駆動の `self.active` に載せ替えて即 return**（起→承→転→結は `_tick` が前進）に修正＝入力ループが空いて barge-in（cancel優先）が通る。副作用: /arc のビート間隔が 1s 固定→自然アーク同様 `ACTIVE_BEAT`(5〜12s) に。テスト `test_scheduler.TestArcInterruptible`(3件・載せ替え/再生中 barge-in/busy 拒否)。**自然な tick 駆動アーク／ambient の割り込みは元々動作（`test_cancel_priority_when_speaking`）＝今回は /arc 経路だけの修正**。
+- [ ] **（案・低優先）「打ち始め＝こっち向く」割り込みUI（ADR-0006 の体感改善）**＝現状の barge-in は *茶々が喋っている最中（speaking 中）* に被せた時だけ「[茶々がこちらを向いた]」が出る。ビート間隔が 5〜12s なので**人手でその窓を狙うのはほぼ無理**（＝割り込み「した感」が見えにくい。※打てない訳ではない・無言の間に打てば普通に返事）。案: **web で入力欄フォーカス／最初のキー入力の瞬間に `cancel` を送る**＝「キーボードに触れる＝茶々が手を止めてこっちを向く」。タイミング依存を解消し生き物らしさとも合う。難点: web 限定（console は Enter 前に検知できない）／キーに触れる度に止まる挙動になる点の調整。確認の現実解としては当面「自分で長い返事を誘発→喋ってる間にもう一行」で足りる。
 
 ## P4 — 客人来訪（v1 召喚来訪 済み 6/27）
 - [x] codex-acp 接続（ChatGPT ログイン認証、OPENAI_API_KEY 除去で事故防止）
@@ -68,7 +70,7 @@
 - [x] **Inc4a**: 観戦表示を View ポート化（game_open/update/close）＋構造化スナップショット。console はテキスト維持。BlackjackRender.snapshot。
 - [x] **Inc4b**: **観戦窓（別ウィンドウ・カード描画）**。WebView が対局開始で第2窓(GAME_HTML・緑フェルトの札卓)を本窓の隣に生成→snapshot を poll してカード描画→終局で閉じる。作れない環境は本窓ログへフォールバック。JS は node --check OK。
   - [ ] **実機の見た目確認（ユーザー）**: web 起動→`/blackjack 見る` で隣に札卓窓が出てカードが見えるか／位置・サイズ感／×で閉じるか
-  - [x] **本窓×で観戦窓が残る不具合（実装6/29・ユーザー報告）**＝本窓の×（`WebView.close()`）が本窓だけ destroy し観戦窓(第2窓)を残すと、`webview.start()` が返らず scheduler の teardown（finally の `view.game_close()`）に入れない＝観戦窓が残りプロセスも生き続ける。`close()` 冒頭で `game_close()` を呼び**両窓を畳んでから**本窓を閉じるよう修正。テスト `test_views.TestWebViewCloseClosesGameWindow`(2件)。
+  - [x] **本窓×で観戦窓が残る不具合（実装6/29・ユーザー報告／実機OK 6/29）**＝本窓の×（`WebView.close()`）が本窓だけ destroy し観戦窓(第2窓)を残すと、`webview.start()` が返らず scheduler の teardown（finally の `view.game_close()`）に入れない＝観戦窓が残りプロセスも生き続ける。`close()` 冒頭で `game_close()` を呼び**両窓を畳んでから**本窓を閉じるよう修正。テスト `test_views.TestWebViewCloseClosesGameWindow`(2件)。**実機確認: 本体終了と同時に観戦窓も閉じるのを確認（ユーザー 6/29）**。
 - [ ] （任意）観戦窓に手番リアクション台詞・対局時の hit/stand ボタン（今は本窓でテキスト入力）／pixel-art カード化
 - [ ] （任意）UNO/ポーカー等を増やす（`game_rlcard.register_rlcard_games` に1行）／PettingZoo アダプタ（盤ゲーム）／手番のリアクション台詞
 

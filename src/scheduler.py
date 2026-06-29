@@ -514,23 +514,25 @@ class Scheduler:
         self._game_guests = []
 
     async def _play_arc_now(self, key):
+        """/arc：箱庭アークを今すぐ再生（デバッグ）。tick 駆動の active に載せて起→承→転→結を前へ進める。
+        以前はここで完走まで while ループでブロックしていて、その間 on_user_input が返らず＝**再生中の
+        話しかけ（割り込み）が効かなかった**。active に載せ替えて即 return し、以降は _tick が前進させる
+        ＝入力ループが空くので barge-in（cancel優先・ADR-0006）が通る。"""
         weather = await asyncio.to_thread(sources.fetch_weather)
+        self.weather = weather                       # 取れた天気は保持（捏造防止・tick と揃える）
         ctx = sources.build_context(weather, self.topics)
         pool = [s for s in self.sources if s.key == key] if key \
             else [s for s in self.sources if s.eligible(ctx)]
         if not pool:
             self.view.system("  （今出せるアークが無い。/arc 雀 等キー指定で強制できる）"); return
-        arc = random.choice(pool); arc.reset()
-        self.view.system(f"  〔debug〕{arc.key} を再生（実天気={ctx['desc'] or '不明'}）")
-        while True:
-            res = await arc.next_phase(ctx)
-            if res is None:
-                break
-            if res is sources.SILENT:
-                continue
-            await self._inject(res)
-            await asyncio.sleep(1.0)
-        arc.reset()
+        arc = random.choice(pool)
+        async with self.drive_lock:                  # tick と排他で active を載せる
+            if self.active is not None or self.room is not None or self.game is not None:
+                self.view.system("  （今は別のことをしとる。落ち着いてから /arc してな）"); return
+            arc.reset()
+            self.active = arc
+            self.view.system(f"  〔debug〕{arc.key} を再生（実天気={ctx['desc'] or '不明'}）")
+        self._next_at = time.time()                  # 次スライス(≤1s)で 起 を出す。以降 tick が前進＝割り込み可
 
     # ── 実行 ──────────────────────────────────────────────
     async def run(self):
