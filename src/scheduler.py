@@ -255,7 +255,7 @@ class Scheduler:
             self.view.system("[*] 縁側を閉じます。"); self.stop.set()
         elif cmd == "/help":
             self.view.system("  ふつうに打って Enter → 茶々に話しかける")
-            self.view.system("  /arc [雀|猫|風]  → 箱庭アークを今すぐ再生（デバッグ）")
+            self.view.system("  /arc [雀|猫|風]  → 箱庭アークを今すぐ再生")
             self.view.system("  /codex <人格>    → 客人(codex)を呼ぶ（到着→世間→辞去の短い来訪）")
             self.view.system("  /blackjack [見る] → ブラックジャック（私+茶々／「見る」で茶々がディーラーと・要 rlcard）")
             self.view.system("  /model           → 今のモデルを表示（住人=Claude / 客人=codex）")
