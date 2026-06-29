@@ -22,5 +22,6 @@
 | 0016 | ドキュメントの正本を CLAUDE.md に定め、spec v1 を旧構想として降格 | Accepted |
 | 0017 | ゲームは Game ポート＋RLCard アダプタで受け、AI が既存ゲームに参加（初の任意外部依存 rlcard） | Accepted（実装中） |
 | 0018 | リポジトリを src/・assets/・poc/・docs/ に整理（設定と CLAUDE.md は root 維持） | Accepted（実施済み） |
+| 0019 | presentation は「意味 state ＋ config 駆動の差し替えアセット」で統一（sprite/sound/scene 共通） | Accepted（方針確定・実装これから） |
 
 形式は Michael Nygard 風（背景 / 決定 / 代替案 / 影響 / 備考）。
