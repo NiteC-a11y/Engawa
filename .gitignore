@@ -3,6 +3,9 @@
 .env.local
 .claude/settings.local.json
 
+# 個人の挙動設定（鍵は入れないが端末ごとに調整＝管理外。雛形は engawa.json.sample）
+engawa.json
+
 # python
 __pycache__/
 *.py[cod]

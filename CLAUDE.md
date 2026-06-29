@@ -38,7 +38,7 @@
 - `src/acp.py` / `src/sources.py` / `src/scheduler.py` / `src/views.py` — 現行構成（event-source/scheduler・adr/0013）。`views.py` に `ConsoleView` と `WebView`（pywebview・poll方式）。
 - `assets/sprite.json` + `assets/chacha.png` — 茶々スプライト（差し替え可能な皮・adr/0010）。今は Gemini 三毛猫ベース10コマ（口パク/まばたき/にっこり/耳ピンは0基準の自作差分）。`assets/raw/` は Gemini 生成元 PNG（gitignore・現行は chacha.png を使用）。
 - `topic_sources.json`（root） — 客人の世間話トピックの取得先ホワイトリスト（config主導・adr/0014）。
-- `engawa.json`（root） + `src/config.py` — アプリ挙動の設定（model/guest/間合い/topic）。優先順位 **env(ENGAWA_*) > engawa.json > 既定**。キーは入れない(adr/0002)。
+- `engawa.json`（root・**個人設定＝gitignore**／雛形は `engawa.json.sample`） + `src/config.py` — アプリ挙動の設定（model/guest/間合い/topic）。優先順位 **env(ENGAWA_*) > engawa.json > 既定**。キーは入れない(adr/0002)。`.env`/`.env.example` と同じ流儀（端末ごとに調整・全キー任意＝消せばコード既定）。
 - `poc/engawa_p1/p2/p3_*.py` — 各フェーズの検証済み基準点。**温存・触らない**。
 - `docs/adr/`（0001〜0018）, `docs/TECH_RULES.md`, `docs/Backlog.md`
 - `docs/engawa-acp-spec.md` — ピボット前の**旧構想 仕様書 v1**（adr/0004 で転換・adr/0016 で降格）。歴史的参照として温存・**現行仕様ではない**。
