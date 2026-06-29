@@ -21,3 +21,6 @@ Thumbs.db
 
 # 素材置き場（Gemini 生成の生画像。現行アプリは assets/chacha.png を使用）
 /assets/raw/
+
+# codex のレビュー成果物（review-YYYY-MM-DD.md。本体リポでは追跡しない＝各自ローカル/codex 側で管理）
+/codex/review-*.md
