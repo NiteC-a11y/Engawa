@@ -1,0 +1,409 @@
+# Engawa クラス図（Mermaid）
+
+`src/` の現行構成を Mermaid 記法で整理したもの。Port & Adapter 境界（ADR-0013 / 0015 / 0017）を含む。
+
+> 実装は ABC ではなく duck typing（`NotImplementedError` / `...`）のため、ポートは `<<Port>>` として表記。
+
+---
+
+## 全体構成（Composition Root → Mediator）
+
+```mermaid
+classDiagram
+    direction TB
+
+    class engawa_main {
+        +run_console()
+        +run_web()
+        -_build(resident, view) Scheduler
+    }
+
+    class Scheduler {
+        +resident: AcpAgent
+        +sources: EventSource[]
+        +idle: WeatherSource
+        +view: View
+        +active: EventSource
+        +room: Room
+        +game: GameSession
+        +run()
+        -_inject(narration)
+        -_open_visit()
+        -_start_game()
+    }
+
+    engawa_main ..> Scheduler : 組み立て
+    engawa_main ..> AcpAgent : spawn_resident
+    engawa_main ..> View : ConsoleView / WebView
+
+    Scheduler --> AcpAgent : 住人注入
+    Scheduler o-- EventSource : 複数
+    Scheduler --> WeatherSource : idle/fallback
+    Scheduler --> View : 出力・入力
+    Scheduler --> Room : 来訪中のみ
+    Scheduler --> GameSession : 対局中のみ
+```
+
+---
+
+## Port & Adapter ① — View（出力・入力ポート）
+
+ADR-0013 ③。`Scheduler` は `View` だけ知り、console / web / テスト用実装を差し替える。
+
+```mermaid
+classDiagram
+    direction TB
+
+    class View {
+        <<Port>>
+        +turn_start(who, kind, label, voice)
+        +chunk(text)
+        +turn_end()
+        +system(msg)
+        +say(speaker, text)
+        +game_open(title)
+        +game_update(snapshot, lines)
+        +game_close()
+        +inputs() AsyncIterator
+    }
+
+    class ConsoleView {
+        +inputs() stdin
+    }
+
+    class WebView {
+        -_log: queue
+        +api: _WebApi
+        +poll(since)
+        +send(text, to)
+    }
+
+    class CaptureView {
+        +events: list
+        +feed(line)
+    }
+
+    class _WebApi {
+        +poll(since)
+        +send(text, to)
+        +close()
+    }
+
+    class _GameApi {
+        +poll(since)
+        +close()
+    }
+
+    View <|-- ConsoleView
+    View <|-- WebView
+    View <|-- CaptureView
+    WebView *-- _WebApi : js_api
+    WebView *-- _GameApi : 観戦窓
+```
+
+---
+
+## Port & Adapter ② — ACP（エージェント接続）
+
+ADR-0013 ②。外部アダプタ（`claude-agent-acp` / `codex-acp`）を `AcpAgent` Facade で包む。
+
+```mermaid
+classDiagram
+    direction TB
+
+    class ACPClient {
+        +proc: Process
+        +on_chunk: callback
+        +request(method, params, timeout)
+        +prompt(text, on_chunk)
+        +cancel()
+    }
+
+    class AcpAgent {
+        <<Facade>>
+        +proc: Process
+        +client: ACPClient
+        +sessionId: str
+        +caps: dict
+        +model: str
+        +spawn(cmd, cwd, model)$ AcpAgent
+        +spawn_resident()$ AcpAgent
+        +spawn_guest()$ AcpAgent
+        +prompt(text, on_chunk)
+        +cancel()
+        +close()
+    }
+
+    class ACPTimeoutError {
+        <<Exception>>
+    }
+
+    AcpAgent *-- ACPClient
+    AcpAgent ..> ACPTimeoutError : prompt timeout
+    Scheduler ..> AcpAgent : resident / guest spawn
+    GuestSource ..> AcpAgent : 使い捨て客人
+```
+
+---
+
+## Port & Adapter ③ — EventSource（環境イベント源）
+
+ADR-0013 ①。`Scheduler` が抽選・駆動する「源」のポート。
+
+```mermaid
+classDiagram
+    direction TB
+
+    class EventSource {
+        <<Port>>
+        +key: str
+        +cooldown_ticks: int
+        +eligible(ctx) bool
+        +next_phase(ctx) Narration|SILENT|None
+        +reset()
+        +close()
+    }
+
+    class BoxGardenArc {
+        +phases: Phase[]
+        +idx, gap, age
+    }
+
+    class WeatherSource {
+        +prev_desc: str
+    }
+
+    class GuestSource {
+        +persona: str
+        +agent: AcpAgent
+        +beats: tuple
+        +eligible(ctx) 夕方×確率
+    }
+
+    class Phase {
+        +tag: str
+        +narrate: str|callable
+        +react: bool
+    }
+
+    class Narration {
+        <<Value>>
+        +text, kind, label, voice
+    }
+
+    class SILENT {
+        <<番兵>>
+    }
+
+    EventSource <|-- BoxGardenArc
+    EventSource <|-- WeatherSource
+    EventSource <|-- GuestSource
+    BoxGardenArc *-- Phase
+    EventSource ..> Narration : 生成
+    EventSource ..> SILENT : 無言ビート
+```
+
+---
+
+## Port & Adapter ④ — Game（ゲーム核 + RLCard アダプタ）
+
+ADR-0017。`game.py` は framework 非依存、`game_rlcard.py` が RLCard を `GameAdapter` に合わせる。
+
+```mermaid
+classDiagram
+    direction TB
+
+    class GameAdapter {
+        <<Port>>
+        +num_players: int
+        +render: Render|null
+        +reset()
+        +current_player() int
+        +is_over() bool
+        +legal_moves(player) list
+        +state(player) dict
+        +play(move)
+        +result() list
+    }
+
+    class RLCardAdapter {
+        -_env: rlcard.Env
+    }
+
+    class BlackjackRender {
+        +deal(adapter, names)
+        +turn(adapter, slot, name)
+        +move(name, move, ...)
+        +result(adapter, names)
+        +snapshot(adapter, names, ...)
+    }
+
+    class Player {
+        +name: str
+        +is_human: bool
+        +choose(state, legal_moves) async
+    }
+
+    class GameSession {
+        +adapter: GameAdapter
+        +players: Player[]
+        +begin()
+        +step() async
+        +human_move(move) async
+        +waiting_for_human: bool
+    }
+
+    class GameError {
+        <<Exception>>
+    }
+
+    GameAdapter <|-- RLCardAdapter
+    RLCardAdapter ..> BlackjackRender : render=
+    GameSession --> GameAdapter
+    GameSession o-- Player
+    Scheduler --> GameSession
+    Scheduler ..> game.register / game.make : レジストリ
+```
+
+---
+
+## 3人会話（State パターン + Strategy/DI）
+
+ADR-0015。`Room` が Mediator、`Speaker` が茶々/客人の注入アダプタ、`RoomState` がターン管理。
+
+```mermaid
+classDiagram
+    direction TB
+
+    class Room {
+        <<Mediator>>
+        +persona: str
+        +resident: Speaker
+        +guest: Speaker
+        +transcript: Transcript
+        +turn_cap: int
+        +begin()
+        +on_human(text, to)
+        +on_tick()
+        -_state: RoomState
+    }
+
+    class RoomState {
+        <<abstract>>
+        +room: Room
+        +enter()
+        +on_human(text, to)
+        +on_tick()
+    }
+
+    class Greeting
+    class AwaitingHuman
+    class Responding
+    class Leaving
+    class Closed
+
+    class Speaker {
+        <<Strategy/DI>>
+        +name: str
+        +say(window, kind) async
+    }
+
+    class Transcript {
+        <<Value>>
+        +append(speaker, text)
+        +window(n)
+        +render(n)
+    }
+
+    class Utterance {
+        <<Value>>
+        +speaker: str
+        +text: str
+    }
+
+    Room *-- RoomState
+    RoomState <|-- Greeting
+    RoomState <|-- AwaitingHuman
+    RoomState <|-- Responding
+    RoomState <|-- Leaving
+    RoomState <|-- Closed
+
+    Greeting ..> AwaitingHuman : 遷移
+    AwaitingHuman ..> Responding : 人間発話
+    AwaitingHuman ..> Leaving : 沈黙
+    Responding ..> AwaitingHuman : turn_cap後
+    Leaving ..> Closed
+
+    Room --> Speaker : resident, guest
+    Room *-- Transcript
+    Transcript o-- Utterance
+
+    Scheduler ..> Speaker : fn注入(AcpAgent.prompt)
+    Scheduler --> Room
+```
+
+---
+
+## レイヤー関係（Port & Adapter の見取り図）
+
+```mermaid
+flowchart TB
+    subgraph Core["Core（framework / UI 非依存）"]
+        Scheduler
+        game["game.py\nGameAdapter / GameSession"]
+        conv["conversation.py\nRoom / RoomState"]
+        sources["sources.py\nEventSource"]
+    end
+
+    subgraph Ports["Port（抽象境界）"]
+        View
+        GameAdapter
+        EventSource
+        Speaker
+    end
+
+    subgraph Adapters["Adapter（差し替え可能な実装）"]
+        ConsoleView
+        WebView
+        RLCardAdapter
+        BoxGardenArc
+        GuestSource
+        AcpAgent["AcpAgent\n(claude/codex ACP)"]
+    end
+
+    engawa_main --> Scheduler
+    Scheduler --> View
+    Scheduler --> EventSource
+    Scheduler --> GameAdapter
+    Scheduler --> Room
+    Scheduler --> AcpAgent
+
+    View <|-- ConsoleView
+    View <|-- WebView
+    GameAdapter <|-- RLCardAdapter
+    EventSource <|-- BoxGardenArc
+    EventSource <|-- GuestSource
+    Room --> Speaker
+    Speaker -.-> AcpAgent
+```
+
+---
+
+## 設計上のポイント
+
+| 境界 | ポート | 主なアダプタ |
+|------|--------|--------------|
+| 出力・入力 | `View` | `ConsoleView`, `WebView`, `CaptureView` |
+| LLM 接続 | （明示 Port なし） | `AcpAgent` + 外部 ACP アダプタ |
+| 環境イベント | `EventSource` | `BoxGardenArc`, `WeatherSource`, `GuestSource` |
+| ゲーム | `GameAdapter` | `RLCardAdapter`（+ `BlackjackRender`） |
+| 3人会話の発話 | `Speaker`（DI） | Scheduler が `AcpAgent.prompt` を fn として注入 |
+
+`engawa_main.py` が composition root で、`Scheduler` が Mediator として各 Port を結線する（ADR-0013）。
+
+## 参照
+
+- `docs/adr/0013-event-source-scheduler-architecture.md`
+- `docs/adr/0015-visitor-bounded-three-way-conversation.md`
+- `docs/adr/0017-games-via-port-and-rlcard-adapter.md`
+- `codex/review-cursor-2026-06-30-architecture-boundaries.md` — 本図を基にした境界レビューと Action Items
