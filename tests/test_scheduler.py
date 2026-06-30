@@ -193,38 +193,6 @@ class TestArcAndGuest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first.kind, "arc")
         self.assertIsNone(await arc.next_phase(ctx))   # 次は結了(None)
 
-    async def test_guest_visit_three_beats_then_dispose(self):
-        created = []
-
-        class FakeCodex:
-            def __init__(self):
-                self.closed = False
-
-            async def prompt(self, text, on_chunk=None):
-                return "ごめんやす"
-
-            async def close(self):
-                self.closed = True
-
-        async def spawn():
-            c = FakeCodex()
-            created.append(c)
-            return c
-
-        g = sources.GuestSource(persona="ご隠居", spawn_codex=spawn, max_turns=3)
-        g.reset()
-        ctx = sources.build_context(None, topics=[])
-        beats = []
-        for _ in range(6):
-            res = await g.next_phase(ctx)
-            if res is None:
-                break
-            beats.append(res)
-        self.assertEqual(len(beats), 3)                       # 到着/世間/辞去
-        self.assertTrue(all(b.kind == "guest" for b in beats))
-        self.assertTrue(all(b.voice for b in beats))          # 生セリフを表示へ載せる
-        self.assertTrue(created and created[0].closed)        # 辞去で codex 破棄（使い捨て）
-
 
 def _codex_factory(created, line="ごめんやす"):
     class FakeCodex:
@@ -430,6 +398,13 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
 class TestGameMode(unittest.IsolatedAsyncioTestCase):
     """ゲームモード（ADR-0017 Inc3/A）の配線: 実 rlcard/LLM 無しで FakeGame＋fake codex で検証。
     A＝基本 私＋茶々（観戦は茶々のみ）＝客人 codex を呼ばない。足りない時だけ客人で埋める。"""
+    def setUp(self):
+        # ゲーム登録は composition root（engawa_main._build）の責務（A3・ADR-0017）。
+        # テストは Scheduler を直接組むので、ここで registry を live と同じ状態に整える
+        # （rlcard 未導入でも register は lambda 登録のみで成功。factory は _make_game 差し替えで呼ばれない）。
+        import game_rlcard
+        game_rlcard.register_rlcard_games()
+
     def _sched(self, created, make=None):
         s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
                             views.CaptureView(), spawn_codex=_codex_factory(created))

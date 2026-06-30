@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""conversation.py — 3人会話の「部屋」（ADR-0015 / Inc1）。
+"""conversation.py — 3人会話の「部屋」（ADR-0015 / Inc1 設計・Inc2 で Scheduler 結線済み）。
 
 私(人間)・茶々(住人)・客人(codex) が同じ場で聞き合う。最難関の **ターン管理** を
 **State パターン**で明示し、「人間が駆動している間だけ AI が応答し、必ず人間待ちに戻る」
@@ -15,7 +15,7 @@
   - `Responding` は人間発話あたり **最大 turn_cap(=2) 手**で必ず `AwaitingHuman` へ戻る＝歯止めの本体。
 - **Mediator**: 外側は既存 `Scheduler`、その下に部屋の調停役 `Room` を置く。
 
-このモジュールはライブ未接続（Scheduler/agent に触れない）。Inc2 で結線する。
+このモジュールは Scheduler/agent を import しない（Speaker 注入のみで純粋・import は re だけ）。Inc2 で Scheduler が実 agent を Speaker として結線済み。
 """
 import re
 

@@ -6,6 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+import prompts
 import sources
 
 
@@ -75,16 +76,12 @@ class TestTimeAndContext(unittest.TestCase):
 
 class TestNarration(unittest.TestCase):
     def test_user_narration_contains_line(self):
-        n = sources.user_narration("元気？", sources.build_context(None))
+        n = prompts.user_narration("元気？", sources.build_context(None))
         self.assertIn("元気？", n)
 
     def test_event_narration_has_silence_option(self):
         # 過剰発話抑制（「……」でよい）が必ず入る
         self.assertIn("……", sources.event_narration("雀が来た"))
-
-    def test_guest_narration_wraps_line(self):
-        n = sources.guest_narration("ごめんやす", first=True, last=False)
-        self.assertIn("ごめんやす", n)
 
 
 if __name__ == "__main__":

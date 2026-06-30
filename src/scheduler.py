@@ -16,6 +16,7 @@ import acp          # ACPTimeoutError（adapter 無応答の受け）
 import config        # 設定解決（env > engawa.json > 既定）
 import conversation  # 3人会話の部屋（State パターン・ADR-0015 Inc2）
 import game          # ゲームの Port&Adapter 核（ADR-0017。rlcard はアダプタに隔離）
+import prompts       # LLM 文言ビルダー（注入プロンプト工場・sources から分離・ADR-0013）
 import sources
 import views         # GAME_CLOSE_REQUEST（観戦窓×→お開きの制御トークン・入力 wire 形式の共有）
 
@@ -254,7 +255,7 @@ class Scheduler:
             self.view.system("[茶々がこちらを向いた]")
         # active(source) は触らない → QUIET 明けに背景継続
         ctx = sources.build_context(self.weather, self.topics)   # 保持した天気を渡す（捏造防止）
-        await self._inject(sources.Narration(sources.user_narration(line, ctx), "user"))
+        await self._inject(sources.Narration(prompts.user_narration(line, ctx), "user"))
         self.last_user_ts = time.time()
 
     async def _command(self, line):
@@ -264,7 +265,7 @@ class Scheduler:
         elif cmd == "/help":
             self.view.system("  ふつうに打って Enter → 茶々に話しかける")
             self.view.system("  /arc [雀|猫|風]  → 箱庭アークを今すぐ再生")
-            self.view.system("  /codex <人格>    → 客人(codex)を呼ぶ（到着→世間→辞去の短い来訪）")
+            self.view.system("  /codex <人格>    → 客人(codex)を呼ぶ（3人会話の部屋を開く・ADR-0015）")
             self.view.system("  /game <id> [見る] → ゲーム（id=blackjack/uno/leduc・「見る」で観戦・要 rlcard。/blackjack は別名）")
             self.view.system("  /model           → 今のモデルを表示（住人=Claude / 客人=codex）")
             self.view.system("  /quit            → 縁側を閉じる")
@@ -351,7 +352,7 @@ class Scheduler:
             async with self.turn_lock:                   # ambient と同じ直列化単位
                 self.speaking = True
                 try:
-                    return await self.resident.prompt(sources.room_resident_prompt(window, kind))
+                    return await self.resident.prompt(prompts.room_resident_prompt(window, kind))
                 except acp.ACPTimeoutError:              # 茶々が無応答 → フラグだけ立て、後始末は呼び側で
                     self._room_resident_timeout = True
                     return ""
@@ -363,7 +364,7 @@ class Scheduler:
             if agent is None:
                 return ""
             try:
-                return (await agent.prompt(sources.room_guest_prompt(persona, window, kind))).strip()
+                return (await agent.prompt(prompts.room_guest_prompt(persona, window, kind))).strip()
             except acp.ACPTimeoutError:                  # 客人が無応答 → ハング client は二度叩かず急用退場へ
                 self._guest_timed_out = True
                 return ""
@@ -391,7 +392,7 @@ class Scheduler:
             return False
         resident_dead = self._room_resident_timeout
         self._guest_timed_out = self._room_resident_timeout = False
-        self.view.system("  " + sources.guest_timeout_leave())   # 客人が急用で去る（定型・local。世界観を壊さない）
+        self.view.system("  " + prompts.guest_timeout_leave())   # 客人が急用で去る（定型・local。世界観を壊さない）
         await self._end_visit()                                   # 部屋を閉じ codex を破棄（taskkill /T /F で確実に殺す）
         if resident_dead:
             await self._resident_timed_out()                     # 住人も無応答なら段階回復へ
@@ -427,15 +428,11 @@ class Scheduler:
 
     # ── ゲーム（ADR-0017 Inc3）。GameSession を tick で1手ずつ進める ───────────────
     def _make_game(self, game_id, num_players):
-        """ゲームのアダプタを作る（rlcard はここで初めて import＝任意依存）。テストはこれを差し替える。"""
-        import game_rlcard
-        game_rlcard.register_rlcard_games()
+        """ゲームのアダプタを作る。ゲーム登録は composition root（engawa_main._build）で済ませる（任意依存の寄せ・ADR-0017）。テストはこれを差し替える。"""
         return game.make(game_id, num_players)
 
     def _known_games(self):
-        """登録済みゲーム一覧（id→meta）。検証/一覧用。rlcard 未導入でも作れる（factory は呼ばないため）。"""
-        import game_rlcard
-        game_rlcard.register_rlcard_games()
+        """登録済みゲーム一覧（id→meta）。検証/一覧用。登録は composition root（engawa_main._build）で実施済み（rlcard 未導入なら空）。"""
         return game.games()
 
     def _list_games(self, known, unknown=None):
@@ -448,7 +445,7 @@ class Scheduler:
     def _ai_decider(self, agent, name, slot):
         """AIプレイヤーの手番: 自分のスロット＋状態＋合法手を見せて手を選ばせる（不正は先頭へフォールバック）。"""
         async def decide(state, legal_moves):
-            reply = await agent.prompt(sources.game_move_prompt(name, slot, state, legal_moves))
+            reply = await agent.prompt(prompts.game_move_prompt(name, slot, state, legal_moves))
             return game.parse_move(reply, legal_moves)
         return decide
 
@@ -535,7 +532,7 @@ class Scheduler:
         if render is not None:
             self.view.system(render.turn(self.game.adapter, cur, "あなた"))
         else:
-            self.view.system(f"  あなたの番｜{sources.describe_state(self.game.adapter.state(cur))}")
+            self.view.system(f"  あなたの番｜{prompts.describe_state(self.game.adapter.state(cur))}")
         self.view.system(f"  打てる手: {' / '.join(map(str, legal))}  （そのまま打って）")
         self._game_emit(self.game.adapter, [], current_slot=cur, over=False)   # 観戦窓に自分の番を反映
 

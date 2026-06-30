@@ -21,7 +21,7 @@
 - [x] codex-acp 接続（ChatGPT ログイン認証、OPENAI_API_KEY 除去で事故防止）
 - [x] /codex <人格> で直接召喚（取り次ぎなし・即・確実）
 - [x] 客人セッションは使い捨て（spawn → 数往復 → 破棄。辞去で内部 close）
-- [x] 滞在を往復数で上限（GUEST_BEATS=3・無限ループ無し）
+- [x] 滞在を往復数で上限（GUEST_BEATS=3・無限ループ無し）※ADR-0015 Inc2 で**3人会話の部屋に置換**＝`GUEST_BEATS`/`next_phase` の旧一方向モデルは撤去（6/30）。有界は Room の `turn_cap`＋沈黙辞去が担保
 - [x] 客人の人格を召喚時に動的注入（CLAUDE.md でなく prompt へ）
 - [x] 客人出力をナレーション化して茶々に渡す（「塀の向こうの声」）
 - [x] 客人の声をユーザーにも表示（6/27 修正）＝当初 codex のセリフは茶々への注入 text に埋まるだけで画面に出ず「codex が喋らない」状態だった。`Narration.voice` に生セリフを載せ、`ConsoleView` が `客人 ›` 行で即表示（茶々が黙っても客人は見せる・声は1行に畳む）。召喚 spawn 失敗も可視化（「客人は来られなんだ…」）。voice 14件＋全5スイート PASS、実 codex 召喚 E2E で `客人 ›`→`茶々 ›` 往復を確認
@@ -33,6 +33,7 @@
   - [ ] やわらかRSS の実 URL を精査して `topic_sources.json` に `domain` を合わせ `enabled:true` に（鮮度の追加・据え置き）
     - 精査メモ(6/27): NHK 全カテゴリ実取得＝硬い時事/災害でトーン不一致＝不採用寄り（cat3 文化が一番マシだが混在）。本命候補 **tenki.jp サプリ（季節・暮らし/七十二候コラム）= 縁側のトーンに合致**だが、2010年告知の RSS サービスページ(`tenki.jp/webservice/rss/`)は **404**＝現行フィード URL が要特定（`tenki.jp/suppl/` の feed リンク or 別の柔らかい源を当たる）。当面 時節(local) だけで十分弾むので急がない。自作 `_parse_rss_titles` は RSS/Atom 実フィードで動作確認済み
   - [ ] 人格マッチ topic の源拡充（行商人→相場、絵描き→色 等）／直近回避の窓調整
+  - [ ] **客人トピック注入を Room 経路へ再実装（regression・6/30）**＝ADR-0014 のトピック注入は旧一方向来訪モデル（`GuestSource.next_phase`→`_pick_topic`/`_topic_instr`）に実装されていたが、Inc2 で客人が 3人会話の部屋（`conversation.Room`）に移った際、`room_guest_prompt(persona, window, kind)` が ctx/topics を受け取らないため**休眠＝実質ロスト**していた。A2（6/30）で旧モデルごと削除（`_pick_topic`/`_topic_instr`/`_recent`/`TOPIC_PROB` ゲートは撤去）。復活させるには `room_guest_prompt` に ctx/topics を渡し、「世間」相当の場面（`CHIME`/`REPLY`）で旧 `_pick_topic` 相当（確率→人格マッチ→直近回避）を種として注入する形で再設計する。`self.topics`/`fetch_topics`/`ENGAWA_TOPIC_*` の取得基盤は健在（茶々の ambient つぶやきで今も稼働）。
 - [ ] 時節の挨拶差し替え（月初・季節の変わり目・祝日）※茶々の自発挨拶側（客人ネタとは別口）
 - [~] Codex の initialize capability を読んで分岐（caps は取得済み＝auth/loadSession 等。実際の分岐は必要になってから）
 - [~] 〔大物・ADR-0015〕客人(visitor)に **人間アンカーで有界な3人会話** を解禁（私↔茶々／私↔客人／茶々↔客人／3人 の全組合せ）。「部屋」方式＝全員が全員の発言を聞く・宛先で応答者が決まる（取り次ぎでない）。歯止め: 人間アンカー・連続AIターン上限・来訪は有界のまま。最難関は**ターン管理**。

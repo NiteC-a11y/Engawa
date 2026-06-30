@@ -20,6 +20,13 @@ import views
 
 
 def _build(resident, view):
+    # rlcard ゲームを composition root で1度だけ登録（任意依存・未導入でも起動は妨げない・ADR-0017）。
+    # ＝Scheduler(core) が adapter モジュールを参照しないための寄せ。register は lambda 登録のみで idempotent。
+    try:
+        import game_rlcard
+        game_rlcard.register_rlcard_games()
+    except ImportError:
+        pass   # rlcard 未導入＝/game は遊べないが縁側は通常起動
     return sched.Scheduler(resident,
                            sources.default_sources(spawn_codex=acp.AcpAgent.spawn_guest),
                            sources.WeatherSource(), view,

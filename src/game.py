@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""game.py — ゲームの「ポート＋セッション」（Port & Adapter / Inc1・ライブ未接続）。
+"""game.py — ゲームの「ポート＋セッション」（Port & Adapter / Inc1 設計・Scheduler 結線済み）。
 
 「既にあるゲームに AI が参加する」を、特定 framework（RLCard 等）に密結合せずに実現するための核。
 - **GameAdapter（ポート）**: 1ゲームの実体を包む抽象。RLCard/PettingZoo/自作 をこの形に合わせる。
