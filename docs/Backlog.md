@@ -87,6 +87,22 @@
 - [ ] **（設計オープン）対局中に茶々/客人へ話しかける（人→AI 雑談チャネル）**＝今は対局中の平文入力は**全部「手」**として解釈され、雑談する口が無い（ADR-0017）。やるなら**ユーザーに `/say` を覚えさせず、対局中だけ内部で「手か雑談か」を仕分ける**方向（自分の番×合法手→手／それ以外→茶々への雑談。今の拒否メッセージ「その手は出せん」「他のプレイヤーの番」が雑談に化ける）。
   - **本当の難所は仕分けでなく並行性**: 茶々は同じ長命セッションで手も選ぶ。tick が裏で `茶々.prompt(手番)` を回す所へ雑談 `茶々.prompt` を被せると**同一 ACP セッションに prompt 2本同時＝チャンク混線/pending 取り違え**で壊れる。雑談注入をゲーム手番進行と**直列化**（`drive_lock` で囲む等・召喚/対局開始と同じ流儀）が必須要件。
   - 候補と論点（**まだ決め打ちしない＝もっと良い設計の余地あり**）: ①内部仕分け（move-first・else 雑談／打ち損じが雑談化する軽微な弊害）②明示 `/say <text>`（堅いが口を覚える必要）③web の宛先チップで茶々宛を雑談へ（web 限定）。客人は席埋めゲームでしか居ないのでまず茶々だけが現実的。並行性の直列化はどの案でも共通で要る。
+## 多言語・多方言（voice バンドル・ADR-0022）
+
+茶々の「声」を **voice 単位**（`ja-osaka`/`ja-kyoto`/`ja-kagoshima`/`en`…）で差し替え。**base 言語 ⟂ voice を分離**し継承（`<voice>→<base>→既定`）。中身（各地域の声）は現地が書き起こす＝transcreation（機械翻訳しない・原則#2）。設計は ADR-0022。**まず方言ユースケースで継ぎ目を安く検証**してから言語へ（YAGNI・ADR-0013）。
+
+- [ ] **Inc1: voice 選択＋persona オーバーレイ**（最小・方言が persona 一枚で差し替わる所まで）
+  - `voices/<id>/meta.json`(base/label/llm_lang)＋`persona.md`。選択は `config.get_str("ENGAWA_VOICE","voice",…,"ja-osaka")`（env>engawa.json>既定・ADR-0020 流）。
+  - `acp.spawn_resident` が選んだ `voices/<id>/persona.md` を cwd の CLAUDE.md として load（既存の人格注入＝ADR-0003 に直結）。既定 `ja-osaka` がフォールバックの底＝**消せば現状維持**。起動行に `茶々=<voice.label>` 表示。
+  - ユニット: voice 解決（env/json/既定）・persona パス・フォールバック。**JP 方言では `prompts.py` 不変**（persona が指示・「日本語で答えて」を足さない＝競合させない）。
+- [ ] **Inc2: UI シェルの i18n（英語向け）**
+  - `loc("key")` で active voice の `strings.json` → base → 組み込み既定。`scheduler`(/help・system)・`views`・`engawa_main` の文言をキー化。
+  - 英語 voice は `meta.base="en"`＋`llm_lang="en"`（`prompts.py` が任意で参照）＋`strings.json`（訳）。
+- [ ] **Inc3（YAGNI・最初の外国語ロケールが来たら）: culture.json**
+  - 季節モデル（二十四節気/旬→相応）・天気語彙・客人ペルソナを voice/base 継承で差し替え。下記の天気負債を吸収。
+- 関連負債の合流先: 「茶々用 CLAUDE.md を persona/ 別ディレクトリ運用」＝`voices/<id>/persona.md` に化ける ／ 「天気座標の大阪固定→設定化」＝`culture.json`(Inc3)。
+- スプライト（三毛猫）は言語中立＝不変（P5 と独立・ADR-0010/0019）。
+
 ## Open Questions（spec §15）
 - [ ] 長命セッションの compaction 戦略 / fork 閾値（Naraku の外部状態方式を流用できるか）
 - [ ] /codex <自由テキスト> のプロンプトインジェクション（配布時のみ要対策。検討メモ 6/27）
