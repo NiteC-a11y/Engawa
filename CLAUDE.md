@@ -35,7 +35,7 @@
 ### ファイル（レイアウト・adr/0018）
 > コードは `src/`・実使用アセットは `assets/`・PoC基準点は `poc/`・文書は `docs/`。ユーザーが触る設定（`engawa.json` / `topic_sources.json`）と本 `CLAUDE.md` は **root 維持**。設定/アセットは `src/` から **repo-root 基準**で解決（`config.py` / `sources.py` / `views.py` の `_path()`）。
 - `src/engawa_main.py` — 起動口（composition root）。console / `ENGAWA_UI=web` で隅の縁側窓。
-- `src/acp.py` / `src/sources.py` / `src/scheduler.py` / `src/views.py` — 現行構成（event-source/scheduler・adr/0013）。`views.py` に `ConsoleView` と `WebView`（pywebview・poll方式）。
+- `src/acp.py` / `src/sources.py` / `src/scheduler.py` / `src/views.py` / `src/prompts.py` — 現行構成（event-source/scheduler・adr/0013）。`views.py` に `ConsoleView` と `WebView`（pywebview・poll方式）。`prompts.py` は LLM 文言ビルダー（注入プロンプト工場・`sources` から分離・`prompts→sources` 一方向 import）。
 - `src/conversation.py` — 3人会話の部屋（State パターン・adr/0015 **Inc1/Inc2 実装済み**）。`src/game.py` + `src/game_rlcard.py` — ゲームの Port＆Adapter（adr/0017。rlcard は `game_rlcard` に隔離・任意依存）。
 - `assets/sprite.json` + `assets/chacha.png` — 茶々スプライト（差し替え可能な皮・adr/0010）。今は Gemini 三毛猫ベース10コマ（口パク/まばたき/にっこり/耳ピンは0基準の自作差分）。`assets/raw/` は Gemini 生成元 PNG（gitignore・現行は chacha.png を使用）。
 - `topic_sources.json`（root） — 客人の世間話トピックの取得先ホワイトリスト（config主導・adr/0014）。
@@ -85,6 +85,7 @@
 4. **設計判断を勝手に覆さない。** adr/ に却下理由付きで残る。変えるなら新 ADR（Superseded で旧を残す）。取得先/アセットはコードに埋めず config（`topic_sources.json` / `sprite.json`）。
 5. **LLM/ツール仕様は思い込みで書かず、都度確認する。** ACPのcapabilityは initialize 応答を読んで分岐。
 6. **ソース修正はテストと一緒に・走らせて緑を確認。** コードを変えたら対応するテストを足し、`python -m unittest discover -s tests -t .` を実行して全 PASS を見てから「完了」とする。テスト困難な GUI/外部依存（pywebview の窓・実 agent spawn）は、判断ロジックを**純関数に切り出して**そこをユニット化する（例: `engawa_main._web_window_kwargs`/`_ui_config`）。テスト無しの修正は回帰検知が効かず、後の変更で壊しても気づけない。harness 側でも Stop フックで src 変更時のテスト実行を強制（adr/0023・TECH_RULES §9）。
+7. **ソース修正後はドキュメントの齟齬を点検する。** コードを変えたら、完了前/セッション終わり際に関連 docs（本 `CLAUDE.md` のファイル一覧・現況／`docs/TECH_RULES.md`／`docs/Backlog.md`／`docs/adr/`＋README／`docs/class-diagram.md`／`engawa.json.sample`）を差分と突き合わせ、古い記述を直す。齟齬チェックは**意味判断ゆえ機械化できない**（フックはリマインダ止まり＝テスト必須とは別物）＝点検を習慣にする。大きい回はサブエージェントで網羅。
 
 ---
 
