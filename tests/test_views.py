@@ -50,9 +50,13 @@ class TestCornerXy(unittest.TestCase):
 class _FakeWindow:
     def __init__(self):
         self.destroyed = False
+        self.resized = None
 
     def destroy(self):
         self.destroyed = True
+
+    def resize(self, w, h):
+        self.resized = (w, h)
 
 
 class TestWebViewCloseClosesGameWindow(unittest.TestCase):
@@ -88,9 +92,37 @@ class TestGameWindowAbort(unittest.TestCase):
 
 
 class TestBuildWebHtml(unittest.TestCase):
-    """build_web_html: sprite 注入後にテンプレ印を残さない。"""
+    """build_web_html: sprite 注入後にテンプレ印を残さない＋リサイズグリップを含む。"""
     def test_no_sprite_marker_leak(self):
         self.assertNotIn("/*SPRITE*/", views.build_web_html())
+
+    def test_has_resize_grip(self):
+        # frameless は掴む縁が無いので明示グリップ＋api.resize 配線が居ること（JS 挙動自体は GUI 目視）
+        html = views.build_web_html()
+        self.assertIn('id="grip"', html)
+        self.assertIn("pywebview.api.resize", html)
+
+
+class TestWebViewResize(unittest.TestCase):
+    """右下グリップ→窓リサイズの Python 側配線（JS ドラッグは GUI 目視・ここは api→window.resize＋クランプ）。"""
+    def test_resize_calls_window(self):
+        v = views.WebView()
+        fw = _FakeWindow()
+        v.bind_window(fw)
+        ok = views._WebApi(v).resize(500, 400)
+        self.assertTrue(ok)
+        self.assertEqual(fw.resized, (500, 400))     # api→window.resize へ伝わる
+
+    def test_resize_clamps_min(self):
+        v = views.WebView()
+        fw = _FakeWindow()
+        v.bind_window(fw)
+        views._WebApi(v).resize(10, 10)              # 極小 → 240 にクランプ（潰れ防止）
+        self.assertEqual(fw.resized, (240, 240))
+
+    def test_resize_noop_without_window(self):
+        v = views.WebView()                          # bind 前 → 例外なく何もしない
+        views._WebApi(v).resize(400, 400)            # 例外を投げないこと
 
 
 class TestUiWindowWiring(unittest.TestCase):

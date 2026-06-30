@@ -383,6 +383,15 @@ class WebView(View):
     def bind_window(self, window):
         self._window = window           # frameless の×ボタンから閉じるため
 
+    def resize_window(self, w, h):
+        """frameless 窓を JS の右下グリップから広げる（pywebview window.resize）。min=240 で潰れ防止。"""
+        if self._window is None:
+            return
+        try:
+            self._window.resize(max(240, int(w)), max(240, int(h)))
+        except Exception:
+            pass
+
     def close(self):
         self.game_close()               # 観戦窓(第2窓)が残ると webview.start が返らず teardown に入れない → 先に畳む
         if self._window is not None:    # ×ボタン → 本窓を閉じる（両窓 destroy で webview.start が返り teardown へ）
@@ -405,6 +414,8 @@ class _WebApi:
         self._v.send(text, to); return True
     def close(self):
         self._v.close(); return True
+    def resize(self, w, h):
+        self._v.resize_window(w, h); return True
 
 
 class _GameApi:
@@ -505,6 +516,9 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
     line-height:18px;text-align:center;border:0;border-radius:4px;cursor:pointer;
     background:rgba(40,30,24,.45);color:#f0e9e0;font-size:14px}
   #close:hover{background:rgba(150,50,40,.85)}
+  /* 右下リサイズグリップ（frameless は掴む縁が無いので明示ハンドル・ドラッグで window.resize） */
+  #grip{position:absolute;right:0;bottom:0;width:15px;height:15px;z-index:30;cursor:nwse-resize;touch-action:none;
+    background:linear-gradient(135deg,transparent 46%,rgba(240,233,224,.5) 46% 60%,transparent 60% 73%,rgba(240,233,224,.5) 73% 88%,transparent 88%)}
   /* 客人来訪の気配＝庭先に木の葉がそよぐ（客人は画面外＝庭側にいる扱い・Inc4） */
   #kehai{position:absolute;bottom:8%;left:58%;width:7px;height:4px;border-radius:60% 0 60% 0;
     background:#7a9a5a;opacity:0;pointer-events:none;z-index:14}
@@ -555,6 +569,7 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
     <div id="kehai"></div><div id="chashadow"></div>
     <canvas id="cha" width="74" height="74"></canvas><div id="nya">ニャー</div></div>
   <button id="close" title="閉じる">×</button>
+  <div id="grip" title="ドラッグでリサイズ"></div>
   <div id="log"></div>
   <div id="addrbar"><span class="al">宛先</span>
     <button class="ac sel" data-p="">茶々</button>
@@ -718,6 +733,19 @@ function meow(){
   chacha.lastUser=performance.now();                            // 反応＝既存 attentive（こっち見てにっこり）
 }
 cv.addEventListener('dblclick',meow);
+// 右下グリップ → frameless 窓のドラッグ・リサイズ（pywebview window.resize を api 経由で呼ぶ）。
+// 画面座標(screenX/Y)で差分を取り、窓が伸びても基準がぶれないように。min は Python 側でも 240 にクランプ。
+(function(){
+  const g=document.getElementById('grip'); if(!g) return;
+  let on=false, sx=0, sy=0, sw=0, sh=0;
+  g.addEventListener('pointerdown',e=>{on=true; sx=e.screenX; sy=e.screenY; sw=window.innerWidth; sh=window.innerHeight;
+    try{g.setPointerCapture(e.pointerId);}catch(_){} e.preventDefault();});
+  g.addEventListener('pointermove',e=>{ if(!on) return;
+    const w=Math.max(240,Math.round(sw+(e.screenX-sx))), h=Math.max(240,Math.round(sh+(e.screenY-sy)));
+    if(window.pywebview&&pywebview.api&&pywebview.api.resize) pywebview.api.resize(w,h);});
+  const end=e=>{on=false; try{g.releasePointerCapture(e.pointerId);}catch(_){}};
+  g.addEventListener('pointerup',end); g.addEventListener('pointercancel',end);
+})();
 </script></body></html>
 """
 
