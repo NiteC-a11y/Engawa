@@ -102,6 +102,20 @@ class TestBuildWebHtml(unittest.TestCase):
         self.assertIn('id="grip"', html)
         self.assertIn("pywebview.api.resize", html)
 
+    def test_font_scale_injected(self):
+        # 文字倍率は --fz 変数で本文/入力に効かせる（窓全体 zoom は使わない＝入力欄を切らない）
+        self.assertIn("--fz:1.5", views.build_web_html(1.5))
+
+    def test_default_font_is_unity(self):
+        self.assertIn("--fz:1.0", views.build_web_html())
+        self.assertNotIn("/*FONT*/", views.build_web_html())   # プレースホルダは消費済み
+
+    def test_input_bar_still_present(self):
+        # 文字拡大で入力欄が消えないこと（zoom 事故の回帰ガード・大きめ倍率でもマークアップは在る）
+        html = views.build_web_html(2.0)
+        self.assertIn('id="in"', html)
+        self.assertIn('id="bar"', html)
+
 
 class TestWebViewResize(unittest.TestCase):
     """右下グリップ→窓リサイズの Python 側配線（JS ドラッグは GUI 目視・ここは api→window.resize＋クランプ）。"""
@@ -132,7 +146,7 @@ class TestUiWindowWiring(unittest.TestCase):
         import engawa_main
         self.em = engawa_main
         self._saved = dict(os.environ)
-        for k in ("ENGAWA_UI_W", "ENGAWA_UI_H", "ENGAWA_UI_CORNER", "ENGAWA_UI_EASYDRAG"):
+        for k in ("ENGAWA_UI_W", "ENGAWA_UI_H", "ENGAWA_UI_FONT", "ENGAWA_UI_CORNER", "ENGAWA_UI_EASYDRAG"):
             os.environ.pop(k, None)
         config._CFG = {}                       # engawa.json を無視（テスト隔離）
 
@@ -148,14 +162,17 @@ class TestUiWindowWiring(unittest.TestCase):
         self.assertEqual((k["width"], k["height"]), (400, 520))   # サイズ passthrough
         self.assertTrue(k["frameless"])               # 枠なし隅窓は維持
 
-    def test_size_from_config_env(self):
+    def test_size_and_font_from_config_env(self):
         os.environ["ENGAWA_UI_W"] = "500"
-        _corner, _ed, w, _h = self.em._ui_config()
+        os.environ["ENGAWA_UI_FONT"] = "1.4"
+        _corner, _ed, w, _h, font = self.em._ui_config()
         self.assertEqual(w, 500)                       # env が効く＝ハードコードでない
+        self.assertEqual(font, 1.4)
 
     def test_defaults_when_unset(self):
-        corner, _ed, w, h = self.em._ui_config()
+        corner, _ed, w, h, font = self.em._ui_config()
         self.assertEqual((w, h), (400, 520))           # 既定窓サイズ（少し広め）
+        self.assertEqual(font, 1.0)                    # 既定 文字倍率（等倍）
         self.assertEqual(corner, "br")
 
 

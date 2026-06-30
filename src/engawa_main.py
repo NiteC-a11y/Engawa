@@ -86,7 +86,8 @@ def _ui_config():
     easy_drag = config.get_str("ENGAWA_UI_EASYDRAG", "ui", "easydrag", "0") in ("1", "true", "True")
     w = config.get_int("ENGAWA_UI_W", "ui", "w", 400, lo=240, hi=1400)                # 窓幅（既定 400・少し広め）
     h = config.get_int("ENGAWA_UI_H", "ui", "h", 520, lo=240, hi=1600)               # 窓高（既定 520）
-    return corner, easy_drag, w, h
+    font = config.get_float("ENGAWA_UI_FONT", "ui", "font", 1.0, lo=0.8, hi=2.2)     # 本文/入力の文字倍率（目が悪い人向け・既定1.0・窓全体でなく本文だけ拡大）
+    return corner, easy_drag, w, h, font
 
 
 def _web_window_kwargs(w, h, easy_drag):
@@ -99,11 +100,11 @@ def _web_window_kwargs(w, h, easy_drag):
 def run_web():
     import threading
     import webview                                    # 遅延 import（console/テストで不要）
-    corner, easy_drag, web_w, web_h = _ui_config()
+    corner, easy_drag, web_w, web_h, font = _ui_config()
     loop = asyncio.new_event_loop()
     view = views.WebView()
     view.set_layout(corner, web_w, web_h)             # 観戦窓(第2窓)を本窓の隣へ置くため
-    window = webview.create_window("茶々の縁側", html=views.build_web_html(),
+    window = webview.create_window("茶々の縁側", html=views.build_web_html(font),
                                    js_api=view.api, **_web_window_kwargs(web_w, web_h, easy_drag))
     view.bind_window(window)                          # ×ボタン / scheduler 終了で閉じるため
 

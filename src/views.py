@@ -506,6 +506,7 @@ setInterval(tick,250);
 
 WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 <style>
+  :root{--fz:/*FONT*/1}   /* 本文/入力の文字倍率（ENGAWA_UI_FONT・既定1）。窓全体 zoom は使わない＝入力欄を切らない */
   html,body{margin:0;height:100%;background:#2a2320;color:#f0e9e0;overflow:hidden;
     font-family:system-ui,"Yu Gothic UI",sans-serif;user-select:none}
   #app{display:flex;flex-direction:column;height:100vh;position:relative;
@@ -546,12 +547,12 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   /* 接地影：浮き感を消す（スプライトの足元に敷く） */
   #chashadow{position:absolute;left:50%;transform:translateX(-50%);height:9px;display:none;z-index:1;
     background:rgba(0,0,0,.22);border-radius:50%;filter:blur(3px)}
-  #log{flex:1;overflow-y:auto;padding:8px 11px;font-size:15px;line-height:1.5;background:#2a2320}
+  #log{flex:1;overflow-y:auto;padding:8px 11px;font-size:calc(15px * var(--fz));line-height:1.5;background:#2a2320}
   .item{margin:3px 0;word-break:break-word}
-  .sys{color:#9c8e84;font-size:12px}
+  .sys{color:#9c8e84;font-size:calc(12px * var(--fz))}
   .guest{color:#9fd2e2}.cha{color:#f3e8c9}
   .you{color:#bfd99a;text-align:right}
-  .who{opacity:.55;margin-right:4px;font-size:11px}
+  .who{opacity:.55;margin-right:4px;font-size:calc(11px * var(--fz))}
   #bar{display:flex;gap:6px;padding:8px;background:#1f1916}
   /* 宛先ドロップダウン（左・3人会話の入力補助。@ は日本語IMEで打ちにくいのでセレクトで選ぶ） */
   /* 宛先チップ（入力欄の上・来訪中だけ表示・タップで次の発言の宛先を選ぶ） */
@@ -561,7 +562,7 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   #addrbar .ac{font-size:12px;padding:3px 10px;border:1px solid #5a4a3a;border-radius:12px;
     background:#2e2620;color:#cdbfae;cursor:pointer}
   #addrbar .ac.sel{background:#caa46b;color:#2a2320;border-color:#caa46b}
-  #in{flex:1;padding:8px;border:1px solid #5a4a3a;border-radius:6px;background:#2e2620;color:#f0e9e0;font-size:13px}
+  #in{flex:1;padding:8px;border:1px solid #5a4a3a;border-radius:6px;background:#2e2620;color:#f0e9e0;font-size:calc(13px * var(--fz))}
   #send{padding:8px 13px;border:0;border-radius:6px;background:#caa46b;color:#2a2320;cursor:pointer}
 </style></head>
 <body><div id="app">
@@ -777,8 +778,11 @@ def _load_sprite():
         return None
 
 
-def build_web_html():
-    """WEB_HTML に sprite 設定を注入して返す（run_web が使う）。シート無しなら SPRITE=null のまま。"""
+def build_web_html(font=1.0):
+    """WEB_HTML に sprite 設定と文字倍率(font)を注入して返す（run_web が使う）。
+    font は本文/入力のフォントだけを calc(BASE * var(--fz)) で拡大＝スクロール領域のみ＝入力欄を押し出さない
+    （窓全体の zoom は使わない・6/30 の事故の教訓）。シート無しなら SPRITE=null のまま。"""
     sprite = _load_sprite()
-    return WEB_HTML.replace("/*SPRITE*/null",
+    html = WEB_HTML.replace("/*SPRITE*/null",
                             json.dumps(sprite, ensure_ascii=False) if sprite else "null")
+    return html.replace("/*FONT*/1", str(font))

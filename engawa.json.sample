@@ -38,10 +38,11 @@
     "resident_restart_at": 2
   },
   "ui": {
-    "_comment": "web 隅窓(ENGAWA_UI=web)の見た目。corner=隅(br/bl/tr/tl)。easydrag=窓どこでも掴んで移動(0/1)。w/h=窓の幅・高さ(px・既定400x520)。窓は resizable(frameless のため実挙動は要目視)。w/h 変更は再起動で反映。読みやすさは本文フォント(#log 15px)で確保(窓全体 zoom は入力欄が切れるため不採用)。",
+    "_comment": "web 隅窓(ENGAWA_UI=web)の見た目。corner=隅(br/bl/tr/tl)。easydrag=窓どこでも掴んで移動(0/1)。w/h=窓の幅・高さ(px・既定400x520)。窓は右下グリップでドラッグ・リサイズ。font=本文/入力の文字倍率(目が悪い人向け・既定1.0・1.3〜1.6で大きめ。窓全体でなく本文だけ拡大＝入力欄を切らない)。w/h/font 変更は再起動で反映。",
     "corner": "br",
     "easydrag": 0,
     "w": 400,
-    "h": 520
+    "h": 520,
+    "font": 1.0
   }
 }
