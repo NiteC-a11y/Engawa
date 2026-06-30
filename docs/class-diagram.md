@@ -176,8 +176,8 @@ classDiagram
     class GuestSource {
         +persona: str
         +agent: AcpAgent
-        +beats: tuple
         +eligible(ctx) 夕方×確率
+        +ensure_agent() codex spawn
     }
 
     class Phase {
@@ -353,6 +353,7 @@ flowchart TB
         game["game.py\nGameAdapter / GameSession"]
         conv["conversation.py\nRoom / RoomState"]
         sources["sources.py\nEventSource"]
+        prompts["prompts.py\nLLM文言ビルダー"]
     end
 
     subgraph Ports["Port（抽象境界）"]
@@ -377,6 +378,8 @@ flowchart TB
     Scheduler --> GameAdapter
     Scheduler --> Room
     Scheduler --> AcpAgent
+    Scheduler --> prompts
+    prompts -.-> sources
 
     View <|-- ConsoleView
     View <|-- WebView
@@ -398,8 +401,9 @@ flowchart TB
 | 環境イベント | `EventSource` | `BoxGardenArc`, `WeatherSource`, `GuestSource` |
 | ゲーム | `GameAdapter` | `RLCardAdapter`（+ `BlackjackRender`） |
 | 3人会話の発話 | `Speaker`（DI） | Scheduler が `AcpAgent.prompt` を fn として注入 |
+| LLM 文言生成 | （Port なし・関数群） | `prompts.py`（注入プロンプト工場・`sources` から分離・`prompts→sources` 一方向） |
 
-`engawa_main.py` が composition root で、`Scheduler` が Mediator として各 Port を結線する（ADR-0013）。
+`engawa_main.py` が composition root で、`Scheduler` が Mediator として各 Port を結線する（ADR-0013）。`prompts.py` は Scheduler だけが呼ぶ LLM 文言ビルダー（`user_narration`/`room_*_prompt`/`game_move_prompt` 等）を `sources.py` から切り出したもの。
 
 ## 参照
 
