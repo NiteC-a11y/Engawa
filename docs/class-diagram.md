@@ -76,6 +76,7 @@ classDiagram
         +api: _WebApi
         +poll(since)
         +send(text, to)
+        +resize_window(w, h)
     }
 
     class CaptureView {
@@ -87,6 +88,7 @@ classDiagram
         +poll(since)
         +send(text, to)
         +close()
+        +resize(w, h)
     }
 
     class _GameApi {
