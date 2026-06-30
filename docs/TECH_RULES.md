@@ -88,6 +88,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 ## 7. UI 規約（P5）
 
 - **透過しない。** 背景（空・障子・板の間）ごと不透明に描いた小窓を frameless + on_top で隅に置く。adr/0009
+- **窓サイズ・拡大率は config 主導**：`ENGAWA_UI_W`/`ENGAWA_UI_H`（既定 400×520）・`ENGAWA_UI_ZOOM`（UI 全体＝文字含む・CSS `zoom`・既定 1.1）を `engawa.json[ui]` / env で（env>json>既定・ADR-0020 流）。窓は **resizable**（frameless でもドラッグで広げられる・`min_size`）。配置は `ENGAWA_UI_CORNER`（br/bl/tr/tl）/ `ENGAWA_UI_EASYDRAG`。
 - **ドット絵は差し替え可能なアセット層**。state機構・ループはコード、スプライトは別（Aseprite製シートに後で差し替え）。adr/0010
 - 拡大時は **`imageSmoothingEnabled = false` / `image-rendering: pixelated`** 必須（ドット絵を滲ませない）。
 - アニメ=コマ送り（パラパラ）、移動=座標/transform、のハイブリッド。state（天気/時刻/気分）→アニメ選択。
@@ -104,11 +105,20 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 - 客人を常駐・対等会話にしない（§5, adr/0008）
 - 設計判断を ADR なしに覆さない
 - 既存キャラ／IP を模倣しない（§7）
+- **テスト無しでソースを変えない（§9, adr/0023）**
+
+---
+
+## 9. テスト（必須・adr/0023）
+
+- **ソース修正にはテストを同梱**し、`python -m unittest discover -s tests -t .`（stdlib unittest・GUI/ネット不要）で**全 PASS を確認してから完了**とする。テスト無しの修正は回帰検知が効かず、後の変更で壊しても気づけない。
+- **テスト困難な GUI/外部依存は判断ロジックを純関数に切り出してユニット化**する（例: `engawa_main._web_window_kwargs`/`_ui_config`、`views.build_web_html`）。GUI の見た目自体はユーザー目視（§7 / adr/0018,0019）。
+- **harness で強制**：`.claude/settings.json`（project・committed）の **Stop フック**が src/tests 変更時にテストを走らせ、赤なら完了をブロック（`/hooks` で確認・無効化可）。
 
 ---
 
 ## 参照
-- テスト → リポジトリ直下で `python -m unittest discover -s tests -t .`（stdlib unittest のみ・GUI/ネット不要・`tests/`）
+- テスト → リポジトリ直下で `python -m unittest discover -s tests -t .`（stdlib unittest のみ・GUI/ネット不要・`tests/`・§9 必須・adr/0023）
 - 判断の経緯 → `docs/adr/`（README に一覧）
 - 全体像（正本） → `CLAUDE.md`（adr/0016）／旧構想は `docs/engawa-acp-spec.md`（歴史的参照）
 - 住人の心得 → `CLAUDE.md`

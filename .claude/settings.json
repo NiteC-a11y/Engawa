@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" || exit 0; git status --porcelain -- src tests | grep -q . || exit 0; out=$(python -m unittest discover -s tests -t . -q 2>&1) && exit 0; echo \"$out\" | tail -n 15 >&2; echo 'テストが赤です。src/tests を変更したらテストを追加し、python -m unittest discover -s tests -t . を緑にしてから完了してください（CLAUDE.md 原則6）。' >&2; exit 2",
+            "timeout": 60,
+            "statusMessage": "テスト実行（src/tests 変更時）…"
+          }
+        ]
+      }
+    ]
+  }
+}
