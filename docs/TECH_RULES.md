@@ -88,7 +88,8 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 ## 7. UI 規約（P5）
 
 - **透過しない。** 背景（空・障子・板の間）ごと不透明に描いた小窓を frameless + on_top で隅に置く。adr/0009
-- **窓サイズ・拡大率は config 主導**：`ENGAWA_UI_W`/`ENGAWA_UI_H`（既定 400×520）・`ENGAWA_UI_ZOOM`（UI 全体＝文字含む・CSS `zoom`・既定 1.1）を `engawa.json[ui]` / env で（env>json>既定・ADR-0020 流）。窓は **resizable**（frameless でもドラッグで広げられる・`min_size`）。配置は `ENGAWA_UI_CORNER`（br/bl/tr/tl）/ `ENGAWA_UI_EASYDRAG`。
+- **窓サイズは config 主導**：`ENGAWA_UI_W`/`ENGAWA_UI_H`（既定 400×520）を `engawa.json[ui]` / env で（env>json>既定・ADR-0020 流）。窓は **resizable**（`min_size`・frameless のため実挙動は GUI 目視）。配置は `ENGAWA_UI_CORNER`（br/bl/tr/tl）/ `ENGAWA_UI_EASYDRAG`。
+- **文字の読みやすさは本文フォントで確保**（`#log` 15px）。**窓全体の `zoom` は使わない**＝frameless＋`#app{height:100vh}`＋`overflow:hidden` で拡大すると下の入力欄が窓外に切れて操作不能になるため（6/30 の事故・撤回済み）。テキスト拡大は overflow:auto な領域のフォントで行う（入力欄を押し出さない）。
 - **ドット絵は差し替え可能なアセット層**。state機構・ループはコード、スプライトは別（Aseprite製シートに後で差し替え）。adr/0010
 - 拡大時は **`imageSmoothingEnabled = false` / `image-rendering: pixelated`** 必須（ドット絵を滲ませない）。
 - アニメ=コマ送り（パラパラ）、移動=座標/transform、のハイブリッド。state（天気/時刻/気分）→アニメ選択。

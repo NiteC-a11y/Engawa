@@ -495,7 +495,6 @@ setInterval(tick,250);
 
 WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 <style>
-  html{zoom:/*ZOOM*/1}
   html,body{margin:0;height:100%;background:#2a2320;color:#f0e9e0;overflow:hidden;
     font-family:system-ui,"Yu Gothic UI",sans-serif;user-select:none}
   #app{display:flex;flex-direction:column;height:100vh;position:relative;
@@ -533,7 +532,7 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   /* 接地影：浮き感を消す（スプライトの足元に敷く） */
   #chashadow{position:absolute;left:50%;transform:translateX(-50%);height:9px;display:none;z-index:1;
     background:rgba(0,0,0,.22);border-radius:50%;filter:blur(3px)}
-  #log{flex:1;overflow-y:auto;padding:8px 11px;font-size:13px;line-height:1.55;background:#2a2320}
+  #log{flex:1;overflow-y:auto;padding:8px 11px;font-size:15px;line-height:1.5;background:#2a2320}
   .item{margin:3px 0;word-break:break-word}
   .sys{color:#9c8e84;font-size:12px}
   .guest{color:#9fd2e2}.cha{color:#f3e8c9}
@@ -750,10 +749,8 @@ def _load_sprite():
         return None
 
 
-def build_web_html(zoom=1.0):
-    """WEB_HTML に sprite 設定と UI 拡大率(zoom)を注入して返す（run_web が使う）。
-    zoom は Chromium の zoom で UI 全体（文字含む）を一様拡大（1.0=等倍）。シート無しなら SPRITE=null のまま。"""
+def build_web_html():
+    """WEB_HTML に sprite 設定を注入して返す（run_web が使う）。シート無しなら SPRITE=null のまま。"""
     sprite = _load_sprite()
-    html = WEB_HTML.replace("/*SPRITE*/null",
+    return WEB_HTML.replace("/*SPRITE*/null",
                             json.dumps(sprite, ensure_ascii=False) if sprite else "null")
-    return html.replace("/*ZOOM*/1", str(zoom))
