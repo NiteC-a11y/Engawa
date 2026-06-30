@@ -63,6 +63,7 @@
       - 代替: キーボード（Ctrl +/− で文字・Ctrl 0 で戻す）。
       - 永続化は **localStorage 不可（TECH_RULES §7）**＝Python 側で `engawa.json[ui]` に書き戻す（config 主導と整合）か、当面セッション内のみ。
       - console 版にも `/font` を効かせるか（console は端末フォント依存＝No-op か注記）は要検討。
+    - [x] **観戦窓(GAME_HTML)も同倍率で拡大（6/30・ユーザー報告「ゲーム版が拡大されず不自然」）**＝当初 font は本窓(WEB_HTML)だけで、観戦窓は生 GAME_HTML＝拡大されず不整合だった。GAME_HTML に `--fz` を注入（文字＋カード箱 `.card`＋行を `calc(BASE * var(--fz))` で揃えて拡大）し、`build_game_html(font)`＋`set_layout(...,font)`＋`game_open` で**窓サイズも font 倍**に（はみ出し防止・`#app{overflow-y:auto}` も安全網）。テスト `test_views.TestGameWindowFont`(4件)＋GAME_HTML JS node --check OK（全167 PASS）。**見た目はユーザー目視**。
 - [x] Increment 3: スプライト差し替え機構＋仮の皮（6/27）
   - [x] 差し替え機構＋state→アニメ配線: `sprite.json`（リポジトリ直下・config／env `ENGAWA_SPRITE_CONFIG`）＝frame_w/h・scale・animations{idle/blink/talk/listen/attentive: frames,fps}。Python が PNG を **data URI で HTML へ注入**（`build_web_html`）、JS が `chaState()`→コマ切り出しで blit（`imageSmoothing` 無効）。**シート無し/欠損は procedural にフォールバック**（コード不触で皮交換）。Python ユニット＋JS `node --check`（procedural/injected 両経路）＋全8スイート緑＋frameless 窓で実描画 GUI スモーク OK
   - [x] **placeholder ドット絵を生成・有効化**（6/27）: Pillow で 32x32×7コマ（idle×2/blink/talk×2/listen=耳ピン/attentive=目大）の茶々(猫)を生成→`chacha.png`（リポジトリ直下）＋`sprite.json` enabled:true で稼働。質は仮（再描画の下敷き用）。生成器は scratchpad の gen_sprite.py

@@ -214,10 +214,12 @@ class WebView(View):
         self._game_rev = 0
         self._corner = "br"             # 観戦窓の配置（run_web が set_layout で設定）
         self._main_wh = (340, 360)      # メイン窓サイズ（配置計算用・既定）
+        self._font = 1.0                # 文字倍率（ENGAWA_UI_FONT・観戦窓にも一貫適用）
 
-    def set_layout(self, corner, main_w, main_h):
+    def set_layout(self, corner, main_w, main_h, font=1.0):
         self._corner = corner
         self._main_wh = (int(main_w), int(main_h))
+        self._font = float(font)
 
     def _bump(self):
         self._rev += 1
@@ -272,12 +274,12 @@ class WebView(View):
             self._game_lines = []
             self._game_rev = 0
         self._game_api = _GameApi(self)
-        gw, gh = 380, 320
+        gw, gh = int(380 * self._font), int(320 * self._font)   # 文字倍率に合わせ観戦窓も拡大（盤がはみ出さない）
         x, y = self._game_xy(gw, gh)
         try:
             import webview
             self._game_window = webview.create_window(
-                str(title), html=GAME_HTML, js_api=self._game_api,
+                str(title), html=build_game_html(self._font), js_api=self._game_api,
                 width=gw, height=gh, x=x, y=y,
                 frameless=True, on_top=True, easy_drag=True, resizable=True)
         except Exception:
@@ -431,23 +433,24 @@ class _GameApi:
 # 観戦窓（ADR-0017 Inc4b）。snapshot を poll してカードを描く小窓。札卓っぽい緑フェルト。
 GAME_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 <style>
+  :root{--fz:/*FONT*/1}   /* 文字倍率（ENGAWA_UI_FONT）。盤=文字+カード箱+窓を揃えて拡大（zoom は 100vh で切れるので不使用） */
   html,body{margin:0;height:100%;background:#33503f;color:#f0ece2;overflow:hidden;
     font-family:system-ui,"Yu Gothic UI",sans-serif;user-select:none}
-  #app{height:100vh;box-sizing:border-box;border:1px solid #20382b;padding:8px 10px;cursor:move}
-  .label{font-size:12px;opacity:.8;margin:0 0 6px;text-align:center;letter-spacing:2px}
-  .row{display:flex;align-items:center;gap:4px;margin:7px 0;min-height:38px}
+  #app{height:100vh;box-sizing:border-box;border:1px solid #20382b;padding:8px 10px;cursor:move;overflow-y:auto}
+  .label{font-size:calc(12px * var(--fz));opacity:.8;margin:0 0 6px;text-align:center;letter-spacing:2px}
+  .row{display:flex;align-items:center;gap:4px;margin:7px 0;min-height:calc(38px * var(--fz))}
   .row.dealer{border-bottom:1px dashed rgba(255,255,255,.22);padding-bottom:9px;margin-bottom:10px}
-  .who{width:84px;font-size:13px;flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .val{margin-left:6px;font-size:13px;opacity:.85;min-width:34px}
+  .who{width:calc(84px * var(--fz));font-size:calc(13px * var(--fz));flex:0 0 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .val{margin-left:6px;font-size:calc(13px * var(--fz));opacity:.85;min-width:calc(34px * var(--fz))}
   .row.cur{background:rgba(255,255,255,.10);border-radius:7px}
   .card{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
-    width:26px;height:36px;background:#fbfaf6;border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.4)}
+    width:calc(26px * var(--fz));height:calc(36px * var(--fz));background:#fbfaf6;border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.4)}
   .card.red{color:#c83b2e}.card.blk{color:#23201c}
-  .card b{font-weight:700;font-size:13px;line-height:1}.card i{font-style:normal;font-size:11px;line-height:1}
+  .card b{font-weight:700;font-size:calc(13px * var(--fz));line-height:1}.card i{font-style:normal;font-size:calc(11px * var(--fz));line-height:1}
   .card.back{background:repeating-linear-gradient(45deg,#7a8fae 0 4px,#67809f 4px 8px)}
-  .badge{margin-left:8px;font-size:12px;padding:1px 8px;border-radius:10px}
+  .badge{margin-left:8px;font-size:calc(12px * var(--fz));padding:1px 8px;border-radius:10px}
   .badge.win{background:#2e7d4f}.badge.lose{background:#9a3b32}.badge.draw{background:#6b6256}
-  #txt{font-size:12px;white-space:pre-wrap;opacity:.9}
+  #txt{font-size:calc(12px * var(--fz));white-space:pre-wrap;opacity:.9}
   #gclose{position:absolute;top:4px;right:6px;z-index:20;width:20px;height:20px;padding:0;
     line-height:18px;text-align:center;border:0;border-radius:4px;cursor:pointer;
     background:rgba(0,0,0,.30);color:#f0ece2;font-size:14px}
@@ -786,3 +789,9 @@ def build_web_html(font=1.0):
     html = WEB_HTML.replace("/*SPRITE*/null",
                             json.dumps(sprite, ensure_ascii=False) if sprite else "null")
     return html.replace("/*FONT*/1", str(font))
+
+
+def build_game_html(font=1.0):
+    """GAME_HTML（観戦窓）に文字倍率(font)を注入。盤=文字+カード箱+行を calc(BASE * var(--fz)) で揃えて拡大し、
+    窓サイズも font 倍で広げる（はみ出さない）。本窓と同じ ENGAWA_UI_FONT で一貫させる。"""
+    return GAME_HTML.replace("/*FONT*/1", str(font))

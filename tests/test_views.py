@@ -139,6 +139,27 @@ class TestWebViewResize(unittest.TestCase):
         views._WebApi(v).resize(400, 400)            # 例外を投げないこと
 
 
+class TestGameWindowFont(unittest.TestCase):
+    """観戦窓(GAME_HTML)も本窓と同じ文字倍率で拡大（盤だけ拡大されない不整合の回帰ガード）。"""
+    def test_game_html_font_injected(self):
+        self.assertIn("--fz:1.6", views.build_game_html(1.6))
+
+    def test_game_html_default_unity_no_marker(self):
+        h = views.build_game_html()
+        self.assertIn("--fz:1.0", h)
+        self.assertNotIn("/*FONT*/", h)             # プレースホルダ消費済み
+
+    def test_set_layout_stores_font_for_game_window(self):
+        v = views.WebView()
+        v.set_layout("br", 400, 520, 1.4)
+        self.assertEqual(v._font, 1.4)              # game_open はこの倍率で観戦窓を建てる
+
+    def test_set_layout_font_defaults_unity(self):
+        v = views.WebView()
+        v.set_layout("br", 400, 520)               # font 省略 → 等倍
+        self.assertEqual(v._font, 1.0)
+
+
 class TestUiWindowWiring(unittest.TestCase):
     """run_web から分離した窓オプション/設定解決（GUI 起動せずユニットで担保）。
     『窓が狭い』対策＝窓は resizable・サイズは config 由来（ハードコードでない）。"""

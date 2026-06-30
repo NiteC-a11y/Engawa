@@ -103,7 +103,7 @@ def run_web():
     corner, easy_drag, web_w, web_h, font = _ui_config()
     loop = asyncio.new_event_loop()
     view = views.WebView()
-    view.set_layout(corner, web_w, web_h)             # 観戦窓(第2窓)を本窓の隣へ置くため
+    view.set_layout(corner, web_w, web_h, font)       # 観戦窓(第2窓)を本窓の隣へ＋同じ文字倍率で
     window = webview.create_window("茶々の縁側", html=views.build_web_html(font),
                                    js_api=view.api, **_web_window_kwargs(web_w, web_h, easy_drag))
     view.bind_window(window)                          # ×ボタン / scheduler 終了で閉じるため

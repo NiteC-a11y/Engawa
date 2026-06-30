@@ -90,6 +90,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 - **透過しない。** 背景（空・障子・板の間）ごと不透明に描いた小窓を frameless + on_top で隅に置く。adr/0009
 - **窓サイズは config 主導**：`ENGAWA_UI_W`/`ENGAWA_UI_H`（既定 400×520）を `engawa.json[ui]` / env で（env>json>既定・ADR-0020 流）。**リサイズは右下グリップ**（frameless は掴む縁が無いので明示ハンドル `#grip`→JS pointer ドラッグ→`pywebview.api.resize`→`window.resize`・min 240 クランプ。`resizable=True` 単体では frameless でドラッグ不可だった）。配置は `ENGAWA_UI_CORNER`（br/bl/tr/tl）/ `ENGAWA_UI_EASYDRAG`。
 - **文字サイズは config 主導**（`ENGAWA_UI_FONT`・既定 1.0・目が悪い人向け）。本文/入力のフォントだけを `calc(BASE * var(--fz))` で拡大＝`#log`(overflow:auto) はスクロール・`#bar` は flex で残る＝**入力欄を押し出さない**。**窓全体の `zoom` は使わない**（frameless＋`height:100vh`＋`overflow:hidden` で拡大すると入力欄が窓外に切れて操作不能・6/30 の事故・撤回済み）。
+- **観戦窓(GAME_HTML)も同じ `ENGAWA_UI_FONT` で拡大**（本窓だけ拡大の不整合を避ける）。盤は文字＋カード箱(`.card`)＋行を `calc(BASE * var(--fz))` で揃え、**窓サイズも font 倍**に（`build_game_html(font)`／`set_layout(...,font)`／`game_open`）＝盤がはみ出さない。
 - **ドット絵は差し替え可能なアセット層**。state機構・ループはコード、スプライトは別（Aseprite製シートに後で差し替え）。adr/0010
 - 拡大時は **`imageSmoothingEnabled = false` / `image-rendering: pixelated`** 必須（ドット絵を滲ませない）。
 - アニメ=コマ送り（パラパラ）、移動=座標/transform、のハイブリッド。state（天気/時刻/気分）→アニメ選択。
