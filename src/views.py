@@ -495,6 +495,7 @@ setInterval(tick,250);
 
 WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 <style>
+  html{zoom:/*ZOOM*/1}
   html,body{margin:0;height:100%;background:#2a2320;color:#f0e9e0;overflow:hidden;
     font-family:system-ui,"Yu Gothic UI",sans-serif;user-select:none}
   #app{display:flex;flex-direction:column;height:100vh;position:relative;
@@ -749,8 +750,10 @@ def _load_sprite():
         return None
 
 
-def build_web_html():
-    """WEB_HTML に sprite 設定を注入して返す（run_web が使う）。シート無しなら SPRITE=null のまま。"""
+def build_web_html(zoom=1.0):
+    """WEB_HTML に sprite 設定と UI 拡大率(zoom)を注入して返す（run_web が使う）。
+    zoom は Chromium の zoom で UI 全体（文字含む）を一様拡大（1.0=等倍）。シート無しなら SPRITE=null のまま。"""
     sprite = _load_sprite()
-    return WEB_HTML.replace("/*SPRITE*/null",
+    html = WEB_HTML.replace("/*SPRITE*/null",
                             json.dumps(sprite, ensure_ascii=False) if sprite else "null")
+    return html.replace("/*ZOOM*/1", str(zoom))

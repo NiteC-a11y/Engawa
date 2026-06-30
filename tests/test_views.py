@@ -4,6 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+import config
 import views
 
 
@@ -84,6 +85,64 @@ class TestGameWindowAbort(unittest.TestCase):
         self.assertTrue(gw.destroyed)          # 窓は閉じる
         self.assertIsNone(v._game_window)
         self.assertEqual(v._inq.get_nowait(), views.GAME_CLOSE_REQUEST)  # scheduler への合図を積む
+
+
+class TestBuildWebHtml(unittest.TestCase):
+    """build_web_html の注入: UI 拡大率(zoom)を html{zoom:N} として埋め、テンプレ印を残さない。
+    窓の resizable/サイズは run_web（GUI 起動＝ユニット対象外）が config 値を pywebview に渡す。"""
+    def test_zoom_injected(self):
+        self.assertIn("html{zoom:1.25}", views.build_web_html(1.25))
+
+    def test_default_zoom_is_unity(self):
+        # 引数なし＝等倍（run_web は config 既定 1.1 を渡すが、関数単体の既定は 1.0）
+        self.assertIn("html{zoom:1.0}", views.build_web_html())
+
+    def test_no_template_markers_leak(self):
+        html = views.build_web_html(1.2)
+        self.assertNotIn("/*ZOOM*/", html)     # zoom プレースホルダは消費済み
+        self.assertNotIn("/*SPRITE*/", html)   # sprite プレースホルダも消費済み
+
+
+class TestUiWindowWiring(unittest.TestCase):
+    """run_web から分離した窓オプション/設定解決（GUI 起動せずユニットで担保）。
+    『窓が狭い/文字が小さい』対策＝窓は resizable・サイズ/zoom は config 由来（ハードコードでない）。"""
+    def setUp(self):
+        import engawa_main
+        self.em = engawa_main
+        self._saved = dict(os.environ)
+        for k in ("ENGAWA_UI_W", "ENGAWA_UI_H", "ENGAWA_UI_ZOOM", "ENGAWA_UI_CORNER", "ENGAWA_UI_EASYDRAG"):
+            os.environ.pop(k, None)
+        config._CFG = {}                       # engawa.json を無視（テスト隔離）
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._saved)
+        config._CFG = None                     # 次回ロードで再読込
+
+    def test_window_is_resizable_with_min_size(self):
+        k = self.em._web_window_kwargs(400, 520, easy_drag=False)
+        self.assertTrue(k["resizable"])               # ドラッグで広げられる（狭い対策）
+        self.assertEqual(k["min_size"], (240, 240))   # 潰れ防止
+        self.assertEqual((k["width"], k["height"]), (400, 520))   # サイズ passthrough
+        self.assertTrue(k["frameless"])               # 枠なし隅窓は維持
+
+    def test_size_and_zoom_from_config_env(self):
+        os.environ["ENGAWA_UI_W"] = "500"
+        os.environ["ENGAWA_UI_ZOOM"] = "1.3"
+        _corner, _ed, w, _h, zoom = self.em._ui_config()
+        self.assertEqual(w, 500)                       # env が効く＝ハードコードでない
+        self.assertEqual(zoom, 1.3)
+
+    def test_defaults_when_unset(self):
+        corner, _ed, w, h, zoom = self.em._ui_config()
+        self.assertEqual((w, h), (400, 520))           # 既定窓サイズ（少し広め）
+        self.assertEqual(zoom, 1.1)                    # 既定 zoom（少し大きめ）
+        self.assertEqual(corner, "br")
+
+    def test_zoom_clamped_out_of_range(self):
+        os.environ["ENGAWA_UI_ZOOM"] = "9"             # 壊れた大値 → 上限 2.5 へクランプ
+        _c, _ed, _w, _h, zoom = self.em._ui_config()
+        self.assertEqual(zoom, 2.5)
 
 
 if __name__ == "__main__":

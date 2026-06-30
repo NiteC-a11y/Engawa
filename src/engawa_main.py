@@ -14,6 +14,7 @@ import os
 import sys
 
 import acp
+import config
 import scheduler as sched
 import sources
 import views
@@ -61,9 +62,6 @@ async def _serve_web(view):
     await _build(resident, view).run()
 
 
-WEB_W, WEB_H = 360, 480
-
-
 def _screen_size():
     """画面サイズ（隅配置用）。webview.screens → ctypes(Windows) → 既定 の順でフォールバック。"""
     try:
@@ -81,17 +79,33 @@ def _screen_size():
         return 1920, 1080
 
 
+def _ui_config():
+    """web 隅窓の設定を config から解決（env ENGAWA_UI_* > engawa.json[ui] > 既定。ADR-0020 流）。
+    戻り: (corner, easy_drag, w, h, zoom)。run_web とテストが使う＝GUI 起動せず配線を検証可能に。"""
+    corner    = config.get_str("ENGAWA_UI_CORNER", "ui", "corner", "br")              # br/bl/tr/tl
+    easy_drag = config.get_str("ENGAWA_UI_EASYDRAG", "ui", "easydrag", "0") in ("1", "true", "True")
+    w = config.get_int("ENGAWA_UI_W", "ui", "w", 400, lo=240, hi=1400)                # 窓幅（既定 400・少し広め）
+    h = config.get_int("ENGAWA_UI_H", "ui", "h", 520, lo=240, hi=1600)               # 窓高（既定 520）
+    zoom = config.get_float("ENGAWA_UI_ZOOM", "ui", "zoom", 1.1, lo=0.7, hi=2.5)      # UI 拡大率（文字含む・既定1.1=少し大きめ・等倍1.0・大きく1.2〜1.3）
+    return corner, easy_drag, w, h, zoom
+
+
+def _web_window_kwargs(w, h, easy_drag):
+    """pywebview.create_window へ渡す窓オプション（html/js_api 以外）。
+    resizable=True ＝ frameless でもドラッグで広げられる（『窓が狭い』対策）。min_size で潰れ防止。"""
+    return dict(width=w, height=h, frameless=True, easy_drag=easy_drag,
+                on_top=True, resizable=True, min_size=(240, 240))
+
+
 def run_web():
     import threading
     import webview                                    # 遅延 import（console/テストで不要）
-    corner = os.environ.get("ENGAWA_UI_CORNER", "br")          # br/bl/tr/tl
-    easy_drag = os.environ.get("ENGAWA_UI_EASYDRAG", "0") in ("1", "true", "True")
+    corner, easy_drag, web_w, web_h, zoom = _ui_config()
     loop = asyncio.new_event_loop()
     view = views.WebView()
-    view.set_layout(corner, WEB_W, WEB_H)             # 観戦窓(第2窓)を本窓の隣へ置くため
-    window = webview.create_window("茶々の縁側", html=views.build_web_html(), js_api=view.api,
-                                   width=WEB_W, height=WEB_H, frameless=True,
-                                   easy_drag=easy_drag, on_top=True, resizable=False)
+    view.set_layout(corner, web_w, web_h)             # 観戦窓(第2窓)を本窓の隣へ置くため
+    window = webview.create_window("茶々の縁側", html=views.build_web_html(zoom),
+                                   js_api=view.api, **_web_window_kwargs(web_w, web_h, easy_drag))
     view.bind_window(window)                          # ×ボタン / scheduler 終了で閉じるため
 
     def bg():
@@ -111,7 +125,7 @@ def run_web():
     def place():                                     # GUI 起動後に画面隅へ
         try:
             sw, sh = _screen_size()
-            window.move(*views.corner_xy(sw, sh, WEB_W, WEB_H, corner))
+            window.move(*views.corner_xy(sw, sh, web_w, web_h, corner))
         except Exception:
             pass
 
