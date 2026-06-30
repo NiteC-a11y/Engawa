@@ -25,5 +25,6 @@
 | 0019 | presentation は「意味 state ＋ config 駆動の差し替えアセット」で統一（sprite/sound/scene 共通） | Accepted（方針確定・実装これから） |
 | 0020 | モデルは config で選ぶ（住人=ANTHROPIC_MODEL / 客人=CODEX_CONFIG・未指定はアダプタ既定） | Accepted（実装） |
 | 0021 | ACP は用途別 timeout ＋ 役割別の段階回復で守る（adapter 無応答で永久待ちしない） | Accepted（実装・S1/S2） |
+| 0022 | 茶々の「声」は voice バンドルで差し替える（方言/言語を base⟂voice 分離・config 主導・既定 ja-osaka） | Accepted（方針確定・実装これから） |
 
 形式は Michael Nygard 風（背景 / 決定 / 代替案 / 影響 / 備考）。
