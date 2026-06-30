@@ -56,10 +56,11 @@
     - ⚠ **当初入れた `ENGAWA_UI_ZOOM`(html{zoom}) を即時撤回（6/30・ユーザー報告）**＝frameless＋`#app{height:100vh}`＋`overflow:hidden` で UI 全体を拡大すると**下の入力欄が窓外へはみ出て消える＝操作不能**になった（GUI 未検証のまま入れた事故）。zoom 機構を撤去し、レイアウトを壊さない**本文フォント拡大(`#log`15px)**へ置換（`#log` は overflow-y:auto＝スクロールするので入力欄は切れない）。教訓＝GUI 挙動はユニットで担保不可・目視必須（原則7/ADR-0019）。
     - [x] **リサイズ手段を実装（6/30・ユーザー報告「リサイズできない」→実機OK）**＝`resizable=True` だけでは frameless 窓に掴む縁が無くドラッグ不可だった。**右下に `#grip`**（nwse-resize）を置き、JS の pointer ドラッグ→`pywebview.api.resize`→`WebView.resize_window`→`window.resize`（min 240 クランプ・画面座標で差分）で実装。テスト `test_views.TestWebViewResize`(3件)＋`TestBuildWebHtml.test_has_resize_grip`、JS は node --check OK。**実機でドラッグ・リサイズ動作をユーザー確認（6/30）**。
     - [x] **文字サイズを config つまみ化（6/30・ユーザー要望「目が悪い人向け」）**＝`ENGAWA_UI_FONT`(既定1.0・0.8〜2.2)。本文/入力(`#log`/`.sys`/`.who`/`#in`)のフォントだけを `calc(BASE * var(--fz))` で拡大（`build_web_html(font)` が `:root{--fz:N}` を注入）。`#log` は overflow:auto＝スクロール、`#bar` は flex＝**入力欄を押し出さない**（窓全体 zoom の事故を踏まえた安全策）。テスト `test_views.TestBuildWebHtml`(font注入/既定/入力欄存続)＋`TestUiWindowWiring`(env)、JS node --check OK（全163 PASS）。**見た目はユーザー目視**。
-    - [ ] **UI 設定をアプリ内で変更可能に（6/30・ユーザー要望「env 変更は不便」）**＝今は `ENGAWA_UI_FONT`/`W`/`H` を env か `engawa.json` 編集＋再起動でしか変えられず不便。アプリ内から**ライブ**で調整したい。
-      - **第一候補 `/font <倍率>` スラッシュ**（例 `/font 1.4`・`/font` で現在値）＝ADR-0007「スラッシュ＝縁側操作（茶々に流さない）」に乗る・**本窓をごちゃつかせない**・既存入力欄で打つので **IME 切替不要**（memory のユーザー嗜好に合致）。窓サイズも `/win <w> <h>` 等で同様に。
-      - ライブ適用は容易：font は JS で `document.documentElement.style.setProperty('--fz', n)`（**再起動不要**）、窓は既存 `api.resize`。
-      - 代替: キーボード（Ctrl +/− で文字・Ctrl 0 で戻す）。これも手動・無クラッタで嗜好に合う。
+    - [ ] **UI 設定をアプリ内で変更可能に（6/30・ユーザー要望「env 変更は不便」）**＝今は `ENGAWA_UI_FONT`/`W`/`H` を env か `engawa.json` 編集＋再起動でしか変えられず不便。アプリ内から**ライブ**で調整したい。**2系統（補完）**:
+      - **(A) `/font <倍率>` スラッシュ**（例 `/font 1.4`・`/font` で現在値）＝ADR-0007「スラッシュ＝縁側操作（茶々に流さない）」に乗る・**本窓をごちゃつかせない**・既存入力欄で打つので **IME 切替不要**。素早い・上級者向け。窓サイズも `/win <w> <h>` 等で同様に。
+      - **(B) 歯車アイコン⚙→設定パネル**（既存の×ボタンの隣に小さく置く）＝クリックで小オーバーレイを出し、文字サイズ(スライダ/A−A＋)・窓サイズ等を**スライダ/ボタン**で調整。**発見しやすい＝アクセシビリティ向き**（"目が悪い人" はスラッシュを知らない）。パネルは一時表示で常時クラッタにはならない（アイコン1個の追加は許容・memory「本窓をごちゃつかせない」とのトレードオフは小）。手動操作・IME 不要で嗜好に合致。
+      - A/B は**同じ適用関数を叩く**形に。ライブ適用は容易：font は JS で `document.documentElement.style.setProperty('--fz', n)`（**再起動不要**）、窓は既存 `api.resize`。
+      - 代替: キーボード（Ctrl +/− で文字・Ctrl 0 で戻す）。
       - 永続化は **localStorage 不可（TECH_RULES §7）**＝Python 側で `engawa.json[ui]` に書き戻す（config 主導と整合）か、当面セッション内のみ。
       - console 版にも `/font` を効かせるか（console は端末フォント依存＝No-op か注記）は要検討。
 - [x] Increment 3: スプライト差し替え機構＋仮の皮（6/27）
