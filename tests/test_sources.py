@@ -84,38 +84,75 @@ class TestNarration(unittest.TestCase):
         self.assertIn("……", sources.event_narration("雀が来た"))
 
 
+class TestPersonaMatches(unittest.TestCase):
+    """人格マッチ: タグが客人の役名の一部に含まれれば一致（実 persona は長い句・7/1 方向修正）。"""
+    def test_no_tag_matches_everyone(self):
+        self.assertTrue(sources._persona_matches("気まぐれな旅の行商人", None))
+
+    def test_list_tag_substring_of_role(self):
+        self.assertTrue(sources._persona_matches("気まぐれな旅の行商人", ["行商", "商人"]))
+
+    def test_str_tag_substring_of_role(self):
+        self.assertTrue(sources._persona_matches("句をひねる風流人", "風流"))
+
+    def test_other_persona_tag_no_match(self):
+        self.assertFalse(sources._persona_matches("近所の物知りなご隠居", ["絵描き"]))
+
+
 class TestPickTopicText(unittest.TestCase):
-    """世間話の種の選定（純関数・ADR-0014 部屋経路復活）。確率/履歴は持たない。"""
+    """世間話の種の選定（純関数・ADR-0014）。人格マッチ→直近回避→ランダム。確率/履歴は持たない。"""
     def test_empty_pool_returns_none(self):
-        self.assertIsNone(sources.pick_topic_text([], "ご隠居"))
+        self.assertIsNone(sources.pick_topic_text([], "近所の物知りなご隠居"))
 
     def test_returns_a_pool_text(self):
         pool = [{"text": "A"}, {"text": "B"}]
-        self.assertIn(sources.pick_topic_text(pool, "ご隠居"), {"A", "B"})
+        self.assertIn(sources.pick_topic_text(pool, "近所の物知りなご隠居"), {"A", "B"})
 
-    def test_seasonal_no_persona_always_candidate(self):
-        # persona キー無し（季節トピック）は誰の時も候補（graceful degrade）
-        pool = [{"text": "夏至の話", "tone": "季節"}]
-        self.assertEqual(sources.pick_topic_text(pool, "行商人"), "夏至の話")
+    def test_no_persona_matches_everyone(self):
+        pool = [{"text": "夏至の話", "tone": "季節"}]              # タグ無し＝誰にでも
+        self.assertEqual(sources.pick_topic_text(pool, "気まぐれな旅の行商人"), "夏至の話")
 
-    def test_persona_mismatch_excluded_list(self):
-        # persona 不一致の人格タグ付きは除外され、無タグが残る（list 一致）
-        pool = [{"text": "絵の具の話", "persona": ["絵描き"]}, {"text": "旬の話"}]
-        self.assertEqual(sources.pick_topic_text(pool, "ご隠居"), "旬の話")
+    def test_tag_matches_real_persona(self):
+        pool = [{"text": "相場の話", "persona": ["行商", "商人"]}]  # 「行商」⊂「…行商人」で一致
+        self.assertEqual(sources.pick_topic_text(pool, "気まぐれな旅の行商人"), "相場の話")
 
-    def test_persona_match_str_substring(self):
-        # persona が str の時は部分一致（旧 _pick_topic 踏襲）
-        pool = [{"text": "相場の話", "persona": "行商人むけ"}]
-        self.assertEqual(sources.pick_topic_text(pool, "行商人"), "相場の話")
+    def test_other_persona_tag_excluded_neutral_wins(self):
+        pool = [{"text": "色の話", "persona": ["絵描き"]}, {"text": "季節の話"}]
+        # ご隠居には絵描きタグは付かない → 色の話は候補外、無タグの季節が残る
+        self.assertEqual(sources.pick_topic_text(pool, "近所の物知りなご隠居"), "季節の話")
+
+    def test_own_tag_included_among_neutral(self):
+        pool = [{"text": "色の話", "persona": ["絵描き"]}, {"text": "季節の話"}]
+        got = sources.pick_topic_text(pool, "腹を空かせた野良の絵描き")   # 自分のタグ＋無タグが候補
+        self.assertIn(got, {"色の話", "季節の話"})
 
     def test_avoid_excludes_recent(self):
         pool = [{"text": "A"}, {"text": "B"}]
         self.assertEqual(sources.pick_topic_text(pool, "ご隠居", avoid=["A"]), "B")   # 直近回避
 
     def test_avoid_all_falls_back_non_none(self):
-        # 全部が直近＝フィルタで空 → 候補全体へフォールバック（None にしない）
         pool = [{"text": "A"}]
-        self.assertEqual(sources.pick_topic_text(pool, "ご隠居", avoid=["A"]), "A")
+        self.assertEqual(sources.pick_topic_text(pool, "ご隠居", avoid=["A"]), "A")   # 全消しは候補全体へ
+
+
+class TestLocalTopics(unittest.TestCase):
+    """kind:"local" 源→トピック。inline topics は人格タグ付き／無ければ時節（ADR-0014 人格源拡充）。"""
+    def test_inline_topics_tagged(self):
+        src = {"name": "行商の噂", "kind": "local", "tone": "世間",
+               "persona": ["行商", "商人"], "topics": ["米が高い", "船賃が上がった"]}
+        ts = sources._local_topics(src)
+        self.assertEqual([t["text"] for t in ts], ["米が高い", "船賃が上がった"])
+        self.assertTrue(all(t["persona"] == ["行商", "商人"] for t in ts))
+        self.assertTrue(all(t["source"] == "行商の噂" for t in ts))
+
+    def test_no_topics_falls_back_to_seasonal(self):
+        ts = sources._local_topics({"name": "時節", "kind": "local"})   # inline 無し
+        self.assertEqual(len(ts), 2)                                     # 二十四節気＋旬
+        self.assertTrue(all("persona" not in t for t in ts))            # 季節は persona 無し＝全員共通
+
+    def test_length_capped(self):
+        src = {"name": "x", "kind": "local", "topics": ["あ" * 999]}
+        self.assertLessEqual(len(sources._local_topics(src)[0]["text"]), sources.TOPIC_MAX_LEN)
 
 
 class TestGuestAir(unittest.TestCase):

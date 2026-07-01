@@ -185,6 +185,28 @@ def _load_topic_sources():
     return [{"name": "時節", "kind": "local", "enabled": True}]
 
 
+def _local_topics(source):
+    """kind:"local" の源→トピック。inline "topics"（配列）があれば人格タグ付きの世間ネタとして返す
+    （行商人→相場・絵描き→色 等・ADR-0014 人格マッチ源の拡充）。無ければ時節（二十四節気＋旬・persona 無し）。
+    ネット不要・自作テキスト＝トーンを制御でき whitelist の心配も無い（in-repo config）。"""
+    items = source.get("topics")
+    if not items:
+        return _seasonal_topics()
+    tone = source.get("tone", "世間")
+    name = source.get("name", "local")
+    persona = source.get("persona")          # str/list/None（_persona_matches が役名と突き合わせ）
+    out = []
+    for t in items:
+        t = " ".join(str(t).split())[:TOPIC_MAX_LEN]     # 整形＋長さ上限（rss と同じ安全側）
+        if not t:
+            continue
+        d = {"text": t, "tone": tone, "source": name}
+        if persona:
+            d["persona"] = persona
+        out.append(d)
+    return out
+
+
 def fetch_topics():
     """有効＆ホワイト合格の源からトピック・プールを作る（weather と同型・失敗は握りつぶす）。"""
     pool = []
@@ -193,7 +215,7 @@ def fetch_topics():
             continue
         try:
             if s.get("kind") == "local":
-                pool += _seasonal_topics()
+                pool += _local_topics(s)         # inline topics（人格タグ）or 時節
             elif s.get("kind") == "rss":
                 pool += _fetch_rss(s)
         except Exception:
@@ -210,14 +232,25 @@ def build_context(weather, topics=None):
             "topics": topics or []}
 
 
+def _persona_matches(guest, tag):
+    """トピックの persona タグが客人の役名にマッチするか。タグ無し(None/空)は全員可（graceful degrade
+    ＝季節ネタは誰にでも）。タグ（str または list）のいずれかが**役名の一部に含まれれば**一致。
+    実 persona は長い句（例「気まぐれな旅の行商人」）なので "行商" のような短いタグを役名側から拾う
+    （逆向き `guest in tag` は長い役名がタグに収まらず効かない・7/1 修正）。"""
+    if not tag:
+        return True
+    tags = [tag] if isinstance(tag, str) else tag
+    guest = guest or ""
+    return any(str(t) in guest for t in tags)
+
+
 def pick_topic_text(pool, persona, avoid=()):
-    """世間話の“種”を1つ選ぶ（人格マッチ優先→直近回避→ランダム）。無ければ None。
+    """世間話の“種”を1つ選ぶ（人格マッチ→直近回避→ランダム）。無ければ None。
     確率ゲート(TOPIC_PROB)も履歴も持たない＝純関数（呼び側＝scheduler が握る・ADR-0014 の
-    部屋経路復活）。persona は graceful degrade（季節トピックは persona キー無し＝常に候補）。
-    persona in t["persona"] は str なら部分一致・list なら要素一致（旧 _pick_topic 踏襲）。"""
+    部屋経路復活）。人格マッチは _persona_matches（タグが役名の一部に含まれれば一致・タグ無しは全員）。"""
     if not pool:
         return None
-    matched = [t for t in pool if not t.get("persona") or persona in t["persona"]]
+    matched = [t for t in pool if _persona_matches(persona, t.get("persona"))]
     cands = matched or pool
     cands = [t for t in cands if t["text"] not in avoid] or cands   # 全消しなら候補全体へ（None にしない）
     return random.choice(cands)["text"]

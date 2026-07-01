@@ -40,3 +40,4 @@ ADR-0015 Inc2 で客人が一方向来訪から**3人会話の部屋**（`conver
 - **`TOPIC_PROB` の意味を変更**: 「世間ビートで使う確率」→「天気と一緒に“種”が場の空気に混じる確率」（＝availability のゲート・発話有無は LLM）。engawa.json `topic.prob` は据え置き（0.7）。
 - 責務分離: 選定＝`sources.pick_topic_text`（純関数・確率/履歴なし）／文言＝`prompts.guest_air`＋`room_guest_prompt(air=)`／確率・直近回避（`Scheduler._topic_recent`）・場面判定＝`scheduler.guest_say`。`conversation.Room` は不変（ctx/topics を通さない）。取得基盤（`fetch_topics`/whitelist）は健在＝再利用。
 - 一方向前提の記述（上記「決定」）は ADR-0015 の3人会話に置換済み。トピックは依然**客人主体**（茶々は種を持たず、客人の発言を transcript で聞いて自然に乗る）。
+- **人格マッチ源の拡充＋マッチ方向の修正（7/1）**。当初「人格マッチは任意の味付け」として機構だけ用意していたが、(1) 一致判定が `persona in t["persona"]`＝実 persona（長い句「気まぐれな旅の行商人」）が短いタグに収まらず**実質不発**だったのを、`_persona_matches`＝**タグが役名の一部に含まれれば一致**（「行商」⊂「…行商人」・str/list 両対応・タグ無しは全員）へ修正。(2) `topic_sources.json` の `kind:"local"` に inline `topics`＋`persona` を持たせられるよう `_local_topics` を追加（ネット不要の自作ネタ＝トーン制御可・whitelist の懸念なし）。行商人→相場/値、絵描き→色/光、ご隠居→昔話/近所、風流人→句/季語、旅人→道中 の5役ぶんを既定投入。副次効果: 候補が2→7に増え「ネタ2個で直近回避がクランプ」も自然に緩和。
