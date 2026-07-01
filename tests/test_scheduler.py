@@ -424,6 +424,27 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("夏至" in p for p in created[0].prompts))       # 種が届いた
         self.assertTrue(any("縁側の空気" in p for p in created[0].prompts))  # ambient ブロックとして
 
+    async def test_debug_logs_seed_placed_and_skipped(self):
+        # デバッグモード: 種を置いた/見送った判断が engawa.scheduler ログに出る（assertLogs で検証）。
+        # 「LLM が拾うか」は目視だが「種を入れたか」は自動テストできる＝切り分けの土台。
+        created = []
+        s = self._scheduler(created)
+        s.weather = {"desc": "晴れ"}
+        s.topics = [{"text": "夏至—昼が長い頃", "tone": "季節", "source": "時節"}]
+        await s._summon_guest("近所の物知りなご隠居")
+        saved = sources.TOPIC_PROB
+        try:
+            sources.TOPIC_PROB = 1.0
+            with self.assertLogs("engawa.scheduler", level="DEBUG") as cm:
+                await s.on_user_input("\x00guest\x00最近どう?")     # guest REPLY → 種を空気へ
+            self.assertTrue(any("種を空気へ" in m and "夏至" in m for m in cm.output))
+            sources.TOPIC_PROB = 0.0
+            with self.assertLogs("engawa.scheduler", level="DEBUG") as cm2:
+                await s.on_user_input("\x00guest\x00ほな")          # prob=0 → 種見送り
+            self.assertTrue(any("種見送り: prob外れ" in m for m in cm2.output))
+        finally:
+            sources.TOPIC_PROB = saved
+
     async def test_room_closes_during_lock_wait_no_crash(self):
         # 辞去レース回帰: on_user_input が drive_lock 待ちの間に tick が部屋を閉じても落ちず通常入力へ
         created = []

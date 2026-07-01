@@ -16,6 +16,7 @@ import time
 import acp          # ACPTimeoutError（adapter 無応答の受け）
 import config        # 設定解決（env > engawa.json > 既定）
 import conversation  # 3人会話の部屋（State パターン・ADR-0015 Inc2）
+import debuglog      # デバッグログ（ENGAWA_DEBUG=1 で engawa.log・既定オフ＝no-op）
 import game          # ゲームの Port&Adapter 核（ADR-0017。rlcard はアダプタに隔離）
 import prompts       # LLM 文言ビルダー（注入プロンプト工場・sources から分離・ADR-0013）
 import sources
@@ -33,6 +34,8 @@ ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX = min(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX), max(AC
 RESIDENT_TIMEOUT_RESTART_AT = config.get_int("ENGAWA_RESIDENT_TIMEOUT_RESTART_AT", "acp", "resident_restart_at", 2, lo=1)  # 住人 prompt がこの回数連続で timeout したら再起動（それ未満はターン破棄のみ＝文脈温存）
 GUEST_IDLE_LEAVE_TICKS = config.get_int("ENGAWA_GUEST_IDLE_LEAVE", "guest", "idle_leave_ticks", 8, lo=1)  # 来訪中、人間沈黙がこのtick数続いたら客人は辞去（来訪中tickは ACTIVE_BEAT=5〜12s。大きいほど長居・有界は維持）
 UI_FONT_MIN, UI_FONT_MAX = 0.8, 2.2      # /font の文字倍率クランプ（engawa_main._ui_config の lo/hi と揃える）
+
+log = debuglog.get("scheduler")          # デバッグログ（種の注入・来訪/room・cancel/timeout 等の主要ライフサイクル）
 
 
 def _parse_addr(line):
@@ -167,6 +170,7 @@ class Scheduler:
         if guest is not None and self.cooldowns.get("guest", 0) <= 0 and guest.eligible(ctx):
             guest.reset()                                # (2a) 自発来訪は arc 抽選から独立に判定
             self.active = guest                          #      ＝prob が実効の per-tick 率（arc と競合させない・夕方×prob×cooldown だけ）
+            log.debug("tick→自発来訪: %s", guest.persona)
             await self._start_room(guest.persona)        #      3人会話の部屋を開く（ADR-0015）
             return
         if random.random() < ARC_START_PROB:             # (2b) 箱庭アーク抽選（guest を除く・gate＋cooldown）
@@ -176,6 +180,7 @@ class Scheduler:
                 chosen = random.choice(eligible)
                 chosen.reset()
                 self.active = chosen
+                log.debug("tick→アーク: %s", chosen.key)
                 await self._emit(await self.active.next_phase(ctx))   # 箱庭アークは起を即出す
                 return
         narr = await self.idle.next_phase(ctx)           # (3) 天気つぶやき/移ろい or 沈黙
@@ -254,6 +259,7 @@ class Scheduler:
                     return
             # 部屋が閉じていた（沈黙で辞去等）→ 通常の話しかけに落とす
         if self.speaking:                                # 進行中の注入だけを畳む（ambient・cancel優先）
+            log.debug("cancel: user barge-in（speaking 中）")
             await self.resident.cancel()                 # session/cancel → stopReason=cancelled
             self.view.system("[茶々がこちらを向いた]")
         # active(source) は触らない → QUIET 明けに背景継続
@@ -365,14 +371,21 @@ class Scheduler:
         以後は tick→on_tick / ユーザー入力→on_human で進む。drive_lock 内から呼ぶ前提。"""
         try:
             await self.active.ensure_agent()             # codex を今 spawn（失敗は例外）
-        except Exception:
+        except Exception as e:
+            log.debug("客人 spawn 失敗: %s: %s", type(e).__name__, e)
             self.view.system("  （客人は来られなんだ。codex 接続・ChatGPT 認証を確認してな）")
             self._conclude(self.active)
             return
+        log.debug("客人 spawn: %s / room open", persona)
         resident_spk, guest_spk = self._room_speakers(persona)
+
+        def _on_say(who, text, kind):
+            log.debug("say %s (%s)", who, kind)
+            self.view.say(who, text)
+
         self.room = conversation.Room(
             persona, resident_spk, guest_spk, idle_leave_ticks=GUEST_IDLE_LEAVE_TICKS,
-            on_say=lambda who, text, kind: self.view.say(who, text))
+            on_say=_on_say)
         await self.room.begin()                          # 到着の挨拶＋茶々の反応 → 人間待ち
         if await self._check_room_timeout():             # 到着の挨拶すら無応答なら即・急用退場で畳む
             return
@@ -405,6 +418,11 @@ class Scheduler:
                 if tidbit:
                     self._topic_recent.append(tidbit); del self._topic_recent[:-6]   # 直近6件だけ＝変化を出す
                     air = prompts.guest_air(sources.build_context(self.weather, self.topics), tidbit)
+                    log.debug("種を空気へ: %s (%s)", tidbit, kind)   # 実際に口に出すかは codex 判断（目視）
+                else:
+                    log.debug("種見送り: 空プール (%s)", kind)
+            elif kind in (conversation.CHIME, conversation.REPLY):
+                log.debug("種見送り: prob外れ (%s)", kind)
             try:
                 return (await agent.prompt(prompts.room_guest_prompt(persona, window, kind, air=air))).strip()
             except acp.ACPTimeoutError:                  # 客人が無応答 → ハング client は二度叩かず急用退場へ
@@ -417,6 +435,7 @@ class Scheduler:
     async def _end_visit(self):
         """来訪終了: codex を破棄（使い捨て・ADR-0008）し cooldown を置いて部屋を閉じる。"""
         src = self.active
+        log.debug("客人辞去 / room close: %s", getattr(src, "persona", None))
         self.room = None
         if src is not None:
             try:
@@ -433,6 +452,9 @@ class Scheduler:
         if not (self._guest_timed_out or self._room_resident_timeout):
             return False
         resident_dead = self._room_resident_timeout
+        log.debug("timeout: %s → 急用退場",
+                  "住人+客人" if (resident_dead and self._guest_timed_out) else
+                  ("住人" if resident_dead else "客人"))
         self._guest_timed_out = self._room_resident_timeout = False
         self.view.system("  " + prompts.guest_timeout_leave())   # 客人が急用で去る（定型・local。世界観を壊さない）
         await self._end_visit()                                   # 部屋を閉じ codex を破棄（taskkill /T /F で確実に殺す）

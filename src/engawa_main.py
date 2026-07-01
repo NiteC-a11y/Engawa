@@ -15,6 +15,7 @@ import sys
 
 import acp
 import config
+import debuglog
 import scheduler as sched
 import sources
 import views
@@ -135,7 +136,20 @@ def run_web():
     return 0
 
 
+def _debug_config():
+    """デバッグログ設定を config から解決（env ENGAWA_DEBUG/ENGAWA_LOG_FILE > engawa.json[debug] > 既定）。
+    戻り: (debug: bool, path: str)。log ファイルは既定でリポジトリ直下 engawa.log（gitignore）。純関数＝テスト可能。"""
+    debug = config.get_str("ENGAWA_DEBUG", "debug", "enabled", "0") in ("1", "true", "True", "on")
+    default_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "engawa.log")
+    path = config.get_str("ENGAWA_LOG_FILE", "debug", "file", default_path) or default_path  # 空文字は既定へ
+    return debug, path
+
+
 def main():
+    on = debuglog.setup(*_debug_config())          # デバッグログ（既定オフ＝no-op・ENGAWA_DEBUG=1 で engawa.log へ）
+    if on:
+        debuglog.get("main").debug("起動 ui=%s", os.environ.get("ENGAWA_UI", "console"))
     if os.environ.get("ENGAWA_UI") == "web":
         return run_web()
     return asyncio.run(run_console())

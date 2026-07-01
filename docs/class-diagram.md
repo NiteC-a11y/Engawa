@@ -408,8 +408,9 @@ flowchart TB
 | ゲーム | `GameAdapter` | `RLCardAdapter`（+ `BlackjackRender`） |
 | 3人会話の発話 | `Speaker`（DI） | Scheduler が `AcpAgent.prompt` を fn として注入 |
 | LLM 文言生成 | （Port なし・関数群） | `prompts.py`（注入プロンプト工場・`sources` から分離・`prompts→sources` 一方向） |
+| デバッグログ | （stdlib logging ラッパ） | `debuglog.py`（`ENGAWA_DEBUG=1`→`engawa.log`・既定オフ＝no-op・各モジュールは `get("<name>")` の子ロガー） |
 
-`engawa_main.py` が composition root で、`Scheduler` が Mediator として各 Port を結線する（ADR-0013）。`prompts.py` は Scheduler だけが呼ぶ LLM 文言ビルダー（`user_narration`/`room_*_prompt`/`game_move_prompt` 等）を `sources.py` から切り出したもの。
+`engawa_main.py` が composition root で、`Scheduler` が Mediator として各 Port を結線する（ADR-0013）。`prompts.py` は Scheduler だけが呼ぶ LLM 文言ビルダー（`user_narration`/`room_*_prompt`/`game_move_prompt` 等）を `sources.py` から切り出したもの。`debuglog.setup` は composition root が1度だけ呼ぶ（既定オフ＝縁側の窓/console 本文は汚さない）。
 
 ## 参照
 

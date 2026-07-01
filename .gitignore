@@ -6,6 +6,10 @@
 # 個人の挙動設定（鍵は入れないが端末ごとに調整＝管理外。雛形は engawa.json.sample）
 engawa.json
 
+# デバッグログ（ENGAWA_DEBUG=1 の出力先・端末ローカル）
+engawa.log
+*.log
+
 # python
 __pycache__/
 *.py[cod]

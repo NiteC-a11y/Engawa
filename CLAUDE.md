@@ -37,6 +37,7 @@
 - `src/engawa_main.py` — 起動口（composition root）。console / `ENGAWA_UI=web` で隅の縁側窓。
 - `src/acp.py` / `src/sources.py` / `src/scheduler.py` / `src/views.py` / `src/prompts.py` — 現行構成（event-source/scheduler・adr/0013）。`views.py` に `ConsoleView` と `WebView`（pywebview・poll方式）。`prompts.py` は LLM 文言ビルダー（注入プロンプト工場・`sources` から分離・`prompts→sources` 一方向 import）。
 - `src/conversation.py` — 3人会話の部屋（State パターン・adr/0015 **Inc1/Inc2 実装済み**）。`src/game.py` + `src/game_rlcard.py` — ゲームの Port＆Adapter（adr/0017。rlcard は `game_rlcard` に隔離・任意依存）。
+- `src/debuglog.py` — デバッグログ（stdlib logging の薄いラッパ）。`ENGAWA_DEBUG=1` で `engawa.log`（gitignore）へ主要ライフサイクル（種の注入/来訪/room/cancel/timeout）を吐く。既定オフ＝縁側の窓/console 本文は汚さない・`log.debug` は no-op。各モジュールは `debuglog.get("<name>")` で子ロガー。
 - `assets/sprite.json` + `assets/chacha.png` — 茶々スプライト（差し替え可能な皮・adr/0010）。今は Gemini 三毛猫ベース10コマ（口パク/まばたき/にっこり/耳ピンは0基準の自作差分）。`assets/raw/` は Gemini 生成元 PNG（gitignore・現行は chacha.png を使用）。
 - `topic_sources.json`（root） — 客人の世間話トピックの取得先ホワイトリスト（config主導・adr/0014）。
 - `engawa.json`（root・**個人設定＝gitignore**／雛形は `engawa.json.sample`） + `src/config.py` — アプリ挙動の設定（model/guest/間合い/topic）。優先順位 **env(ENGAWA_*) > engawa.json > 既定**。キーは入れない(adr/0002)。`.env`/`.env.example` と同じ流儀（端末ごとに調整・全キー任意＝消せばコード既定）。
@@ -52,7 +53,7 @@
 - **console（端末）**: `python src/engawa_main.py`（リポジトリ直下から実行）
 - **web（隅の縁側窓・frameless）**: cmd で `set "ENGAWA_UI=web" && python src/engawa_main.py`（`$env:` は PowerShell 専用・cmd は `set`・空白混入回避でクォート）
 - **認証**: 先に `claude` と codex(ChatGPT) にサブスクでログイン。API キーは子 env から除去（adr/0002）。
-- **主な env つまみ**: `ENGAWA_UI=web` / `ENGAWA_MODEL`（茶々=Claude のモデル・例 `opus`/`claude-opus-4-8`/`opus[1m]`）,`ENGAWA_CODEX_MODEL`（客人=codex のモデル）/ `ENGAWA_GUEST_PROB`,`ENGAWA_GUEST_FROM_HOUR`（自発来訪）/ `ENGAWA_TOPIC_PROB`,`ENGAWA_TOPIC_REFRESH_MIN`,`ENGAWA_TOPIC_CONFIG`（トピック）/ `ENGAWA_UI_CORNER`,`ENGAWA_UI_EASYDRAG`,`ENGAWA_UI_W`,`ENGAWA_UI_H`,`ENGAWA_UI_FONT`（窓＝隅/移動/幅/高/文字倍率・右下グリップでリサイズ・engawa.json[ui]可）/ `ENGAWA_SPRITE_CONFIG`（スプライト）/ `ENGAWA_TICK_MIN/MAX`,`ENGAWA_ARC_PROB`（間合い）。**これらは `engawa.json` にも書ける＝永続（env が優先・adr原則4のconfig主導）**
+- **主な env つまみ**: `ENGAWA_UI=web` / `ENGAWA_MODEL`（茶々=Claude のモデル・例 `opus`/`claude-opus-4-8`/`opus[1m]`）,`ENGAWA_CODEX_MODEL`（客人=codex のモデル）/ `ENGAWA_GUEST_PROB`,`ENGAWA_GUEST_FROM_HOUR`（自発来訪）/ `ENGAWA_TOPIC_PROB`,`ENGAWA_TOPIC_REFRESH_MIN`,`ENGAWA_TOPIC_CONFIG`（トピック）/ `ENGAWA_UI_CORNER`,`ENGAWA_UI_EASYDRAG`,`ENGAWA_UI_W`,`ENGAWA_UI_H`,`ENGAWA_UI_FONT`（窓＝隅/移動/幅/高/文字倍率・右下グリップでリサイズ・engawa.json[ui]可）/ `ENGAWA_SPRITE_CONFIG`（スプライト）/ `ENGAWA_TICK_MIN/MAX`,`ENGAWA_ARC_PROB`（間合い）/ `ENGAWA_DEBUG`,`ENGAWA_LOG_FILE`（デバッグログ＝`engawa.log` へ主要ライフサイクル・既定オフ）。**これらは `engawa.json` にも書ける＝永続（env が優先・adr原則4のconfig主導）**
   - モデル指定の仕組み: 住人は子 env の `ANTHROPIC_MODEL`（Claude Code が尊重）、客人は `CODEX_CONFIG`（codex-acp が Codex 設定へマージ）に載せる。**未指定はアダプタ既定のまま（現状の挙動を変えない）**。サブスク認証でも有効。
 - **スラッシュ**: `/codex <人格>`（客人召喚）/ `/game <id> [見る]`（id=blackjack/uno/leduc・私+茶々／「見る」で観戦・客人 codex は基本不要・要 `pip install rlcard`・ADR-0017。`/blackjack` は別名）/ `/arc [雀|猫|風]`（箱庭再生・デバッグ）/ `/model`（今のモデル表示・住人/客人）/ `/font [倍率|save]`（web 文字サイズをアプリ内でライブ調整＝再起動不要・`/font` で現在値・`/font save` で `engawa.json[ui].font` へ保存＝明示保存・console は端末フォント依存で no-op）/ `/help` / `/quit`
 

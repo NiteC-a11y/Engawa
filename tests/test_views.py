@@ -227,5 +227,39 @@ class TestUiWindowWiring(unittest.TestCase):
         self.assertEqual(corner, "br")
 
 
+class TestDebugConfig(unittest.TestCase):
+    """_debug_config: ENGAWA_DEBUG/ENGAWA_LOG_FILE の解決（既定オフ・空パスは既定へ）。"""
+    def setUp(self):
+        import engawa_main
+        self.em = engawa_main
+        self._saved = dict(os.environ)
+        for k in ("ENGAWA_DEBUG", "ENGAWA_LOG_FILE"):
+            os.environ.pop(k, None)
+        config._CFG = {}
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._saved)
+        config._CFG = None
+
+    def test_default_off_with_repo_log_path(self):
+        debug, path = self.em._debug_config()
+        self.assertFalse(debug)                        # 既定オフ
+        self.assertTrue(path.endswith("engawa.log"))   # 既定はリポジトリ直下 engawa.log
+
+    def test_env_enables_and_overrides_path(self):
+        os.environ["ENGAWA_DEBUG"] = "1"
+        os.environ["ENGAWA_LOG_FILE"] = "/tmp/x.log"
+        debug, path = self.em._debug_config()
+        self.assertTrue(debug)
+        self.assertEqual(path, "/tmp/x.log")
+
+    def test_empty_json_file_falls_back_to_default(self):
+        config._CFG = {"debug": {"enabled": 1, "file": ""}}   # 空文字は既定パスへ（FileHandler("") 事故回避）
+        debug, path = self.em._debug_config()
+        self.assertTrue(debug)
+        self.assertTrue(path.endswith("engawa.log"))
+
+
 if __name__ == "__main__":
     unittest.main()
