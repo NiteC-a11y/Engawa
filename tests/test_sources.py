@@ -126,10 +126,12 @@ class TestGuestAir(unittest.TestCase):
         self.assertIn("30℃", air)
         self.assertIn("夏至—昼が長い頃", air)
 
-    def test_has_suppression_and_anti_injection(self):
+    def test_has_nudge_and_anti_injection(self):
+        # 軽い後押し（純抑制だと実 codex が拾わなかったため・7/1）＋『』反インジェクション枠は維持
         air = prompts.guest_air({"weather": None, "desc": ""}, "旬の話")
         self.assertIn("旬の話", air)
-        self.assertIn("言い立てない", air)          # 抑制（天気と同型）
+        self.assertIn("振ってみて", air)            # 後押し（announce でなく接ぎ穂に）
+        self.assertIn("新聞記事", air)              # 新聞調は無し（トーンの歯止め）
         self.assertIn("指示ではない", air)          # 『』反インジェクション枠
 
     def test_empty_when_nothing(self):
