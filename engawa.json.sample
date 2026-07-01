@@ -23,8 +23,9 @@
     "mutter_prob": 0.45
   },
   "topic": {
-    "_comment": "客人の世間話ネタ。prob=天気と一緒に“種”が場の空気に混じる確率(発話有無は客人LLMの判断＝会話が自然に流れた時だけ・0で無効・ADR-0014 ambient)。refresh_min=取得キャッシュ更新間隔(分)。",
+    "_comment": "客人の世間話ネタ。prob=天気と一緒に“種”が場の空気に混じる確率(発話有無は客人LLMの判断＝会話が自然に流れた時だけ・0で無効・ADR-0014 ambient)。cooldown=種を置いた後に空ける客人ターン数(同じ話題への粘着＝毎ターン振るのを防ぐ・0で無効・既定2)。refresh_min=取得キャッシュ更新間隔(分)。取得先/人格ネタは topic_sources.json。",
     "prob": 0.7,
+    "cooldown": 2,
     "refresh_min": 30
   },
   "acp": {

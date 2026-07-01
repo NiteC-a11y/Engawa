@@ -432,9 +432,9 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         s.weather = {"desc": "晴れ"}
         s.topics = [{"text": "夏至—昼が長い頃", "tone": "季節", "source": "時節"}]
         await s._summon_guest("近所の物知りなご隠居")
-        saved = sources.TOPIC_PROB
+        saved = (sources.TOPIC_PROB, sources.TOPIC_COOLDOWN)
         try:
-            sources.TOPIC_PROB = 1.0
+            sources.TOPIC_PROB, sources.TOPIC_COOLDOWN = 1.0, 0    # cooldown 無しで prob 判定を素に見る
             with self.assertLogs("engawa.scheduler", level="DEBUG") as cm:
                 await s.on_user_input("\x00guest\x00最近どう?")     # guest REPLY → 種を空気へ
             self.assertTrue(any("種を空気へ" in m and "夏至" in m for m in cm.output))
@@ -443,7 +443,28 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
                 await s.on_user_input("\x00guest\x00ほな")          # prob=0 → 種見送り
             self.assertTrue(any("種見送り: prob外れ" in m for m in cm2.output))
         finally:
-            sources.TOPIC_PROB = saved
+            sources.TOPIC_PROB, sources.TOPIC_COOLDOWN = saved
+
+    async def test_topic_cooldown_spaces_out_seeds(self):
+        # 同じ話題への粘着対策: 種を置いたら cooldown 分の客人ターンは種を見送る（毎ターン振らない）。
+        created = []
+        s = self._scheduler(created)
+        s.weather = {"desc": "晴れ"}
+        s.topics = [{"text": "夏至の話", "tone": "季節", "source": "時節"},
+                    {"text": "旬の話", "tone": "季節", "source": "旬"}]
+        await s._summon_guest("近所の物知りなご隠居")
+        saved = (sources.TOPIC_PROB, sources.TOPIC_COOLDOWN)
+        try:
+            sources.TOPIC_PROB, sources.TOPIC_COOLDOWN = 1.0, 2      # 必ず種→以後2ターンは空ける
+            with self.assertLogs("engawa.scheduler", level="DEBUG") as cm:
+                for _ in range(3):                                   # 客人 REPLY を3回駆動
+                    await s.on_user_input("\x00guest\x00どう?")
+            placed = [m for m in cm.output if "種を空気へ" in m]
+            cooled = [m for m in cm.output if "cooldown" in m]
+            self.assertEqual(len(placed), 1)                         # 3ターンで種は1回だけ（毎ターンでない）
+            self.assertEqual(len(cooled), 2)                         # 残り2ターンは cooldown で見送り
+        finally:
+            sources.TOPIC_PROB, sources.TOPIC_COOLDOWN = saved
 
     async def test_room_closes_during_lock_wait_no_crash(self):
         # 辞去レース回帰: on_user_input が drive_lock 待ちの間に tick が部屋を閉じても落ちず通常入力へ

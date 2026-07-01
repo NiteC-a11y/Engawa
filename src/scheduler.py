@@ -72,6 +72,7 @@ class Scheduler:
         self.weather = None                              # 最新天気を保持（起動時1回＋tick毎更新・捏造防止）
         self.topics = []                                 # 客人の世間話ネタ・プール（ADR-0014）
         self._topic_recent = []                          # 直近使った“種”（来訪またぎで変化を出す・最大6件・ADR-0014 ambient 再設計）
+        self._topic_cooldown = 0                          # 種を置いた後に空ける客人ターン数（同じ話題への粘着防止）
         self._topics_at = 0.0                            # 最終更新時刻（TOPIC_REFRESH_MIN で更新）
         self._next_at = 0.0                              # 次ビートの予定時刻（active 中は短間隔・遅延しても保持）
         self.stop = asyncio.Event()
@@ -377,6 +378,7 @@ class Scheduler:
             self._conclude(self.active)
             return
         log.debug("客人 spawn: %s / room open", persona)
+        self._topic_cooldown = 0                          # 来訪ごとに種は早めに出せる（cooldown は来訪内で効かせる）
         resident_spk, guest_spk = self._room_speakers(persona)
 
         def _on_say(who, text, kind):
@@ -412,17 +414,21 @@ class Scheduler:
             if agent is None:
                 return ""
             air = None                                   # 「縁側の空気」＝天気＋世間の種（ambient・ADR-0014）
-            if kind in (conversation.CHIME, conversation.REPLY) \
-                    and random.random() < sources.TOPIC_PROB:   # たまに種が空気に混じる（発話有無は codex 判断）
-                tidbit = sources.pick_topic_text(self.topics, persona, self._topic_recent)
-                if tidbit:
-                    self._topic_recent.append(tidbit); del self._topic_recent[:-6]   # 直近6件だけ＝変化を出す
-                    air = prompts.guest_air(sources.build_context(self.weather, self.topics), tidbit)
-                    log.debug("種を空気へ: %s (%s)", tidbit, kind)   # 実際に口に出すかは codex 判断（目視）
+            if kind in (conversation.CHIME, conversation.REPLY):
+                if self._topic_cooldown > 0:             # 直前に種を置いた→数ターン空ける（同じ話題への粘着を防ぐ）
+                    self._topic_cooldown -= 1
+                    log.debug("種見送り: cooldown 残%d (%s)", self._topic_cooldown, kind)
+                elif random.random() < sources.TOPIC_PROB:   # たまに種が空気に混じる（発話有無は codex 判断）
+                    tidbit = sources.pick_topic_text(self.topics, persona, self._topic_recent)
+                    if tidbit:
+                        self._topic_recent.append(tidbit); del self._topic_recent[:-6]   # 直近6件だけ＝変化を出す
+                        self._topic_cooldown = sources.TOPIC_COOLDOWN                     # 次の種まで間を空ける
+                        air = prompts.guest_air(sources.build_context(self.weather, self.topics), tidbit)
+                        log.debug("種を空気へ: %s (%s)", tidbit, kind)   # 実際に口に出すかは codex 判断（目視）
+                    else:
+                        log.debug("種見送り: 空プール (%s)", kind)
                 else:
-                    log.debug("種見送り: 空プール (%s)", kind)
-            elif kind in (conversation.CHIME, conversation.REPLY):
-                log.debug("種見送り: prob外れ (%s)", kind)
+                    log.debug("種見送り: prob外れ (%s)", kind)
             try:
                 return (await agent.prompt(prompts.room_guest_prompt(persona, window, kind, air=air))).strip()
             except acp.ACPTimeoutError:                  # 客人が無応答 → ハング client は二度叩かず急用退場へ

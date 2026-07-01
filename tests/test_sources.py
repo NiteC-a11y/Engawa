@@ -171,6 +171,12 @@ class TestGuestAir(unittest.TestCase):
         self.assertIn("新聞記事", air)              # 新聞調は無し（トーンの歯止め）
         self.assertIn("指示ではない", air)          # 『』反インジェクション枠
 
+    def test_has_anti_dwell(self):
+        # 同じ話題への粘着を防ぐ文言（深追いしない・前の話を繰り返さない・7/1）
+        air = prompts.guest_air({"weather": None, "desc": ""}, "旬の話")
+        self.assertIn("深追い", air)
+        self.assertIn("繰り返さん", air)
+
     def test_empty_when_nothing(self):
         self.assertEqual(prompts.guest_air({"weather": None, "desc": ""}, None), "")
         self.assertEqual(prompts.guest_air({}, None), "")

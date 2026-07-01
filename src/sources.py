@@ -31,6 +31,7 @@ GUEST_VISIT_PROB = config.get_float("ENGAWA_GUEST_PROB", "guest", "prob", 0.05, 
 # 客人の世間話トピック（ADR-0014: ホワイトリスト・時節土台＋やわらかRSS・確率注入）
 TOPIC_REFRESH_MIN = config.get_int("ENGAWA_TOPIC_REFRESH_MIN", "topic", "refresh_min", 30, lo=1)   # キャッシュ更新間隔（分）
 TOPIC_PROB = config.get_float("ENGAWA_TOPIC_PROB", "topic", "prob", 0.7, lo=0, hi=1)               # 天気と一緒に“種”が場の空気に混じる確率（発話有無は LLM 判断・0で無効・ADR-0014）
+TOPIC_COOLDOWN = config.get_int("ENGAWA_TOPIC_COOLDOWN", "topic", "cooldown", 2, lo=0)             # 種を置いたら次まで空ける客人ターン数（同じ話題への粘着＝毎ターン振るのを防ぐ・0で無効）
 TOPIC_MAX_LEN = int(os.environ.get("ENGAWA_TOPIC_MAX_LEN", "120"))           # 1ネタの長さ上限
 TOPIC_MAX_PER_SOURCE = int(os.environ.get("ENGAWA_TOPIC_MAX_PER_SOURCE", "5"))
 TOPIC_MAX_BYTES = 512 * 1024                                                  # rss 取得サイズ上限
