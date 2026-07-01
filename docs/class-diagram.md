@@ -64,6 +64,8 @@ classDiagram
         +game_open(title)
         +game_update(snapshot, lines)
         +game_close()
+        +set_font(scale) bool
+        +current_font() float?
         +inputs() AsyncIterator
     }
 
@@ -77,6 +79,8 @@ classDiagram
         +poll(since)
         +send(text, to)
         +resize_window(w, h)
+        +set_font(scale)
+        +current_font()
     }
 
     class CaptureView {

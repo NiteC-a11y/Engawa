@@ -9,6 +9,7 @@ source のカーソル（active）は触らない → QUIET 明けに同じ acti
 close は run() の finally の全 teardown 専用（結了時は reset()+cooldown のみ・ADR-0013 #2）。
 """
 import asyncio
+import os
 import random
 import time
 
@@ -31,6 +32,7 @@ TICK_MIN, TICK_MAX = min(TICK_MIN, TICK_MAX), max(TICK_MIN, TICK_MAX)           
 ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX = min(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX), max(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 RESIDENT_TIMEOUT_RESTART_AT = config.get_int("ENGAWA_RESIDENT_TIMEOUT_RESTART_AT", "acp", "resident_restart_at", 2, lo=1)  # 住人 prompt がこの回数連続で timeout したら再起動（それ未満はターン破棄のみ＝文脈温存）
 GUEST_IDLE_LEAVE_TICKS = config.get_int("ENGAWA_GUEST_IDLE_LEAVE", "guest", "idle_leave_ticks", 8, lo=1)  # 来訪中、人間沈黙がこのtick数続いたら客人は辞去（来訪中tickは ACTIVE_BEAT=5〜12s。大きいほど長居・有界は維持）
+UI_FONT_MIN, UI_FONT_MAX = 0.8, 2.2      # /font の文字倍率クランプ（engawa_main._ui_config の lo/hi と揃える）
 
 
 def _parse_addr(line):
@@ -66,6 +68,7 @@ class Scheduler:
         self.last_user_ts = 0.0
         self.weather = None                              # 最新天気を保持（起動時1回＋tick毎更新・捏造防止）
         self.topics = []                                 # 客人の世間話ネタ・プール（ADR-0014）
+        self._topic_recent = []                          # 直近使った“種”（来訪またぎで変化を出す・最大6件・ADR-0014 ambient 再設計）
         self._topics_at = 0.0                            # 最終更新時刻（TOPIC_REFRESH_MIN で更新）
         self._next_at = 0.0                              # 次ビートの予定時刻（active 中は短間隔・遅延しても保持）
         self.stop = asyncio.Event()
@@ -268,6 +271,7 @@ class Scheduler:
             self.view.system("  /codex <人格>    → 客人(codex)を呼ぶ（3人会話の部屋を開く・ADR-0015）")
             self.view.system("  /game <id> [見る] → ゲーム（id=blackjack/uno/leduc・「見る」で観戦・要 rlcard。/blackjack は別名）")
             self.view.system("  /model           → 今のモデルを表示（住人=Claude / 客人=codex）")
+            self.view.system("  /font [倍率|save] → 文字サイズ（例 /font 1.4・/font で今の値・/font save で保存）")
             self.view.system("  /quit            → 縁側を閉じる")
         elif cmd == "/arc":
             await self._play_arc_now(parts[1] if len(parts) > 1 else None)
@@ -283,6 +287,8 @@ class Scheduler:
         elif cmd in ("/blackjack", "/bj"):               # /game blackjack の別名（従来コマンド維持）
             watch = any(w in line for w in ("見る", "観戦", "watch"))   # 「/bj 見る」で観戦(全AI)
             await self._start_game("blackjack", watch)
+        elif cmd == "/font":                             # 文字サイズをアプリ内でライブ調整（縁側操作＝茶々に流さない・ADR-0007）
+            self._cmd_font(parts[1:])
         elif cmd == "/model":                            # 縁側への操作＝茶々には流さない（人格を汚さない・ADR-0007）
             r = self.resident
             if r.reported_model:                         # アダプタが実モデルを報告した＝真実（未指定でも分かる）
@@ -301,6 +307,35 @@ class Scheduler:
                 self.view.system(f"  客人(codex): {guest + '（設定値・来訪時に使用）' if guest else '未指定（来訪時にアダプタ既定）'}")
         else:
             self.view.system(f"  はて、そんな作法（{cmd}）は知らんな。/help どうぞ。")
+
+    def _cmd_font(self, args):
+        """/font: 文字サイズをアプリ内でライブ調整（明示保存方式・ADR-0007／Backlog P5）。
+        引数なし=今の倍率を表示／数字=その倍率にライブ適用（このセッション）／save=engawa.json[ui].font に保存。
+        web 表示だけの設定＝console は端末フォント依存なので no-op（注記のみ）。"""
+        cur = self.view.current_font()
+        if cur is None:                                  # set_font 非対応（console 等）
+            self.view.system("  文字サイズは web 表示だけの設定や（console は端末のフォントで変えてな）。")
+            return
+        if not args:                                     # /font ＝今の値を表示
+            self.view.system(f"  今の文字サイズ: {cur:g} 倍（/font 1.4 で変更・/font save で保存）")
+            return
+        if args[0] in ("save", "保存"):                  # /font save ＝今の倍率を engawa.json に永続化
+            if config.set_value("ui", "font", round(cur, 3)):
+                msg = f"  文字サイズ {cur:g} 倍を保存した（次からもこの大きさ）。"
+                if "ENGAWA_UI_FONT" in os.environ:       # env が優先＝次回もそちらが効く（正直に告知）
+                    msg += " ※ただし環境変数 ENGAWA_UI_FONT が立っとるので次回はそっちが優先や。"
+                self.view.system(msg)
+            else:
+                self.view.system("  保存できんかった（engawa.json に書けん）。")
+            return
+        try:                                             # /font <倍率> ＝ライブ適用
+            n = float(args[0])
+        except ValueError:
+            self.view.system(f"  文字サイズは数字で（例 /font 1.4）。今は {cur:g} 倍。")
+            return
+        n = max(UI_FONT_MIN, min(UI_FONT_MAX, n))        # 0.8〜2.2 にクランプ
+        self.view.set_font(n)
+        self.view.system(f"  文字サイズを {n:g} 倍にした（/font save で次回も）。")
 
     async def _summon_guest(self, persona):
         """/codex <人格>：客人を直接召喚（取り次ぎなし・即）。箱庭アーク中なら畳んで通す。
@@ -363,8 +398,15 @@ class Scheduler:
             agent = self.active.agent if self.active is not None else None
             if agent is None:
                 return ""
+            air = None                                   # 「縁側の空気」＝天気＋世間の種（ambient・ADR-0014）
+            if kind in (conversation.CHIME, conversation.REPLY) \
+                    and random.random() < sources.TOPIC_PROB:   # たまに種が空気に混じる（発話有無は codex 判断）
+                tidbit = sources.pick_topic_text(self.topics, persona, self._topic_recent)
+                if tidbit:
+                    self._topic_recent.append(tidbit); del self._topic_recent[:-6]   # 直近6件だけ＝変化を出す
+                    air = prompts.guest_air(sources.build_context(self.weather, self.topics), tidbit)
             try:
-                return (await agent.prompt(prompts.room_guest_prompt(persona, window, kind))).strip()
+                return (await agent.prompt(prompts.room_guest_prompt(persona, window, kind, air=air))).strip()
             except acp.ACPTimeoutError:                  # 客人が無応答 → ハング client は二度叩かず急用退場へ
                 self._guest_timed_out = True
                 return ""

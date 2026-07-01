@@ -47,6 +47,8 @@ class View:
     def turn_end(self): ...
     def system(self, msg): ...
     def say(self, speaker, text): ...          # 3人会話の確定発話を1行で出す（茶々/客人を一様に・ADR-0015）
+    def set_font(self, scale): return False    # 文字倍率をライブ適用（/font・web のみ True／console は no-op）
+    def current_font(self): return None        # 今の文字倍率（web=float／console=None＝設定対象外）
     # ゲーム観戦（ADR-0017 Inc4）。console=テキスト / web=隣の観戦窓。snapshot は構造化状態、lines は文字表現
     def game_open(self, title): ...            # 対局開始（web は観戦窓を開く）
     def game_update(self, snapshot, lines): ...  # 局面更新（web は札を描く／console は lines を出す）
@@ -145,6 +147,7 @@ class CaptureView(View):
         self.voices = []          # 客人の生セリフ（voice）を記録
         self._kind = None
         self._buf = []
+        self._font = 1.0          # 文字倍率（/font テスト用・web と同じく設定対象扱い）
         self._q = asyncio.Queue()
 
     def turn_start(self, who, kind, label=None, voice=None):
@@ -173,6 +176,14 @@ class CaptureView(View):
 
     def game_close(self):
         self.events.append(("game_close", None, None))
+
+    def set_font(self, scale):                 # /font のライブ適用を記録（web の代役）
+        self._font = float(scale)
+        self.events.append(("set_font", self._font, None))
+        return True
+
+    def current_font(self):
+        return self._font
 
     def feed(self, line):
         self._q.put_nowait(line)
@@ -220,6 +231,17 @@ class WebView(View):
         self._corner = corner
         self._main_wh = (int(main_w), int(main_h))
         self._font = float(font)
+
+    def set_font(self, scale):
+        """文字倍率をライブ適用（/font）。poll が返す font を JS が拾って --fz を差し替える
+        （スレッド跨ぎの evaluate_js を使わない poll 方式・本窓と観戦窓の両方に効く）。"""
+        with self._lock:
+            self._font = float(scale)
+        return True
+
+    def current_font(self):
+        with self._lock:
+            return self._font
 
     def _bump(self):
         self._rev += 1
@@ -329,8 +351,9 @@ class WebView(View):
     def game_poll(self, since):                # 観戦窓の JS から（_GameApi 経由）
         with self._lock:
             if self._game_rev <= since:
-                return {"rev": self._game_rev}
-            return {"rev": self._game_rev, "snap": self._game_snap, "lines": list(self._game_lines)}
+                return {"rev": self._game_rev, "font": self._font}   # rev 据置でも font はライブ反映
+            return {"rev": self._game_rev, "snap": self._game_snap,
+                    "lines": list(self._game_lines), "font": self._font}
 
     def _trim(self, cap=120):
         if len(self._log) > cap:
@@ -357,7 +380,7 @@ class WebView(View):
                         and not collapse_ws(i["text"]) and not i["voice"]:
                     continue                    # 空の live ターンはまだ出さない（lazy）
                 items.append(self._serialize(i))
-            return {"items": items, "cursor": self._rev}
+            return {"items": items, "cursor": self._rev, "font": self._font}
 
     @staticmethod
     def _serialize(i):
@@ -464,6 +487,9 @@ GAME_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 <script>
 document.getElementById('gclose').onclick=()=>{window.pywebview&&window.pywebview.api.close();};
 let since=0;
+// 文字倍率（/font のライブ適用）: 本窓と揃えて観戦窓の --fz も poll で差し替える
+let curFont=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fz'))||1;
+function applyFont(f){ if(typeof f==='number'&&f>0&&f!==curFont){curFont=f;document.documentElement.style.setProperty('--fz',f);} }
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function cardEl(c){
   const suit=c[0], rank=c.slice(1), red=(suit==='♥'||suit==='♦');
@@ -496,6 +522,7 @@ function renderText(lines){
 async function tick(){
   try{
     const r=await window.pywebview.api.poll(since);
+    if(r) applyFont(r.font);                                    // /font のライブ適用（rev 据置でも効く）
     if(r && r.rev>since){
       since=r.rev;
       if(r.snap) render(r.snap);
@@ -586,6 +613,9 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
 const log=document.getElementById('log'), inp=document.getElementById('in');
 const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 let since=0; const seen={}; let busy=false;
+// 文字倍率（/font のライブ適用）: poll が返す font を --fz に反映（再起動不要・入力欄を切らない本文拡大）
+let curFont=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fz'))||1;
+function applyFont(f){ if(typeof f==='number'&&f>0&&f!==curFont){curFont=f;document.documentElement.style.setProperty('--fz',f);} }
 // 茶々の state（poll から推定して canvas の動きへ）
 const chacha={lastGuest:-1e9,lastUser:-1e9}; const liveSet=new Set(); let lastTurnId=0;
 let guestName='', lastGuestSeen=-1e9;   // @メニュー用: 来訪中の客人名と最終発話時刻
@@ -605,6 +635,7 @@ async function tick(){
   if(busy||!window.pywebview) return; busy=true;
   try{
     const r=await window.pywebview.api.poll(since);
+    applyFont(r.font);                                          // /font のライブ適用（--fz 差し替え）
     // append 前に「下端付近にいるか」を見る。上へスクロールして履歴を見ている時は引き戻さない
     const stick=log.scrollHeight-log.scrollTop-log.clientHeight<48;
     for(const it of r.items){

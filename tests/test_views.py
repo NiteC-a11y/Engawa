@@ -160,6 +160,36 @@ class TestGameWindowFont(unittest.TestCase):
         self.assertEqual(v._font, 1.0)
 
 
+class TestFontLiveApply(unittest.TestCase):
+    """/font のライブ適用（poll 方式）: set_font→current_font と poll/game_poll が font を運ぶ。
+    JS の --fz 差し替えは GUI 目視（ここは Python 側の配線＝poll に font が載るか）。"""
+    def test_set_and_get_font(self):
+        v = views.WebView()
+        self.assertTrue(v.set_font(1.5))
+        self.assertEqual(v.current_font(), 1.5)
+
+    def test_poll_carries_font(self):
+        v = views.WebView()
+        v.set_font(1.7)
+        self.assertEqual(v.poll(0)["font"], 1.7)          # 本窓 poll に載る
+
+    def test_game_poll_carries_font_even_when_rev_unchanged(self):
+        v = views.WebView()
+        v.set_font(1.3)
+        self.assertEqual(v.game_poll(0)["font"], 1.3)     # rev 据置でも font はライブ反映
+
+    def test_console_view_font_is_noop(self):
+        c = views.ConsoleView()
+        self.assertIsNone(c.current_font())               # 設定対象外（端末フォント依存）
+        self.assertFalse(c.set_font(1.4))                 # no-op
+
+    def test_web_html_has_apply_font(self):
+        self.assertIn("applyFont", views.build_web_html())   # 本窓 JS が font を適用する口を持つ
+
+    def test_game_html_has_apply_font(self):
+        self.assertIn("applyFont", views.build_game_html())  # 観戦窓 JS も同様
+
+
 class TestUiWindowWiring(unittest.TestCase):
     """run_web から分離した窓オプション/設定解決（GUI 起動せずユニットで担保）。
     『窓が狭い』対策＝窓は resizable・サイズは config 由来（ハードコードでない）。"""

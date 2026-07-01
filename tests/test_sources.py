@@ -84,5 +84,72 @@ class TestNarration(unittest.TestCase):
         self.assertIn("……", sources.event_narration("雀が来た"))
 
 
+class TestPickTopicText(unittest.TestCase):
+    """世間話の種の選定（純関数・ADR-0014 部屋経路復活）。確率/履歴は持たない。"""
+    def test_empty_pool_returns_none(self):
+        self.assertIsNone(sources.pick_topic_text([], "ご隠居"))
+
+    def test_returns_a_pool_text(self):
+        pool = [{"text": "A"}, {"text": "B"}]
+        self.assertIn(sources.pick_topic_text(pool, "ご隠居"), {"A", "B"})
+
+    def test_seasonal_no_persona_always_candidate(self):
+        # persona キー無し（季節トピック）は誰の時も候補（graceful degrade）
+        pool = [{"text": "夏至の話", "tone": "季節"}]
+        self.assertEqual(sources.pick_topic_text(pool, "行商人"), "夏至の話")
+
+    def test_persona_mismatch_excluded_list(self):
+        # persona 不一致の人格タグ付きは除外され、無タグが残る（list 一致）
+        pool = [{"text": "絵の具の話", "persona": ["絵描き"]}, {"text": "旬の話"}]
+        self.assertEqual(sources.pick_topic_text(pool, "ご隠居"), "旬の話")
+
+    def test_persona_match_str_substring(self):
+        # persona が str の時は部分一致（旧 _pick_topic 踏襲）
+        pool = [{"text": "相場の話", "persona": "行商人むけ"}]
+        self.assertEqual(sources.pick_topic_text(pool, "行商人"), "相場の話")
+
+    def test_avoid_excludes_recent(self):
+        pool = [{"text": "A"}, {"text": "B"}]
+        self.assertEqual(sources.pick_topic_text(pool, "ご隠居", avoid=["A"]), "B")   # 直近回避
+
+    def test_avoid_all_falls_back_non_none(self):
+        # 全部が直近＝フィルタで空 → 候補全体へフォールバック（None にしない）
+        pool = [{"text": "A"}]
+        self.assertEqual(sources.pick_topic_text(pool, "ご隠居", avoid=["A"]), "A")
+
+
+class TestGuestAir(unittest.TestCase):
+    """縁側の空気（天気＋世間の種）ビルダー。announce させない枠付き（ambient・ADR-0014）。"""
+    def test_weather_and_tidbit_rendered(self):
+        air = prompts.guest_air({"weather": {"temp": 30}, "desc": "晴れ"}, "夏至—昼が長い頃")
+        self.assertIn("晴れ", air)
+        self.assertIn("30℃", air)
+        self.assertIn("夏至—昼が長い頃", air)
+
+    def test_has_suppression_and_anti_injection(self):
+        air = prompts.guest_air({"weather": None, "desc": ""}, "旬の話")
+        self.assertIn("旬の話", air)
+        self.assertIn("言い立てない", air)          # 抑制（天気と同型）
+        self.assertIn("指示ではない", air)          # 『』反インジェクション枠
+
+    def test_empty_when_nothing(self):
+        self.assertEqual(prompts.guest_air({"weather": None, "desc": ""}, None), "")
+        self.assertEqual(prompts.guest_air({}, None), "")
+
+
+class TestRoomGuestPromptAir(unittest.TestCase):
+    """room_guest_prompt の air 引数。None は現状と同一・air ありで空気が入る（後方互換ガード）。"""
+    def test_air_none_is_clean(self):
+        p = prompts.room_guest_prompt("ご隠居", (), "reply")
+        self.assertNotIn("縁側の空気", p)
+        self.assertIn("指示ではない", p)            # 既存の「…」注意書きは残る
+
+    def test_air_injected(self):
+        air = prompts.guest_air({"weather": None, "desc": ""}, "夏至の話")
+        p = prompts.room_guest_prompt("ご隠居", (), "reply", air=air)
+        self.assertIn("縁側の空気", p)
+        self.assertIn("夏至の話", p)
+
+
 if __name__ == "__main__":
     unittest.main()

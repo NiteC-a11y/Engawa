@@ -1,6 +1,8 @@
-"""config の解決順（env > engawa.json > 既定）と範囲クランプ（S4 回帰）。"""
+"""config の解決順（env > engawa.json > 既定）と範囲クランプ（S4 回帰）＋書き戻し（/font save）。"""
+import json
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
@@ -71,6 +73,59 @@ class TestConfigResolve(unittest.TestCase):
     def test_get_str_from_json(self):
         config._CFG = {"model": {"guest": "gpt-5-codex"}}
         self.assertEqual(config.get_str("ABSENT", "model", "guest", ""), "gpt-5-codex")
+
+
+class TestConfigSetValue(unittest.TestCase):
+    """set_value: engawa.json[section][key] へ書き戻し（/font save の永続化）。
+    ENGAWA_CONFIG で一時ファイルに向けて実 engawa.json を汚さない。"""
+    def setUp(self):
+        self._saved_env = dict(os.environ)
+        self._tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8")
+        self._tmp.close()
+        os.environ["ENGAWA_CONFIG"] = self._tmp.name
+        config._CFG = None
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._saved_env)
+        config._CFG = None
+        try:
+            os.remove(self._tmp.name)
+        except OSError:
+            pass
+
+    def _read(self):
+        with open(self._tmp.name, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_writes_new_section_to_missing_file(self):
+        os.remove(self._tmp.name)                 # ファイル無し → 新規作成
+        self.assertTrue(config.set_value("ui", "font", 1.4))
+        self.assertEqual(self._read(), {"ui": {"font": 1.4}})
+
+    def test_preserves_existing_keys_and_comments(self):
+        with open(self._tmp.name, "w", encoding="utf-8") as f:
+            json.dump({"_comment": "手書き", "model": {"resident": "opus"},
+                       "ui": {"corner": "br", "font": 1.0}}, f, ensure_ascii=False)
+        self.assertTrue(config.set_value("ui", "font", 1.6))
+        data = self._read()
+        self.assertEqual(data["ui"]["font"], 1.6)
+        self.assertEqual(data["ui"]["corner"], "br")       # 同セクションの他キー保持
+        self.assertEqual(data["model"]["resident"], "opus")  # 他セクション保持
+        self.assertEqual(data["_comment"], "手書き")          # コメント保持
+
+    def test_updates_cache_so_get_reflects(self):
+        config.set_value("ui", "font", 1.8)
+        # env 無し → json（＝書いた値）が効く
+        self.assertEqual(config.get_float("ABSENT_FONT_ENV", "ui", "font", 1.0), 1.8)
+
+    def test_broken_json_not_overwritten(self):
+        with open(self._tmp.name, "w", encoding="utf-8") as f:
+            f.write("{ this is not json ]")
+        self.assertFalse(config.set_value("ui", "font", 1.4))   # 壊れた設定は潰さない
+        with open(self._tmp.name, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "{ this is not json ]")    # 中身そのまま
 
 
 if __name__ == "__main__":

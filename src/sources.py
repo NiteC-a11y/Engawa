@@ -30,7 +30,7 @@ GUEST_VISIT_PROB = config.get_float("ENGAWA_GUEST_PROB", "guest", "prob", 0.05, 
 
 # 客人の世間話トピック（ADR-0014: ホワイトリスト・時節土台＋やわらかRSS・確率注入）
 TOPIC_REFRESH_MIN = config.get_int("ENGAWA_TOPIC_REFRESH_MIN", "topic", "refresh_min", 30, lo=1)   # キャッシュ更新間隔（分）
-TOPIC_PROB = config.get_float("ENGAWA_TOPIC_PROB", "topic", "prob", 0.7, lo=0, hi=1)               # 世間ビートでネタを使う確率
+TOPIC_PROB = config.get_float("ENGAWA_TOPIC_PROB", "topic", "prob", 0.7, lo=0, hi=1)               # 天気と一緒に“種”が場の空気に混じる確率（発話有無は LLM 判断・0で無効・ADR-0014）
 TOPIC_MAX_LEN = int(os.environ.get("ENGAWA_TOPIC_MAX_LEN", "120"))           # 1ネタの長さ上限
 TOPIC_MAX_PER_SOURCE = int(os.environ.get("ENGAWA_TOPIC_MAX_PER_SOURCE", "5"))
 TOPIC_MAX_BYTES = 512 * 1024                                                  # rss 取得サイズ上限
@@ -208,6 +208,19 @@ def build_context(weather, topics=None):
             "raining": any(k in desc for k in ("雨", "雷", "霧雨")),
             "tod": time_of_day(now), "hour": now.hour, "now": now,
             "topics": topics or []}
+
+
+def pick_topic_text(pool, persona, avoid=()):
+    """世間話の“種”を1つ選ぶ（人格マッチ優先→直近回避→ランダム）。無ければ None。
+    確率ゲート(TOPIC_PROB)も履歴も持たない＝純関数（呼び側＝scheduler が握る・ADR-0014 の
+    部屋経路復活）。persona は graceful degrade（季節トピックは persona キー無し＝常に候補）。
+    persona in t["persona"] は str なら部分一致・list なら要素一致（旧 _pick_topic 踏襲）。"""
+    if not pool:
+        return None
+    matched = [t for t in pool if not t.get("persona") or persona in t["persona"]]
+    cands = matched or pool
+    cands = [t for t in cands if t["text"] not in avoid] or cands   # 全消しなら候補全体へ（None にしない）
+    return random.choice(cands)["text"]
 
 
 # ── Narration（value）と SILENT 番兵 ──────────────────────────

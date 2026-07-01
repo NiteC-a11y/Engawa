@@ -75,3 +75,41 @@ def get_float(env, section, key, default, lo=None, hi=None):
 
 def get_str(env, section, key, default=""):
     return get(env, section, key, default, str)
+
+
+def set_value(section, key, value):
+    """engawa.json[section][key] に書き戻して永続化（/font save 等・config 主導と整合）。
+    既存キー（_comment など）は保ち、当該セクション/キーだけ更新。書けたら True。
+    - 壊れた JSON は上書きで潰さず False（ユーザーの手書き設定を守る）。
+    - 成功時は _CFG キャッシュも更新（同セッションの後続 get* に反映）。
+    - 注意: env(ENGAWA_*) が優先なので、その env が立っていると次回もそちらが効く（呼び側で告知）。"""
+    global _CFG
+    path = _path()
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+    except FileNotFoundError:
+        raw = ""                      # 無ければ新規作成
+    except Exception:
+        return False                  # 読めない（権限等）→ 触らない
+    if raw.strip() == "":
+        data = {}                     # 空ファイルは「まだ何も無い」＝新規扱い（壊れ扱いにしない）
+    else:
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return False              # 壊れた JSON は触らない（上書きで手書き設定を潰さない）
+        if not isinstance(data, dict):
+            data = {}
+    sec = data.get(section)
+    if not isinstance(sec, dict):
+        sec = {}
+        data[section] = sec
+    sec[key] = value
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        return False
+    _CFG = data
+    return True

@@ -7,6 +7,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 import acp
+import config
 import scheduler as sched
 import sources
 import views
@@ -183,6 +184,64 @@ class TestUserInput(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("gpt-5-codex" in (m or "") for m in systems))
 
 
+class TestFontCommand(unittest.IsolatedAsyncioTestCase):
+    """/font: アプリ内で文字サイズをライブ調整（明示保存方式）。縁側操作＝茶々に流さない（ADR-0007）。"""
+    async def test_font_no_arg_shows_current(self):
+        s, r, v = _make()
+        await s.on_user_input("/font")
+        self.assertTrue(any("今の文字サイズ" in (m or "") for m in _systems(v)))
+        self.assertEqual(len(r.prompts), 0)                 # 茶々には流さない
+
+    async def test_font_number_applies_live(self):
+        s, r, v = _make()
+        await s.on_user_input("/font 1.4")
+        self.assertEqual(v.current_font(), 1.4)             # view にライブ適用
+        self.assertIn(("set_font", 1.4, None), v.events)
+        self.assertEqual(len(r.prompts), 0)
+
+    async def test_font_clamped_to_bounds(self):
+        s, r, v = _make()
+        await s.on_user_input("/font 9")                    # 上限 2.2 に寄せる
+        self.assertEqual(v.current_font(), sched.UI_FONT_MAX)
+
+    async def test_font_non_number_rejected(self):
+        s, r, v = _make()
+        await s.on_user_input("/font おおきく")
+        self.assertEqual(v.current_font(), 1.0)             # 変わらない
+        self.assertTrue(any("数字で" in (m or "") for m in _systems(v)))
+
+    async def test_font_save_persists(self):
+        import tempfile
+        tf = tempfile.NamedTemporaryFile(suffix=".json", delete=False); tf.close()
+        saved_env, saved_cfg = os.environ.get("ENGAWA_CONFIG"), config._CFG
+        os.environ["ENGAWA_CONFIG"] = tf.name
+        os.environ.pop("ENGAWA_UI_FONT", None)              # env 優先の注記を出さない条件で確認
+        config._CFG = None
+        try:
+            s, r, v = _make()
+            await s.on_user_input("/font 1.6")
+            await s.on_user_input("/font save")
+            self.assertEqual(config.get_float("ABSENT", "ui", "font", 1.0), 1.6)   # 書き戻し確認
+            self.assertTrue(any("保存した" in (m or "") for m in _systems(v)))
+        finally:
+            if saved_env is None:
+                os.environ.pop("ENGAWA_CONFIG", None)
+            else:
+                os.environ["ENGAWA_CONFIG"] = saved_env
+            config._CFG = saved_cfg
+            os.remove(tf.name)
+
+    async def test_font_console_is_noop(self):
+        # console（set_font 非対応）は端末フォント依存＝no-op で注記のみ
+        r = FakeResident()
+        v = views.ConsoleView()
+        s = sched.Scheduler(r, [], sources.WeatherSource(), v)
+        printed = []
+        v.system = lambda m: printed.append(m)
+        await s.on_user_input("/font 1.4")
+        self.assertTrue(any("web 表示だけ" in (m or "") for m in printed))
+
+
 class TestArcAndGuest(unittest.IsolatedAsyncioTestCase):
     async def test_single_phase_arc_concludes(self):
         arc = sources.BoxGardenArc("風", gate=lambda c: True,
@@ -345,6 +404,25 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         prompts = created[0].prompts
         self.assertTrue(any("最近どう" in p for p in prompts))  # 双方向: codex に人間の発話が届く
         self.assertTrue(any("ここまでのやり取り" in p for p in prompts))  # transcript 同梱
+
+    async def test_topic_rides_in_air_on_guest_reply(self):
+        # ADR-0014 部屋経路復活: 会話中(REPLY/CHIME)は“種”が空気に混じり codex prompt に届く。
+        # 到着挨拶(ARRIVE)には入らない（CHIME/REPLY 限定ゲート）。
+        created = []
+        s = self._scheduler(created)
+        s.weather = {"desc": "晴れ", "temp": 30}
+        s.topics = [{"text": "夏至—一年で最も昼が長い頃", "tone": "季節", "source": "時節"}]
+        saved = sources.TOPIC_PROB
+        sources.TOPIC_PROB = 1.0                                   # 必ず種を空気へ（発火判定は fake なので確定）
+        try:
+            await s._summon_guest("近所の物知りなご隠居")           # ARRIVE（種なし）
+            arrive_prompt = created[0].prompts[0]
+            self.assertNotIn("夏至", arrive_prompt)                # 到着挨拶はクリーン
+            await s.on_user_input("\x00guest\x00最近どう?")         # 客人へ→REPLY（種が空気に）
+        finally:
+            sources.TOPIC_PROB = saved
+        self.assertTrue(any("夏至" in p for p in created[0].prompts))       # 種が届いた
+        self.assertTrue(any("縁側の空気" in p for p in created[0].prompts))  # ambient ブロックとして
 
     async def test_room_closes_during_lock_wait_no_crash(self):
         # 辞去レース回帰: on_user_input が drive_lock 待ちの間に tick が部屋を閉じても落ちず通常入力へ
