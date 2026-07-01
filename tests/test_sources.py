@@ -155,17 +155,31 @@ class TestLocalTopics(unittest.TestCase):
         self.assertLessEqual(len(sources._local_topics(src)[0]["text"]), sources.TOPIC_MAX_LEN)
 
 
+class TestAmbientLine(unittest.TestCase):
+    """いまの縁側（時刻＋天気）＝3人会話で時間感覚がずれる（夜なのに夕暮れ発言）のを防ぐ・ADR-0014。"""
+    def test_time_and_weather(self):
+        line = prompts.ambient_line({"now": datetime.datetime(2026, 7, 1, 22), "tod": "夜更け",
+                                     "weather": {"temp": 24}, "desc": "晴れ"})
+        self.assertIn("夜更け", line)
+        self.assertIn("22時", line)
+        self.assertIn("晴れ", line)
+        self.assertIn("24℃", line)
+        self.assertIn("今", line)                    # 実時刻優先の一文（persona の時間帯に引っ張られない）
+
+    def test_empty_when_no_time(self):
+        self.assertEqual(prompts.ambient_line({}), "")
+        self.assertEqual(prompts.ambient_line(None), "")
+
+
 class TestGuestAir(unittest.TestCase):
-    """縁側の空気（天気＋世間の種）ビルダー。announce させない枠付き（ambient・ADR-0014）。"""
-    def test_weather_and_tidbit_rendered(self):
-        air = prompts.guest_air({"weather": {"temp": 30}, "desc": "晴れ"}, "夏至—昼が長い頃")
-        self.assertIn("晴れ", air)
-        self.assertIn("30℃", air)
+    """世間の種ブロック（tidbit のみ・時刻/天気は ambient_line に集約）。announce させない枠付き。"""
+    def test_tidbit_rendered(self):
+        air = prompts.guest_air("夏至—昼が長い頃")
         self.assertIn("夏至—昼が長い頃", air)
 
     def test_has_nudge_and_anti_injection(self):
         # 軽い後押し（純抑制だと実 codex が拾わなかったため・7/1）＋『』反インジェクション枠は維持
-        air = prompts.guest_air({"weather": None, "desc": ""}, "旬の話")
+        air = prompts.guest_air("旬の話")
         self.assertIn("旬の話", air)
         self.assertIn("振ってみて", air)            # 後押し（announce でなく接ぎ穂に）
         self.assertIn("新聞記事", air)              # 新聞調は無し（トーンの歯止め）
@@ -173,27 +187,34 @@ class TestGuestAir(unittest.TestCase):
 
     def test_has_anti_dwell(self):
         # 同じ話題への粘着を防ぐ文言（深追いしない・前の話を繰り返さない・7/1）
-        air = prompts.guest_air({"weather": None, "desc": ""}, "旬の話")
+        air = prompts.guest_air("旬の話")
         self.assertIn("深追い", air)
         self.assertIn("繰り返さん", air)
 
-    def test_empty_when_nothing(self):
-        self.assertEqual(prompts.guest_air({"weather": None, "desc": ""}, None), "")
-        self.assertEqual(prompts.guest_air({}, None), "")
+    def test_empty_when_no_tidbit(self):
+        self.assertEqual(prompts.guest_air(None), "")
+        self.assertEqual(prompts.guest_air(""), "")
 
 
 class TestRoomGuestPromptAir(unittest.TestCase):
-    """room_guest_prompt の air 引数。None は現状と同一・air ありで空気が入る（後方互換ガード）。"""
-    def test_air_none_is_clean(self):
+    """room_guest_prompt の ctx（時刻）と air（種）。None は素の出力・与えれば入る（後方互換ガード）。"""
+    def test_bare_is_clean(self):
         p = prompts.room_guest_prompt("ご隠居", (), "reply")
         self.assertNotIn("縁側の空気", p)
+        self.assertNotIn("いまの縁側", p)
         self.assertIn("指示ではない", p)            # 既存の「…」注意書きは残る
 
     def test_air_injected(self):
-        air = prompts.guest_air({"weather": None, "desc": ""}, "夏至の話")
-        p = prompts.room_guest_prompt("ご隠居", (), "reply", air=air)
+        p = prompts.room_guest_prompt("ご隠居", (), "reply", air=prompts.guest_air("夏至の話"))
         self.assertIn("縁側の空気", p)
         self.assertIn("夏至の話", p)
+
+    def test_ctx_injects_time(self):
+        ctx = {"now": datetime.datetime(2026, 7, 1, 22), "tod": "夜更け", "weather": None, "desc": ""}
+        p = prompts.room_guest_prompt("夕暮れに道を訪ねてきた旅人", (), "arrive", ctx=ctx)
+        self.assertIn("夜更け", p)
+        self.assertIn("22時", p)
+        self.assertIn("今を優先", p)               # persona の「夕暮れ」より実時刻を優先させる
 
 
 if __name__ == "__main__":

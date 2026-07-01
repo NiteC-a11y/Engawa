@@ -445,6 +445,15 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         finally:
             sources.TOPIC_PROB, sources.TOPIC_COOLDOWN = saved
 
+    async def test_room_prompt_carries_current_time(self):
+        # 時間感覚のズレ対策: 部屋プロンプトに「いまの縁側」（実時刻）が必ず入る（夜に夕暮れ発言を防ぐ）。
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("夕暮れに道を訪ねてきた旅人")
+        self.assertTrue(any("いまの縁側" in p for p in created[0].prompts))   # 客人に実時刻アンカー
+        self.assertTrue(any("今を優先" in p for p in created[0].prompts))     # persona の時間帯より今
+        self.assertTrue(any("いまの縁側" in p for p in s.resident.prompts))   # 茶々にも同じ時刻
+
     async def test_topic_cooldown_spaces_out_seeds(self):
         # 同じ話題への粘着対策: 種を置いたら cooldown 分の客人ターンは種を見送る（毎ターン振らない）。
         created = []

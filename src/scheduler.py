@@ -401,8 +401,9 @@ class Scheduler:
         async def resident_say(window, kind):
             async with self.turn_lock:                   # ambient と同じ直列化単位
                 self.speaking = True
+                ctx = sources.build_context(self.weather, self.topics)   # いまの縁側（時刻＋天気）を渡す
                 try:
-                    return await self.resident.prompt(prompts.room_resident_prompt(window, kind))
+                    return await self.resident.prompt(prompts.room_resident_prompt(window, kind, ctx))
                 except acp.ACPTimeoutError:              # 茶々が無応答 → フラグだけ立て、後始末は呼び側で
                     self._room_resident_timeout = True
                     return ""
@@ -413,7 +414,8 @@ class Scheduler:
             agent = self.active.agent if self.active is not None else None
             if agent is None:
                 return ""
-            air = None                                   # 「縁側の空気」＝天気＋世間の種（ambient・ADR-0014）
+            ctx = sources.build_context(self.weather, self.topics)   # いまの縁側（時刻＋天気）＝時間感覚のズレ防止
+            air = None                                   # 「縁側の空気」＝世間の種（ambient・ADR-0014）
             if kind in (conversation.CHIME, conversation.REPLY):
                 if self._topic_cooldown > 0:             # 直前に種を置いた→数ターン空ける（同じ話題への粘着を防ぐ）
                     self._topic_cooldown -= 1
@@ -423,14 +425,15 @@ class Scheduler:
                     if tidbit:
                         self._topic_recent.append(tidbit); del self._topic_recent[:-6]   # 直近6件だけ＝変化を出す
                         self._topic_cooldown = sources.TOPIC_COOLDOWN                     # 次の種まで間を空ける
-                        air = prompts.guest_air(sources.build_context(self.weather, self.topics), tidbit)
+                        air = prompts.guest_air(tidbit)
                         log.debug("種を空気へ: %s (%s)", tidbit, kind)   # 実際に口に出すかは codex 判断（目視）
                     else:
                         log.debug("種見送り: 空プール (%s)", kind)
                 else:
                     log.debug("種見送り: prob外れ (%s)", kind)
             try:
-                return (await agent.prompt(prompts.room_guest_prompt(persona, window, kind, air=air))).strip()
+                return (await agent.prompt(
+                    prompts.room_guest_prompt(persona, window, kind, ctx=ctx, air=air))).strip()
             except acp.ACPTimeoutError:                  # 客人が無応答 → ハング client は二度叩かず急用退場へ
                 self._guest_timed_out = True
                 return ""
