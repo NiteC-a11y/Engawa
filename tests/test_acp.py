@@ -4,6 +4,7 @@ import asyncio
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 import acp
@@ -201,6 +202,61 @@ class TestChildEnv(unittest.TestCase):
         self.assertNotIn("ANTHROPIC_API_KEY", env)
         self.assertNotIn("OPENAI_API_KEY", env)
         self.assertEqual(env["CODEX_CONFIG"], '{"model": "gpt-5-codex"}')
+
+
+class TestNoConsoleWindow(unittest.IsolatedAsyncioTestCase):
+    """子プロセス（アダプタ起動の cmd/npx／後始末の taskkill）が窓を出さないよう
+    creationflags=CREATE_NO_WINDOW を渡すことの回帰テスト。外すと『ぱっと開いて閉じる窓』が
+    復活する（Windows 固有・過去に一悶着）。非Windows では CREATE_NO_WINDOW==0（無影響）。"""
+
+    async def test_spawn_passes_no_window_flag(self):
+        seen = {}
+
+        async def fake_exec(*args, **kwargs):
+            seen.update(kwargs)
+            raise RuntimeError("stop after recording")   # ハンドシェイク前で止める
+
+        with mock.patch("acp.asyncio.create_subprocess_exec", fake_exec):
+            with self.assertRaises(RuntimeError):
+                await acp.AcpAgent.spawn(["dummy-adapter"], cwd=".")
+        self.assertIn("creationflags", seen)                  # フラグ自体を渡している
+        self.assertEqual(seen["creationflags"], acp.CREATE_NO_WINDOW)
+
+    @unittest.skipUnless(os.name == "nt", "taskkill は Windows のみ")
+    async def test_shutdown_taskkill_passes_no_window_flag(self):
+        seen = {}
+
+        async def fake_exec(*args, **kwargs):
+            seen["args"], seen["kwargs"] = args, kwargs
+
+            class _K:
+                async def wait(self_):
+                    return 0
+            return _K()
+
+        class _Stdin:
+            def is_closing(self_):
+                return False
+
+            def close(self_):
+                pass
+
+        class _Proc:
+            returncode = None
+            pid = 4321
+            stdin = _Stdin()
+            _transport = type("T", (), {"close": lambda self_: None})()
+
+            async def wait(self_):
+                return 0
+
+            def kill(self_):
+                pass
+
+        with mock.patch("acp.asyncio.create_subprocess_exec", fake_exec):
+            await acp.shutdown_process(_Proc())
+        self.assertEqual(seen["args"][0], "taskkill")
+        self.assertEqual(seen["kwargs"].get("creationflags"), acp.CREATE_NO_WINDOW)
 
 
 if __name__ == "__main__":

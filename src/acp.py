@@ -22,6 +22,11 @@ ADAPTER_RESIDENT = os.environ.get(
 ADAPTER_GUEST = os.environ.get(
     "ENGAWA_CODEX_CMD", "npx -y @agentclientprotocol/codex-acp").split()
 
+# Windows で子プロセス（アダプタ起動の `cmd /c npx …`／後始末の `taskkill`）がコンソール窓を
+# 出さないための旗。窓が「ぱっと開いて閉じる」のはこれ由来（本体 node は裏で常駐）。非 Windows は 0＝無影響。
+# ※ pythonw（コンソール無し起動）とは無関係の独立した対策。起動は通常の `python` のままでよい。
+CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
 # モデル選択（未指定＝空文字＝アダプタ既定のまま・現状維持）。
 #   住人(Claude): 子 env の ANTHROPIC_MODEL を Claude Code が尊重（opus / claude-opus-4-8 / opus[1m] 等）。
 #   客人(codex):  codex-acp の CODEX_CONFIG（JSON を Codex セッション設定へマージ）に {"model": …} を載せる。
@@ -133,7 +138,8 @@ async def shutdown_process(proc):
         try:
             k = await asyncio.create_subprocess_exec(
                 "taskkill", "/PID", str(proc.pid), "/T", "/F",
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                creationflags=CREATE_NO_WINDOW)   # taskkill の一瞬窓を抑止
             await k.wait()
         except Exception:
             pass
@@ -288,7 +294,8 @@ class AcpAgent:
         proc = await asyncio.create_subprocess_exec(
             *resolve_command(cmd),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE, env=env, cwd=str(cwd))
+            stderr=asyncio.subprocess.PIPE, env=env, cwd=str(cwd),
+            creationflags=CREATE_NO_WINDOW)   # 子(cmd/npx)の一瞬コンソール窓を抑止
         client = ACPClient(proc)
         tasks = [asyncio.create_task(client.reader()),
                  asyncio.create_task(drain_stderr(proc))]
