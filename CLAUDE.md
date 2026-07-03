@@ -19,7 +19,7 @@
 
 ---
 
-## いま動いているもの（現況・2026-06-28）
+## いま動いているもの（現況・2026-07-03）
 
 | Phase | 内容 | 状態 |
 |---|---|---|
@@ -37,10 +37,11 @@
 - `src/engawa_main.py` — 起動口（composition root）。console / `ENGAWA_UI=web` で隅の縁側窓。
 - `src/acp.py` / `src/sources.py` / `src/scheduler.py` / `src/views.py` / `src/prompts.py` — 現行構成（event-source/scheduler・adr/0013）。`views.py` に `ConsoleView` と `WebView`（pywebview・poll方式）。`prompts.py` は LLM 文言ビルダー（注入プロンプト工場・`sources` から分離・`prompts→sources` 一方向 import）＋茶々ソロ出力の染み出しガード `strip_resident_leak`（注入文の復唱＋地の思考を表示前に除去・純関数）。
 - `src/conversation.py` — 3人会話の部屋（State パターン・adr/0015 **Inc1/Inc2 実装済み**＋adr/0025 **代打**）。人間待ちで沈黙が続くと茶々が“人間役の代打”で場をつなぐ（`ResidentFilling`・予算 `fill_cap` 回で必ず辞去＝有界）。`src/game.py` + `src/game_rlcard.py` — ゲームの Port＆Adapter（adr/0017。rlcard は `game_rlcard` に隔離・任意依存）。
-- `src/debuglog.py` — デバッグログ（stdlib logging の薄いラッパ）。`ENGAWA_DEBUG=1` で `engawa.log`（gitignore）へ主要ライフサイクルを **日付＋ミリ秒**（`YYYY-MM-DD HH:MM:SS.mmm`）で吐く＝会話タイミングを定量観測できる。イベント: 種の注入/来訪/room/cancel/timeout ＋ `inject 茶々 (kind)`（ソロ発話）/`user input`/`say who (kind)`（room 発話）/`next beat +Ns`（予定の間合い）。既定オフ＝縁側の窓/console 本文は汚さない・`log.debug` は no-op。各モジュールは `debuglog.get("<name>")` で子ロガー。
+- `src/debuglog.py` — デバッグログ（stdlib logging の薄いラッパ）。`ENGAWA_DEBUG=1` で `engawa.log`（gitignore）へ主要ライフサイクルを **日付＋ミリ秒**（`YYYY-MM-DD HH:MM:SS.mmm`）で吐く＝会話タイミングを定量観測できる。イベント: 種の注入/来訪/room/cancel/timeout ＋ `inject 茶々 (kind)`（ソロ発話）/`user input`/`say who (kind)`（room 発話）/`next beat +Ns`（予定の間合い）/`茶々 中座へ`・`茶々 中座から復帰`（中座＝セッション更新・ADR-0027）。既定オフ＝縁側の窓/console 本文は汚さない・`log.debug` は no-op。各モジュールは `debuglog.get("<name>")` で子ロガー。
 - `assets/sprite.json` + `assets/chacha.png` — 茶々スプライト（差し替え可能な皮・adr/0010）。今は Gemini 三毛猫ベース10コマ（口パク/まばたき/にっこり/耳ピンは0基準の自作差分）。`assets/raw/` は Gemini 生成元 PNG（gitignore・現行は chacha.png を使用）。
 - `topic_sources.json`（root） — 客人の世間話トピックの取得先ホワイトリスト（config主導・adr/0014）。
 - `engawa.json`（root・**個人設定＝gitignore**／雛形は `engawa.json.sample`） + `src/config.py` — アプリ挙動の設定（model/guest/間合い/topic）。優先順位 **env(ENGAWA_*) > engawa.json > 既定**。キーは入れない(adr/0002)。`.env`/`.env.example` と同じ流儀（端末ごとに調整・全キー任意＝消せばコード既定）。
+- `engawa.bat` / `engawa-debug.bat`（root） — Windows ランチャ。`engawa.bat`＝web 常用（`set ENGAWA_UI=web` → 直 `python`）。`engawa-debug.bat`＝`ENGAWA_DEBUG=1`＋別窓で `engawa.log` を追尾。**cmd が cp932 でバッチを読む都合上 ASCII-only 厳守**（日本語コメントは化けて実行される）。
 - `poc/engawa_p1/p2/p3_*.py` — 各フェーズの検証済み基準点。**温存・触らない**。
 - `docs/adr/`（0001〜0027）, `docs/TECH_RULES.md`, `docs/Backlog.md`
 - `docs/engawa-acp-spec.md` — ピボット前の**旧構想 仕様書 v1**（adr/0004 で転換・adr/0016 で降格）。歴史的参照として温存・**現行仕様ではない**。
@@ -51,7 +52,7 @@
 ## 起動
 
 - **console（端末）**: `python src/engawa_main.py`（リポジトリ直下から実行）
-- **web（隅の縁側窓・frameless）**: cmd で `set "ENGAWA_UI=web" && python src/engawa_main.py`（`$env:` は PowerShell 専用・cmd は `set`・空白混入回避でクォート）
+- **web（隅の縁側窓・frameless）**: cmd で `set "ENGAWA_UI=web" && python src/engawa_main.py`（`$env:` は PowerShell 専用・cmd は `set`・空白混入回避でクォート）。**日常は `engawa.bat`（web）／`engawa-debug.bat`（デバッグ＋log tail 窓）をダブルクリックでも可**。
 - **認証**: 先に `claude` と codex(ChatGPT) にサブスクでログイン。API キーは子 env から除去（adr/0002）。
 - **主な env つまみ**: `ENGAWA_UI=web` / `ENGAWA_MODEL`（茶々=Claude のモデル・例 `opus`/`claude-opus-4-8`/`opus[1m]`）,`ENGAWA_CODEX_MODEL`（客人=codex のモデル）/ `ENGAWA_GUEST_PROB`,`ENGAWA_GUEST_FROM_HOUR`（自発来訪）/ `ENGAWA_GUEST_IDLE_LEAVE`,`ENGAWA_GUEST_FILL_CAP`,`ENGAWA_GUEST_FILL_AFTER`,`ENGAWA_GUEST_FILL_SLOWDOWN`（来訪中＝沈黙で辞去するtick数/人間不在時に茶々が代打で場をつなぐ回数=有界上限/最初の代打までの沈黙tick/代打間隔を回ごとに延ばす量＝賑やか→間延び→帰る・adr/0025）/ `ENGAWA_TOPIC_PROB`,`ENGAWA_TOPIC_COOLDOWN`,`ENGAWA_TOPIC_REFRESH_MIN`,`ENGAWA_TOPIC_CONFIG`（トピック＝空気に混じる確率/粘着防止の間隔/更新間隔/取得先）/ `ENGAWA_UI_CORNER`,`ENGAWA_UI_EASYDRAG`,`ENGAWA_UI_W`,`ENGAWA_UI_H`,`ENGAWA_UI_FONT`（窓＝隅/移動/幅/高/文字倍率・右下グリップでリサイズ・engawa.json[ui]可）/ `ENGAWA_SPRITE_CONFIG`（スプライト）/ `ENGAWA_TICK_MIN/MAX`,`ENGAWA_ARC_PROB`（間合い）/ `ENGAWA_DEBUG`,`ENGAWA_LOG_FILE`（デバッグログ＝`engawa.log` へ主要ライフサイクル・既定オフ）/ `ENGAWA_RESIDENT_GUARD`（茶々ソロ出力の染み出しガード＝注入プロンプトの復唱＋地の思考を表示前に除去・既定1・0で従来の逐次stream。長命セッション劣化で出力が崩れた時は `/restart` で張り直し）/ `ENGAWA_ABSENCE_AFTER_TURNS`,`ENGAWA_ABSENCE_JITTER`,`ENGAWA_ABSENCE_GAP`（茶々の「中座」＝世界観に溶かした定期セッション更新＝染み出しの根治・ADR-0027。発話が溜まったら次のidleで中座し不在の裏で若返る/タイミングのゆらぎ/不在秒・既定30/10/18・after_turns=0で中座オフ）。**これらは `engawa.json` にも書ける＝永続（env が優先・adr原則4のconfig主導）**
   - モデル指定の仕組み: 住人は子 env の `ANTHROPIC_MODEL`（Claude Code が尊重）、客人は `CODEX_CONFIG`（codex-acp が Codex 設定へマージ）に載せる。**未指定はアダプタ既定のまま（現状の挙動を変えない）**。サブスク認証でも有効。
