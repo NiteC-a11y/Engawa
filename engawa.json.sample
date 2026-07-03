@@ -32,14 +32,15 @@
     "refresh_min": 30
   },
   "acp": {
-    "_comment": "ACP 1往復の timeout(秒)。adapter 無応答での永久待ちを防ぐ(S1)。短すぎると初回 npx ダウンロードや遅い応答を誤って中断するので寛容め。init/session は起動・認証込み、prompt はモデル次第で長め。cancel_grace=割り込み(cancel)後に in-flight prompt の cancelled 応答をこの秒数だけ待つ(adapter が握り潰しても prompt_timeout まで待たせない)。resident_restart_at=住人 prompt がこの回数連続 timeout で再起動(未満はターン破棄のみ＝文脈温存)。env ENGAWA_ACP_* で個別上書き可。",
+    "_comment": "ACP 1往復の timeout(秒)。adapter 無応答での永久待ちを防ぐ(S1)。短すぎると初回 npx ダウンロードや遅い応答を誤って中断するので寛容め。init/session は起動・認証込み、prompt はモデル次第で長め。cancel_grace=割り込み(cancel)後に in-flight prompt の cancelled 応答をこの秒数だけ待つ(adapter が握り潰しても prompt_timeout まで待たせない)。resident_restart_at=住人 prompt がこの回数連続 timeout で再起動(未満はターン破棄のみ＝文脈温存)。resident_guard=茶々ソロ出力の染み出しガード(1=注入プロンプトの復唱＋地の思考を表示前に除去。長時間で起きる出力崩れ対策。ソロ本文は一括表示＝逐次stream無し。0で従来の逐次stream。染み出し時は /restart で住人セッションを張り直せる)。env ENGAWA_ACP_* / ENGAWA_RESIDENT_GUARD で個別上書き可。",
     "init_timeout": 120,
     "session_timeout": 60,
     "prompt_timeout": 240,
     "send_timeout": 10,
     "cancel_timeout": 10,
     "cancel_grace": 10,
-    "resident_restart_at": 2
+    "resident_restart_at": 2,
+    "resident_guard": 1
   },
   "debug": {
     "_comment": "デバッグログ。enabled=1 で engawa.log(gitignore) に主要ライフサイクル(種の注入/来訪/room/cancel/timeout)を吐く。既定オフ＝縁側の窓/console 本文は汚さない。env ENGAWA_DEBUG=1 / ENGAWA_LOG_FILE でパス変更可。tail -f engawa.log で眺める。",

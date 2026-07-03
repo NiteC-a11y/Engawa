@@ -32,6 +32,7 @@ ACTIVE_BEAT_MAX = config.get_float("ENGAWA_ACTIVE_BEAT_MAX", "timing", "active_b
 TICK_MIN, TICK_MAX = min(TICK_MIN, TICK_MAX), max(TICK_MIN, TICK_MAX)                       # min>max の設定ミスを正す
 ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX = min(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX), max(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 RESIDENT_TIMEOUT_RESTART_AT = config.get_int("ENGAWA_RESIDENT_TIMEOUT_RESTART_AT", "acp", "resident_restart_at", 2, lo=1)  # 住人 prompt がこの回数連続で timeout したら再起動（それ未満はターン破棄のみ＝文脈温存）
+RESIDENT_GUARD = config.get_int("ENGAWA_RESIDENT_GUARD", "acp", "resident_guard", 1, lo=0)  # 1=茶々ソロ出力の染み出しガード（注入文の復唱＋地の思考を表示前に除去・ソロは一括描画＝逐次stream無し）/0=従来の逐次stream
 GUEST_IDLE_LEAVE_TICKS = config.get_int("ENGAWA_GUEST_IDLE_LEAVE", "guest", "idle_leave_ticks", 8, lo=1)  # 来訪中、人間沈黙がこのtick数続いたら客人は辞去（来訪中tickは ACTIVE_BEAT=5〜12s。大きいほど長居・有界は維持）
 GUEST_FILL_CAP = config.get_int("ENGAWA_GUEST_FILL_CAP", "guest", "fill_cap", 3, lo=0)          # 人間待ちの間、茶々が“人間役の代打”で場をつなぐ回数の上限（=人間不在の連続AIターン上限・ADR-0025。0で無効＝従来の純待ち）
 GUEST_FILL_AFTER = config.get_int("ENGAWA_GUEST_FILL_AFTER", "guest", "fill_after_ticks", 2, lo=1)  # 最初の代打までの沈黙tick数（< idle_leave_ticks 前提。予算を使い切ったら idle_leave_ticks で辞去）
@@ -90,7 +91,15 @@ class Scheduler:
             timed_out = False
             stop_reason = None
             try:
-                stop_reason = await self.resident.prompt(narration.text, on_chunk=self.view.chunk)
+                if RESIDENT_GUARD:                       # 染み出しガード: バッファして注入文/思考を除去→一括描画（stream演出は消える・原因を問わず効く）
+                    out = await self.resident.prompt(narration.text)
+                    clean = prompts.strip_resident_leak(out, narration.text)
+                    if clean != out:
+                        log.debug("resident guard: leak stripped (%d→%d chars)", len(out), len(clean))
+                    self.view.chunk(clean)
+                    stop_reason = clean
+                else:
+                    stop_reason = await self.resident.prompt(narration.text, on_chunk=self.view.chunk)
             except acp.ACPTimeoutError:                  # 茶々が無応答（adapter ハング等）→ 段階回復へ
                 timed_out, stop_reason = True, "timeout"
             finally:
@@ -116,6 +125,24 @@ class Scheduler:
         self.cooldowns[src.key] = src.cooldown_ticks     # close ではなく reset+cooldown（ADR-0013 #2）
         self.active = None
 
+    async def _restart_resident(self):
+        """住人(茶々)のセッションを張り直す（新セッション＝以前の文脈は持たない）。成功 True/失敗 False。
+        成功時のみ旧を close（失敗時は現状の茶々を生かす＝現状維持）。timeout 段階回復と /restart（染み出し/不調時）で共用。"""
+        if self._spawn_resident is None:                 # 再起動手段が無い
+            return False
+        old = self.resident
+        try:
+            new = await self._spawn_resident()
+        except Exception:
+            return False                                 # 失敗＝旧をそのまま生かす
+        self.resident = new
+        self._resident_timeouts = 0                      # 健康に復帰
+        try:
+            await old.close()
+        except Exception:
+            pass
+        return True
+
     async def _resident_timed_out(self):
         """茶々の prompt が timeout（adapter 無応答）。段階的に回復:
         ターン破棄 → 連続で閾値に達したら再起動 → 再起動も失敗なら縁側を閉じる。
@@ -129,19 +156,11 @@ class Scheduler:
             self.stop.set()
             return
         self.view.system("  （茶々がふっと席を外した……呼び直してくる）")
-        old = self.resident
-        try:
-            self.resident = await self._spawn_resident()
-            self._resident_timeouts = 0
+        if await self._restart_resident():
             self.view.system("  （茶々が戻ってきた）")   # ※新セッション＝以前の文脈は持たない（永続化は別途・Backlog）
-        except Exception:
+        else:
             self.view.system("  （茶々を呼び直せなんだ。縁側を閉じるわ）")
             self.stop.set()
-        finally:
-            try:
-                await old.close()
-            except Exception:
-                pass
 
     # ── ティック ──────────────────────────────────────────
     async def _tick(self, ctx):
@@ -287,6 +306,7 @@ class Scheduler:
             self.view.system("  /game <id> [見る] → ゲーム（id=blackjack/uno/leduc・「見る」で観戦・要 rlcard。/blackjack は別名）")
             self.view.system("  /model           → 今のモデルを表示（住人=Claude / 客人=codex）")
             self.view.system("  /font [倍率|save] → 文字サイズ（例 /font 1.4・/font で今の値・/font save で保存）")
+            self.view.system("  /restart         → 茶々のセッションを張り直す（染み出し/不調の時・文脈はリセット）")
             self.view.system("  /quit            → 縁側を閉じる")
         elif cmd == "/arc":
             await self._play_arc_now(parts[1] if len(parts) > 1 else None)
@@ -304,6 +324,15 @@ class Scheduler:
             await self._start_game("blackjack", watch)
         elif cmd == "/font":                             # 文字サイズをアプリ内でライブ調整（縁側操作＝茶々に流さない・ADR-0007）
             self._cmd_font(parts[1:])
+        elif cmd in ("/restart", "/reset"):              # 茶々のセッションを張り直す（染み出し/不調時・文脈リセット・縁側操作＝ADR-0007）
+            if self._spawn_resident is None:
+                self.view.system("  （いまは茶々を呼び直せへんのや）")
+            else:
+                self.view.system("  （茶々にいっぺん席を外してもろて、呼び直すわ……）")
+                if await self._restart_resident():
+                    self.view.system("  （茶々が戻ってきた。※前の話の続きは覚えてへん）")
+                else:
+                    self.view.system("  （茶々を呼び直せなんだ。今の茶々のままでいくわ）")
         elif cmd == "/model":                            # 縁側への操作＝茶々には流さない（人格を汚さない・ADR-0007）
             r = self.resident
             if r.reported_model:                         # アダプタが実モデルを報告した＝真実（未指定でも分かる）

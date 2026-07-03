@@ -23,6 +23,10 @@ Thumbs.db
 .vscode/
 .idea/
 
+# 実機スクショ（バグ報告等でリポジトリ直下に置かれる個人ファイル・追跡しない）
+/スクリーンショット*.png
+/Screenshot*.png
+
 # 素材置き場（Gemini 生成の生画像。現行アプリは assets/chacha.png を使用）
 /assets/raw/
 

@@ -14,9 +14,15 @@
 """
 import datetime
 import random
+import re
 
 import conversation     # 3人会話の kind 定数（ARRIVE/LEAVE/REPLY/CHIME/REACT/LEAVE_REACT）
 from sources import time_of_day   # 時刻帯ユーティリティ（源側に常駐・一方向 import）
+
+
+# 話しかけへの応答指示（毎ターン注入）と枠フレーズ。染み出しガードの marker にも使う（strip_resident_leak）。
+_REPLY_INSTRUCTION = "茶々として、自然にこたえて。聞かれてもいないのに天気をいちいち言い立てない。"
+_TALKED_FRAME = "縁側にいるあなた（茶々）に、話しかけられた"
 
 
 def user_narration(text, ctx=None):
@@ -31,8 +37,8 @@ def user_narration(text, ctx=None):
         if w.get("temp") is not None:
             s += f"、{w['temp']}℃"
         lines.append(s + "。")
-    lines.append(f"縁側にいるあなた（茶々）に、話しかけられた:\n「{text}」")
-    lines.append("茶々として、自然にこたえて。聞かれてもいないのに天気をいちいち言い立てない。")
+    lines.append(f"{_TALKED_FRAME}:\n「{text}」")
+    lines.append(_REPLY_INSTRUCTION)
     return "\n".join(lines)
 
 
@@ -121,6 +127,51 @@ _RESIDENT_SCENE = {
                               "茶々として、客人に軽く話を振るか、今の天気や景色にひとことこぼす。"
                               "客人をもてなす女将ではなく、あくまで気ままな住人として。無理に気の利いたことは要らん。"),
 }
+
+
+# ── 住人(茶々)出力の染み出しガード（長命セッション劣化・ADR-0026 備考）─────────────────
+# 注入プロンプトの復唱＋地の思考(英語/メタ)が本文に混じる不具合を、表示前に純関数で削る。
+# 茶々の genuine な発話には決して現れない「指示文」を marker に、最後の marker の直後までを scaffolding として捨てる。
+_JP_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿ｦ-ﾟ]")  # かな/カナ/漢字/半角カナ
+_MIN_REASONING_LEN = 12   # 先頭にこの文字数以上の非日本語塊があれば「思考の染み出し」とみなして削る
+
+
+def _leak_markers():
+    """復唱検知の marker 集合。実際のプロンプト部品から生成＝文言変更に自動追従。"""
+    ms = set(_RESIDENT_SCENE.values())
+    ms.add(_REPLY_INSTRUCTION)
+    ms.add(_TALKED_FRAME)
+    return ms
+
+
+def strip_resident_leak(output, injected=None):
+    """住人(茶々)の応答から、注入プロンプトの復唱＋先頭の思考(英語/メタ)を取り除く純関数。
+    痕跡が無ければ原文をそのまま返す（正常出力は無改変＝過剰トリム防止）。表示前に噛ませる。
+    injected を渡すと kind ごとの指示文（注入文の最終行）も marker に加わり追従性が上がる。"""
+    if not output:
+        return output
+    text = output
+    # 1) プロンプト復唱を除去: 既知の指示文 marker が出たら、最後に現れた marker の直後までを切り捨てる。
+    markers = _leak_markers()
+    if injected:
+        inj_lines = [ln.strip() for ln in injected.splitlines() if ln.strip()]
+        if inj_lines:
+            markers.add(inj_lines[-1])
+    cut = 0
+    for m in markers:
+        if not m:
+            continue
+        i = text.rfind(m)
+        if i != -1:
+            cut = max(cut, i + len(m))
+    if cut:
+        text = text[cut:]
+    # 2) 先頭の思考ブロックを除去: 茶々は日本語＝先頭に非日本語が MIN 文字以上続いたら思考の染み出し。
+    #    日本語本文が後続する場合のみ、その頭までを削る（"OK、" 程度の軽い先頭は残す）。
+    m = _JP_RE.search(text)
+    if m and m.start() >= _MIN_REASONING_LEN:
+        text = text[m.start():]
+    return text.strip()
 
 
 def room_resident_prompt(window, kind, ctx=None):

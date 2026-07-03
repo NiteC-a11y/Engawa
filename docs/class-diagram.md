@@ -30,6 +30,7 @@ classDiagram
         -_inject(narration)
         -_open_visit()
         -_start_game()
+        -_restart_resident()
     }
 
     engawa_main ..> Scheduler : 組み立て

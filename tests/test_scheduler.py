@@ -879,5 +879,95 @@ class TestArcInterruptible(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("別のこと" in (m or "") for m in self._systems(v)))
 
 
+class TestRestartAndGuard(unittest.IsolatedAsyncioTestCase):
+    """/restart（住人セッション張り直し・染み出し/不調時）と、_inject の染み出しガード。"""
+
+    @staticmethod
+    def _systems(v):
+        return [m for (t, m, _l) in v.events if t == "system"]
+
+    @staticmethod
+    def _bodies(v):
+        return [text for (t, _k, text) in v.events if t == "end"]
+
+    async def test_restart_command_respawns_resident(self):
+        old = FakeResident()
+        healthy = FakeResident()
+
+        async def spawn_resident():
+            return healthy
+
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView(),
+                            spawn_resident=spawn_resident)
+        await s.on_user_input("/restart")
+        self.assertIs(s.resident, healthy)             # 新セッションに差し替わった
+        self.assertTrue(old.closed)                    # 旧は close
+        self.assertTrue(any("戻ってきた" in (m or "") for m in self._systems(s.view)))
+
+    async def test_restart_without_factory_keeps_resident(self):
+        old = FakeResident()
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView())  # spawn_resident=None
+        await s.on_user_input("/restart")
+        self.assertIs(s.resident, old)                 # 呼び直せない＝現状維持
+        self.assertFalse(old.closed)
+
+    async def test_restart_failure_keeps_current_resident(self):
+        old = FakeResident()
+
+        async def spawn_resident():
+            raise RuntimeError("spawn failed")
+
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView(),
+                            spawn_resident=spawn_resident)
+        await s.on_user_input("/restart")
+        self.assertIs(s.resident, old)                 # 失敗時は今の茶々を生かす
+        self.assertFalse(old.closed)
+        self.assertFalse(s.stop.is_set())              # /restart 失敗で縁側は閉じない
+
+    async def test_inject_strips_leak_before_display(self):
+        class LeakyResident(FakeResident):
+            async def prompt(self, text, on_chunk=None):
+                self.prompts.append(text)
+                out = text + "As Chacha, I should be short and warm, Kansai.そうやで、ぼちぼちやろ。"
+                if on_chunk:
+                    on_chunk(out)
+                return out
+
+        r = LeakyResident()
+        v = views.CaptureView()
+        s = sched.Scheduler(r, [], sources.WeatherSource(), v)
+        guard = sched.RESIDENT_GUARD
+        sched.RESIDENT_GUARD = 1
+        try:
+            await s.on_user_input("評価むずいわ")
+        finally:
+            sched.RESIDENT_GUARD = guard
+        body = " ".join(self._bodies(v))
+        self.assertIn("ぼちぼち", body)                 # 本物の台詞は残る
+        self.assertNotIn("As Chacha", body)            # 地の思考は消える
+        self.assertNotIn("茶々として", body)            # 注入文の復唱も消える
+
+    async def test_guard_off_streams_raw(self):
+        class LeakyResident(FakeResident):
+            async def prompt(self, text, on_chunk=None):
+                self.prompts.append(text)
+                out = "As Chacha reasoning.ぼちぼちやろ。"
+                if on_chunk:
+                    on_chunk(out)
+                return out
+
+        r = LeakyResident()
+        v = views.CaptureView()
+        s = sched.Scheduler(r, [], sources.WeatherSource(), v)
+        guard = sched.RESIDENT_GUARD
+        sched.RESIDENT_GUARD = 0
+        try:
+            await s.on_user_input("よお")
+        finally:
+            sched.RESIDENT_GUARD = guard
+        body = " ".join(self._bodies(v))
+        self.assertIn("As Chacha", body)               # guard=0 は素通し（従来挙動）
+
+
 if __name__ == "__main__":
     unittest.main()
