@@ -2,6 +2,7 @@
 実ファイル書き込みは一時パスで検証（実 engawa.log を汚さない）。"""
 import logging
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -36,6 +37,15 @@ class TestDebugLogSetup(unittest.TestCase):
             body = f.read()
         self.assertIn("種を空気へ: 夏至", body)
         self.assertIn("engawa.scheduler", body)     # 子ロガー名が出る
+
+    def test_timestamp_has_date_and_milliseconds(self):
+        # 定量分析用: 各行が「YYYY-MM-DD HH:MM:SS.mmm」で始まる（msec 精度で会話タイミングを追える）
+        debuglog.setup(True, self._tmp.name)
+        debuglog.get("scheduler").debug("next beat +6.0s (active=True)")
+        logging.getLogger("engawa").handlers[0].flush()
+        with open(self._tmp.name, encoding="utf-8") as f:
+            first = f.readline()
+        self.assertRegex(first, r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} ")
 
     def test_setup_twice_no_duplicate_handlers(self):
         debuglog.setup(True, self._tmp.name)

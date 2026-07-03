@@ -36,7 +36,9 @@ def setup(debug, path):
         root.setLevel(logging.WARNING)
         return False
     handler = logging.FileHandler(path, encoding="utf-8")
-    handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(message)s", "%H:%M:%S"))
+    # 日付＋ミリ秒（定量分析用＝会話タイミングを msec 精度で追える）。%(msecs)03d は asctime の秒に足す。
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s.%(msecs)03d %(name)s %(message)s", "%Y-%m-%d %H:%M:%S"))
     root.addHandler(handler)
     root.setLevel(logging.DEBUG)
     return True

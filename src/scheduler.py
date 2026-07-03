@@ -33,6 +33,9 @@ TICK_MIN, TICK_MAX = min(TICK_MIN, TICK_MAX), max(TICK_MIN, TICK_MAX)           
 ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX = min(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX), max(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 RESIDENT_TIMEOUT_RESTART_AT = config.get_int("ENGAWA_RESIDENT_TIMEOUT_RESTART_AT", "acp", "resident_restart_at", 2, lo=1)  # 住人 prompt がこの回数連続で timeout したら再起動（それ未満はターン破棄のみ＝文脈温存）
 GUEST_IDLE_LEAVE_TICKS = config.get_int("ENGAWA_GUEST_IDLE_LEAVE", "guest", "idle_leave_ticks", 8, lo=1)  # 来訪中、人間沈黙がこのtick数続いたら客人は辞去（来訪中tickは ACTIVE_BEAT=5〜12s。大きいほど長居・有界は維持）
+GUEST_FILL_CAP = config.get_int("ENGAWA_GUEST_FILL_CAP", "guest", "fill_cap", 3, lo=0)          # 人間待ちの間、茶々が“人間役の代打”で場をつなぐ回数の上限（=人間不在の連続AIターン上限・ADR-0025。0で無効＝従来の純待ち）
+GUEST_FILL_AFTER = config.get_int("ENGAWA_GUEST_FILL_AFTER", "guest", "fill_after_ticks", 2, lo=1)  # 最初の代打までの沈黙tick数（< idle_leave_ticks 前提。予算を使い切ったら idle_leave_ticks で辞去）
+GUEST_FILL_SLOWDOWN = config.get_int("ENGAWA_GUEST_FILL_SLOWDOWN", "guest", "fill_slowdown", 1, lo=0)  # 代打の間隔を回ごとに延ばす量（n回目=fill_after+n×これ・大きいほど早く間延び。0で一定・ADR-0025「来た直後は賑やか→ネタ切れで間延び→帰る」）
 UI_FONT_MIN, UI_FONT_MAX = 0.8, 2.2      # /font の文字倍率クランプ（engawa_main._ui_config の lo/hi と揃える）
 
 log = debuglog.get("scheduler")          # デバッグログ（種の注入・来訪/room・cancel/timeout 等の主要ライフサイクル）
@@ -80,6 +83,8 @@ class Scheduler:
     # ── 注入（turn_lock で直列化）──────────────────────────
     async def _inject(self, narration):
         async with self.turn_lock:
+            log.debug("inject 茶々 (%s%s)", narration.kind,      # 茶々ソロの発話（ambient つぶやき/アーク beat/ソロ応答）＝タイミングの起点
+                      f"/{narration.label}" if narration.label else "")
             self.view.turn_start("茶々", narration.kind, narration.label, narration.voice)
             self.speaking = True
             timed_out = False
@@ -220,7 +225,9 @@ class Scheduler:
                     await self._tick(sources.build_context(self.weather, self.topics))
                 except acp.ACPTimeoutError:              # 各経路で処理済み（保険）。tick ループは止めない
                     pass
-            self._next_at = time.time() + self._next_interval()   # 次の間合い（active 中は短い＝会話が流れる）
+            interval = self._next_interval()             # 次の間合い（active 中は短い＝会話が流れる）
+            self._next_at = time.time() + interval
+            log.debug("next beat +%.1fs (active=%s)", interval, active_mode)   # 予定の間合い＝LLM 遅延と分けてペースを見る（定量分析用）
 
     # ── ユーザー入力（割り込み・cancel優先）──────────────────
     async def on_user_input(self, line):
@@ -230,6 +237,7 @@ class Scheduler:
         line = line.strip()
         if not line:
             return
+        log.debug("user input%s: %s", f" (→{to})" if to else "", line)   # 人間の入力時刻＝会話駆動の起点（定量分析用）
         if line.startswith("/"):
             await self._command(line)
             return
@@ -387,7 +395,8 @@ class Scheduler:
 
         self.room = conversation.Room(
             persona, resident_spk, guest_spk, idle_leave_ticks=GUEST_IDLE_LEAVE_TICKS,
-            on_say=_on_say)
+            fill_cap=GUEST_FILL_CAP, fill_after=GUEST_FILL_AFTER,
+            fill_slowdown=GUEST_FILL_SLOWDOWN, on_say=_on_say)
         await self.room.begin()                          # 到着の挨拶＋茶々の反応 → 人間待ち
         if await self._check_room_timeout():             # 到着の挨拶すら無応答なら即・急用退場で畳む
             return

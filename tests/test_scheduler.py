@@ -497,11 +497,18 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(created[0].closed)        # codex 破棄済み
         self.assertGreater(len(s.resident.prompts), before)   # 通常の茶々への話しかけに落ちた（例外なし）
 
+    def _leave_bound(self):
+        # 沈黙→辞去までの上限tick数。代打（ADR-0025）は回ごとに間隔が延びる（fill_after+n×slowdown）ので
+        # その総和 ＋ 予算枯渇後の idle_leave ＋ 余裕。減速で長引く分を織り込んでも「必ず終端に着く（有界）」を保証。
+        cap = sched.GUEST_FILL_CAP
+        ramp = cap * sched.GUEST_FILL_AFTER + sched.GUEST_FILL_SLOWDOWN * cap * cap   # Σ(fill_after+n×slowdown) の安全な上界
+        return ramp + sched.GUEST_IDLE_LEAVE_TICKS + 3
+
     async def test_silence_makes_guest_leave_and_dispose(self):
         created = []
         s = self._scheduler(created)
         await s._summon_guest("近所の物知りなご隠居")
-        for _ in range(sched.GUEST_IDLE_LEAVE_TICKS + 3):     # しきい値に依存しない（沈黙が続けば必ず辞去）
+        for _ in range(self._leave_bound()):                  # 沈黙が続けば（代打で長引いても）必ず辞去＝有界
             await s._tick(sources.build_context(None, []))
             if s.room is None:
                 break
@@ -509,19 +516,41 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(s.active)
         self.assertTrue(created[0].closed)                    # codex 破棄（使い捨て・ADR-0008）
 
-    async def test_guest_lingers_until_idle_threshold(self):
-        # すぐ帰らない＝沈黙が idle_leave_ticks 続くまでは居座る（せわしなさの解消・有界は維持）
+    async def test_guest_lingers_before_leaving(self):
+        # すぐ帰らない＝沈黙しても代打で場をつなぎつつ居座る（せわしなさの解消・有界は維持・ADR-0025）
         created = []
         s = self._scheduler(created)
         await s._summon_guest("近所の物知りなご隠居")
-        for _ in range(sched.GUEST_IDLE_LEAVE_TICKS - 1):     # しきい値の手前までは
+        for _ in range(sched.GUEST_IDLE_LEAVE_TICKS):         # 旧しきい値ぶん沈黙しても
             await s._tick(sources.build_context(None, []))
-        self.assertIsNotNone(s.room)                          # まだ居る（すぐ帰らない）
-        for _ in range(3):                                    # あと数tick沈黙が続けば辞去
+        self.assertIsNotNone(s.room)                          # まだ居る（代打が入るので即辞去しない）
+        for _ in range(self._leave_bound()):                  # 予算を使い切るまで続ければ最後は辞去
             await s._tick(sources.build_context(None, []))
             if s.room is None:
                 break
         self.assertIsNone(s.room)
+
+    async def test_resident_fills_in_during_silence(self):
+        # 代打（ADR-0025）: 人間が黙っていても茶々が場を回す＝茶々↔客人の一言が実プロンプトで流れる
+        created = []
+        s = self._scheduler(created)
+        await s._summon_guest("近所の物知りなご隠居")
+        r_before, g_before = len(s.resident.prompts), len(created[0].prompts)
+        for _ in range(sched.GUEST_FILL_AFTER + 1):           # 沈黙が代打しきい値を越える
+            await s._tick(sources.build_context(None, []))
+        self.assertTrue(any("席を外して" in p for p in s.resident.prompts))   # 茶々に MUSE（人間役の代打）が届いた
+        self.assertGreater(len(s.resident.prompts), r_before)                 # 茶々が代打で喋った
+        self.assertGreater(len(created[0].prompts), g_before)                 # 客人が茶々に返した
+        self.assertIsNotNone(s.room)                                          # 1往復で人間待ちへ戻り、まだ在室
+
+    async def test_logs_user_input_and_resident_inject(self):
+        # 定量ログ（半日観測の土台）: 人間の入力と茶々ソロの発話が時刻付きで engawa.scheduler に出る
+        created = []
+        s = self._scheduler(created)
+        with self.assertLogs("engawa.scheduler", level="DEBUG") as cm:
+            await s.on_user_input("ええ天気やね")
+        self.assertTrue(any("user input: ええ天気やね" in m for m in cm.output))   # 人間の入力時刻
+        self.assertTrue(any("inject 茶々 (user)" in m for m in cm.output))         # 茶々ソロ応答の起点時刻
 
 
 class TestGameMode(unittest.IsolatedAsyncioTestCase):

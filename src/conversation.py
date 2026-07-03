@@ -10,9 +10,12 @@
 - **Strategy / DI**: `Speaker` … 茶々/客人を均一に「喋らせる」注入カラブル。Room は実体(agent/View)を
   知らない＝差し替え可能・テスト可能（Inc2 で Scheduler が実 agent を結線する）。
 - **純関数（Strategy-lite）**: `resolve_addressee` … 宛先解決（名前メンション＋既定は茶々・ADR-0015 決定）。
-- **State パターン**: `RoomState` ＝ `Greeting → AwaitingHuman → Responding → Leaving → Closed`。
-  - `AwaitingHuman` は **on_tick で AI を一切動かさない**（沈黙が続けば Leaving へ）＝自律往復が起き得ない。
-  - `Responding` は人間発話あたり **最大 turn_cap(=2) 手**で必ず `AwaitingHuman` へ戻る＝歯止めの本体。
+- **State パターン**: `RoomState` ＝ `Greeting → AwaitingHuman ⇄ (Responding | ResidentFilling) → Leaving → Closed`。
+  - `AwaitingHuman` は沈黙が続くと、まず茶々が“人間役の代打”で場をつなぎ（`ResidentFilling`・予算 `fill_cap` 回・ADR-0025）、
+    予算を使い切れば Leaving へ。代打の間隔は回ごとに `fill_slowdown` ずつ延びる（来訪が進むほどゆっくり＝ネタ切れの間延び）。
+    `fill_cap=0` なら **on_tick で AI を一切動かさない**＝従来どおり自律往復が起き得ない。
+  - `Responding` は人間発話あたり **最大 turn_cap(=2) 手**で必ず `AwaitingHuman` へ戻る＝歯止めの本体（人間関与で代打予算も満タンに戻す）。
+  - `ResidentFilling` は茶々→客人の **1往復** で必ず `AwaitingHuman` へ戻る＝人間不在でも有界（予算で必ず終端に着く）。
 - **Mediator**: 外側は既存 `Scheduler`、その下に部屋の調停役 `Room` を置く。
 
 このモジュールは Scheduler/agent を import しない（Speaker 注入のみで純粋・import は re だけ）。Inc2 で Scheduler が実 agent を Speaker として結線済み。
@@ -89,8 +92,9 @@ class Transcript:
 
 # ── 発話者（Strategy/DI）。Room は agent/View を知らず、注入された fn を呼ぶだけ ──────
 # kind: 場面の種別。実プロンプト文言は Inc2 で Scheduler 側の fn が解釈する（Room は配役と順序だけ持つ）。
-ARRIVE, REACT, REPLY, CHIME, LEAVE, LEAVE_REACT = (
-    "arrive", "react", "reply", "chime", "leave", "leave_react")
+# MUSE: 人間が席を外している間、茶々が“人間役の代打”として場を回す振り（ADR-0025）。
+ARRIVE, REACT, REPLY, CHIME, LEAVE, LEAVE_REACT, MUSE = (
+    "arrive", "react", "reply", "chime", "leave", "leave_react", "muse")
 
 
 class Speaker:
@@ -106,12 +110,21 @@ class Speaker:
 
 # ── 部屋（Mediator）＋ 状態（State パターン）────────────────────────────────
 class Room:
-    def __init__(self, persona, resident, guest, *, turn_cap=2, idle_leave_ticks=4, on_say=None):
+    def __init__(self, persona, resident, guest, *, turn_cap=2, idle_leave_ticks=4,
+                 fill_cap=3, fill_after=2, fill_slowdown=1, on_say=None):
         self.persona = persona
         self.resident = resident          # Speaker（茶々）
         self.guest = guest                # Speaker（客人）
         self.turn_cap = max(1, int(turn_cap))           # 人間発話あたりの連続AIターン上限（歯止め）
         self.idle_leave_ticks = max(1, int(idle_leave_ticks))   # 人間沈黙が続いたら客人は辞去
+        # 代打（ADR-0025）: 人間が来るまで茶々が人間役を代行する回数の上限（=人間不在の連続AIターン上限）。
+        # 0 で無効＝従来の純待ち挙動。fill_after 沈黙で1回発火し、予算を使い切ったら idle_leave_ticks で辞去。
+        self.fill_cap = max(0, int(fill_cap))
+        self.fill_after = max(1, int(fill_after))       # 最初の代打までの沈黙ティック数（< idle_leave_ticks 前提）
+        # 回を追うごとに代打の間隔を延ばす（来訪が進むほどゆっくり＝人間の「来た直後は賑やか→ネタ切れで間延び→帰る」を模す）。
+        # n回目の代打しきい値 = fill_after + n*fill_slowdown。人間が関与すると予算リセット＝この間隔も先頭に戻る（賑わい復活）。
+        self.fill_slowdown = max(0, int(fill_slowdown))
+        self._fill_left = self.fill_cap                 # 残り代打回数（人間の発話でリセット＝また代打できる）
         self.transcript = Transcript()
         self._on_say = on_say or (lambda speaker, text, kind: None)   # 表示/記録フック（任意）
         self._state = Greeting(self)
@@ -172,8 +185,9 @@ class Greeting(RoomState):
 
 
 class AwaitingHuman(RoomState):
-    """部屋オープン＝人間待ち。**on_tick で AI を動かさない**（自律往復が起き得ない核）。
-    人間が沈黙し続けたら客人は辞去する（有界維持）。"""
+    """部屋オープン＝人間待ち。沈黙が続いたら、まず茶々が“人間役の代打”で場をつなぎ（予算 fill_cap 回・
+    ADR-0025）、予算を使い切ったら客人が辞去する（有界維持）。fill_cap=0 なら代打なし＝従来の純待ち＝
+    **on_tick で AI を一切動かさない**（原則#3 の核はこの経路で保たれる）。"""
     def __init__(self, room):
         super().__init__(room)
         self.idle = 0
@@ -184,8 +198,15 @@ class AwaitingHuman(RoomState):
 
     async def on_tick(self):
         self.idle += 1
-        if self.idle >= self.room.idle_leave_ticks:
-            await self.room._goto(Leaving(self.room)).enter()
+        r = self.room
+        if r._fill_left > 0:                                  # 予算が残る間は代打で場をつなぐ（人間はいつでも割り込める）
+            used = r.fill_cap - r._fill_left                  # これまで代打した回数＝進むほど間隔が延びる（ネタ切れの間延び）
+            if self.idle >= r.fill_after + used * r.fill_slowdown:
+                r._fill_left -= 1
+                await r._goto(ResidentFilling(r)).enter()
+                return
+        if self.idle >= r.idle_leave_ticks:                  # 予算ゼロ＋沈黙継続 → 客人は辞去（必ず終端に着く）
+            await r._goto(Leaving(r)).enter()
 
 
 class Responding(RoomState):
@@ -212,7 +233,18 @@ class Responding(RoomState):
                 break
             if await r._utter(speaker, kind):
                 turns += 1
+        r._fill_left = r.fill_cap                          # 人間が関与した＝代打予算を満タンに戻す（次の沈黙でまた代打・有界は不変）
         await r._goto(AwaitingHuman(r)).enter()           # 必ず人間待ちへ（ピンポンに入らない）
+
+
+class ResidentFilling(RoomState):
+    """人間が席を外している間、茶々が“人間役の代打”で場を回す（ADR-0025）。茶々が客人に振り、客人が一言返す
+    ＝有界（1往復）で必ず人間待ちへ戻る。予算 `_fill_left` は AwaitingHuman が管理し、使い切れば辞去に向かう。"""
+    async def enter(self):
+        r = self.room
+        if await r._utter(r.resident, MUSE):    # 茶々が代打で場に振る（無言なら客人も動かさない）
+            await r._utter(r.guest, REPLY)       # 客人が茶々に短く応じる
+        await r._goto(AwaitingHuman(r)).enter()  # 必ず人間待ちへ戻る（idle は 0 から数え直し）
 
 
 class Leaving(RoomState):

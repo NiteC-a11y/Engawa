@@ -28,5 +28,6 @@
 | 0022 | 茶々の「声」は voice バンドルで差し替える（方言/言語を base⟂voice 分離・config 主導・既定 ja-osaka） | Accepted（方針確定・実装これから） |
 | 0023 | ソース修正はテスト同梱・走らせて緑が必須（Stop フックで強制） | Accepted（実装） |
 | 0024 | 客人複数化＝Mediator＋話す順 Strategy＋AIターン予算で N人会話へ（要 turn 管理再設計・Inc3 後） | Proposed（構想） |
+| 0025 | 人間待ちの間、茶々が“人間役の代打”で場をつなぐ（予算付き有界・0015 の歯止めを追補・fill_cap で終端保証） | Accepted（実装） |
 
 形式は Michael Nygard 風（背景 / 決定 / 代替案 / 影響 / 備考）。

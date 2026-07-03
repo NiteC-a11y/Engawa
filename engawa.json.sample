@@ -7,10 +7,13 @@
     "guest": ""
   },
   "guest": {
-    "_comment": "自発来訪。from_hour=開始時刻(既定15=夕方/time_of_day準拠・0で終日)。prob=tickあたりの来訪確率＝**arc 抽選から独立**なのでこの値がほぼ実効レート(0.05で間隔ざっくり数十分・来訪後は20tickのcooldown)。頻繁にしたいなら 0.1〜0.2 へ。idle_leave_ticks=来訪中に人間沈黙がこのtick数続いたら客人が辞去(来訪中tickは5〜12s。既定8≒40〜96s。大きいほど長居・話しかければリセット・有界は維持)。召喚 /codex はこのゲートを受けない。",
+    "_comment": "自発来訪。from_hour=開始時刻(既定15=夕方/time_of_day準拠・0で終日)。prob=tickあたりの来訪確率＝**arc 抽選から独立**なのでこの値がほぼ実効レート(0.05で間隔ざっくり数十分・来訪後は20tickのcooldown)。頻繁にしたいなら 0.1〜0.2 へ。idle_leave_ticks=来訪中に人間沈黙がこのtick数続いたら客人が辞去(来訪中tickは active_beat=数秒〜十数秒。既定8。大きいほど長居・話しかければリセット・有界は維持)。fill_cap=人間が黙っている間に茶々が“人間役の代打”で場をつなぐ回数の上限(=人間不在の連続AIターン上限・ADR-0025。既定3。0で代打オフ＝従来の純待ち。使い切ると idle_leave_ticks で辞去)。fill_after_ticks=最初の代打までの沈黙tick数(既定2・idle_leave_ticks より小さくする)。fill_slowdown=回ごとに代打の間隔を延ばす量(n回目=fill_after+n×これ・既定1・0で一定。来た直後は賑やか→ネタ切れで間延び→帰る、を模す)。召喚 /codex はこのゲートを受けない。",
     "from_hour": 15,
     "prob": 0.05,
-    "idle_leave_ticks": 8
+    "idle_leave_ticks": 8,
+    "fill_cap": 3,
+    "fill_after_ticks": 2,
+    "fill_slowdown": 1
   },
   "timing": {
     "_comment": "間合い。tick_min/max=何もない時のつぶやき間隔(秒)。active_beat_min/max=アーク/来訪が進行中のビート間隔(秒・短め＝会話が流れる)。arc_prob=新アーク抽選。quiet_after_user=会話直後の沈黙(秒・来訪は止めない)。mutter_prob=天気つぶやき確率。",

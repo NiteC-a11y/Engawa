@@ -75,6 +75,7 @@ def _spk(name, log, text=None):
 
 def _room(log, says=None, **kw):
     on_say = (lambda s, t, k: says.append((s, k))) if says is not None else None
+    kw.setdefault("fill_cap", 0)   # 既定は代打オフ＝従来の純待ち挙動を検証（代打は TestResidentFilling で別途）
     return conv.Room(PERSONA, _spk("茶々", log), _spk("ご隠居", log), on_say=on_say, **kw)
 
 
@@ -176,6 +177,103 @@ class TestRoomFlow(unittest.IsolatedAsyncioTestCase):
         log.clear()
         await room.on_human("おーい"); await room.on_tick()
         self.assertEqual(log, [])                                 # 終端後は何も起きない
+
+
+class TestResidentFilling(unittest.IsolatedAsyncioTestCase):
+    """代打（ADR-0025）: 人間待ちの間、茶々が人間役で場をつなぐ。有界（予算 fill_cap）で必ず辞去へ。"""
+
+    async def test_fills_after_silence_then_awaits(self):
+        log = []
+        room = _room(log, fill_cap=2, fill_after=2, idle_leave_ticks=99)
+        await room.begin(); log.clear()
+        await room.on_tick()                                     # idle 1＝まだ動かない
+        self.assertEqual(log, [])
+        await room.on_tick()                                     # idle 2＝代打発火（茶々 MUSE → 客人 REPLY）
+        self.assertEqual(_kinds(log), [("茶々", conv.MUSE), ("ご隠居", conv.REPLY)])
+        self.assertEqual(room.state_name, "AwaitingHuman")       # 1往復で必ず人間待ちへ戻る
+        self.assertEqual(room._fill_left, 1)                     # 予算を1消費
+
+    async def test_budget_exhausts_then_leaves(self):
+        log = []
+        room = _room(log, fill_cap=1, fill_after=1, idle_leave_ticks=2)
+        await room.begin(); log.clear()
+        await room.on_tick()                                     # 代打1回（予算→0・idle は 0 に戻る）
+        self.assertEqual(_kinds(log), [("茶々", conv.MUSE), ("ご隠居", conv.REPLY)])
+        log.clear()
+        await room.on_tick()                                     # idle 1＝予算ゼロなのでまだ辞去せず
+        self.assertEqual(log, [])
+        await room.on_tick()                                     # idle 2＝辞去（必ず終端に着く）
+        self.assertEqual(_kinds(log), [("ご隠居", conv.LEAVE), ("茶々", conv.LEAVE_REACT)])
+        self.assertTrue(room.closed)
+
+    async def test_human_refills_budget(self):
+        log = []
+        room = _room(log, fill_cap=1, fill_after=1, idle_leave_ticks=99)
+        await room.begin()
+        await room.on_tick()                                     # 代打1回で予算を使い切る
+        self.assertEqual(room._fill_left, 0)
+        await room.on_human("ご隠居どう?")                        # 人間が関与＝予算リセット
+        self.assertEqual(room._fill_left, 1)
+        log.clear()
+        await room.on_tick()                                     # 予算が戻ったのでまた代打が入る
+        self.assertEqual(_kinds(log), [("茶々", conv.MUSE), ("ご隠居", conv.REPLY)])
+
+    async def _tick_until_fill(self, room, log, expect_at):
+        # 沈黙を刻み、expect_at ティック目でちょうど代打（茶々 MUSE→客人 REPLY）が出ることを確かめる
+        for i in range(1, expect_at):
+            await room.on_tick()
+            self.assertEqual(log, [], f"{i}ティック目で早すぎる代打")
+        await room.on_tick()
+        self.assertEqual(_kinds(log), [("茶々", conv.MUSE), ("ご隠居", conv.REPLY)])
+        log.clear()
+
+    async def test_fills_decelerate_as_budget_depletes(self):
+        # 来た直後は早く、回を追うごとに間延び（fill_after=2, slowdown=1 → 2,3,4 ティック間隔）
+        log = []
+        room = _room(log, fill_cap=3, fill_after=2, fill_slowdown=1, idle_leave_ticks=99)
+        await room.begin(); log.clear()
+        await self._tick_until_fill(room, log, 2)   # 1回目＝fill_after
+        await self._tick_until_fill(room, log, 3)   # 2回目＝fill_after+1
+        await self._tick_until_fill(room, log, 4)   # 3回目＝fill_after+2
+
+    async def test_slowdown_zero_keeps_constant_interval(self):
+        # slowdown=0 なら間隔は一定（fill_after のまま・減速なし）
+        log = []
+        room = _room(log, fill_cap=3, fill_after=2, fill_slowdown=0, idle_leave_ticks=99)
+        await room.begin(); log.clear()
+        await self._tick_until_fill(room, log, 2)
+        await self._tick_until_fill(room, log, 2)   # 減速しない＝また2ティック目
+
+    async def test_human_participation_resets_deceleration(self):
+        # 人間が関与すると予算が満タンに戻る＝間隔も先頭（fill_after）へ＝賑わい復活
+        log = []
+        room = _room(log, fill_cap=3, fill_after=2, fill_slowdown=1, idle_leave_ticks=99)
+        await room.begin(); log.clear()
+        await self._tick_until_fill(room, log, 2)   # 1回目
+        await self._tick_until_fill(room, log, 3)   # 2回目＝間延び中
+        await room.on_human("ご隠居、さっきの話やけどな"); log.clear()   # 人間が入る＝リセット
+        await self._tick_until_fill(room, log, 2)   # 先頭の間隔に戻る（fill_after）
+
+    async def test_fill_cap_zero_is_pure_wait(self):
+        log = []
+        room = _room(log, fill_cap=0, fill_after=1, idle_leave_ticks=3)
+        await room.begin(); log.clear()
+        await room.on_tick(); await room.on_tick()               # 代打なし＝AI を一切動かさない（原則#3 の核）
+        self.assertEqual(log, [])
+        await room.on_tick()                                     # 沈黙のまま辞去
+        self.assertEqual(_kinds(log), [("ご隠居", conv.LEAVE), ("茶々", conv.LEAVE_REACT)])
+
+    async def test_silent_resident_skips_guest_reply(self):
+        # 茶々が無言（MUSE で空）なら客人も動かさない＝場を無理に回さない
+        async def silent(window, kind):
+            return "" if kind == conv.MUSE else "x"
+        log = []
+        room = conv.Room(PERSONA, conv.Speaker("茶々", silent), _spk("ご隠居", log),
+                         fill_cap=1, fill_after=1, idle_leave_ticks=99)
+        await room.begin(); log.clear()
+        await room.on_tick()                                     # 代打枠だが茶々が無言 → 客人 REPLY も無し
+        self.assertEqual(log, [])
+        self.assertEqual(room.state_name, "AwaitingHuman")
 
 
 if __name__ == "__main__":

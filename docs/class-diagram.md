@@ -288,10 +288,15 @@ classDiagram
         +guest: Speaker
         +transcript: Transcript
         +turn_cap: int
+        +idle_leave_ticks: int
+        +fill_cap: int
+        +fill_after: int
+        +fill_slowdown: int
         +begin()
         +on_human(text, to)
         +on_tick()
         -_state: RoomState
+        -_fill_left: int
     }
 
     class RoomState {
@@ -305,6 +310,7 @@ classDiagram
     class Greeting
     class AwaitingHuman
     class Responding
+    class ResidentFilling
     class Leaving
     class Closed
 
@@ -331,13 +337,16 @@ classDiagram
     RoomState <|-- Greeting
     RoomState <|-- AwaitingHuman
     RoomState <|-- Responding
+    RoomState <|-- ResidentFilling
     RoomState <|-- Leaving
     RoomState <|-- Closed
 
     Greeting ..> AwaitingHuman : 遷移
     AwaitingHuman ..> Responding : 人間発話
-    AwaitingHuman ..> Leaving : 沈黙
-    Responding ..> AwaitingHuman : turn_cap後
+    AwaitingHuman ..> ResidentFilling : 沈黙+予算残（茶々が代打・ADR-0025）
+    AwaitingHuman ..> Leaving : 沈黙+予算ゼロ
+    Responding ..> AwaitingHuman : turn_cap後（予算リセット）
+    ResidentFilling ..> AwaitingHuman : 1往復後
     Leaving ..> Closed
 
     Room --> Speaker : resident, guest
@@ -416,5 +425,6 @@ flowchart TB
 
 - `docs/adr/0013-event-source-scheduler-architecture.md`
 - `docs/adr/0015-visitor-bounded-three-way-conversation.md`
+- `docs/adr/0025-resident-fills-in-for-absent-human-bounded.md` — 人間待ちの間、茶々が代打で場をつなぐ（`ResidentFilling`・有界）
 - `docs/adr/0017-games-via-port-and-rlcard-adapter.md`
 - `codex/review-cursor-2026-06-30-architecture-boundaries.md` — 本図を基にした境界レビューと Action Items

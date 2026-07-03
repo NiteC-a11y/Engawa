@@ -97,7 +97,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 - アニメ=コマ送り（パラパラ）、移動=座標/transform、のハイブリッド。state（天気/時刻/気分）→アニメ選択。
 - 既存IP（たまごっち / Clawd 等）に寄せない。オリジナルで描く。
 - ブラウザストレージ（localStorage 等）は使わない。状態はメモリ／SQLite。
-- **デバッグ出力は縁側の窓/console 本文に混ぜない**＝別ファイル `engawa.log`（gitignore）へ。`ENGAWA_DEBUG=1`（config・既定オフ）で `debuglog`（stdlib logging の薄いラッパ）が主要ライフサイクル（種の注入/来訪/room/cancel/timeout）を吐く。off は NullHandler＝`log.debug` は no-op（本番の負荷ゼロ）。各モジュールは `debuglog.get("<name>")` の子ロガー、`setup` は composition root が1度だけ。個々の debug 出力は `assertLogs("engawa.<name>")` でユニット検証できる。
+- **デバッグ出力は縁側の窓/console 本文に混ぜない**＝別ファイル `engawa.log`（gitignore）へ。`ENGAWA_DEBUG=1`（config・既定オフ）で `debuglog`（stdlib logging の薄いラッパ）が主要ライフサイクル（種の注入/来訪/room/cancel/timeout ＋ inject/user input/say/next beat）を **日付＋ミリ秒**（`YYYY-MM-DD HH:MM:SS.mmm`）で吐く＝会話タイミングを定量観測できる。off は NullHandler＝`log.debug` は no-op（本番の負荷ゼロ）。各モジュールは `debuglog.get("<name>")` の子ロガー、`setup` は composition root が1度だけ。個々の debug 出力は `assertLogs("engawa.<name>")` でユニット検証できる。
 
 ---
 
