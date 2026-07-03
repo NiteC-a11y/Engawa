@@ -33,6 +33,9 @@ TICK_MIN, TICK_MAX = min(TICK_MIN, TICK_MAX), max(TICK_MIN, TICK_MAX)           
 ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX = min(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX), max(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 RESIDENT_TIMEOUT_RESTART_AT = config.get_int("ENGAWA_RESIDENT_TIMEOUT_RESTART_AT", "acp", "resident_restart_at", 2, lo=1)  # 住人 prompt がこの回数連続で timeout したら再起動（それ未満はターン破棄のみ＝文脈温存）
 RESIDENT_GUARD = config.get_int("ENGAWA_RESIDENT_GUARD", "acp", "resident_guard", 1, lo=0)  # 1=茶々ソロ出力の染み出しガード（注入文の復唱＋地の思考を表示前に除去・ソロは一括描画＝逐次stream無し）/0=従来の逐次stream
+ABSENCE_AFTER_TURNS = config.get_int("ENGAWA_ABSENCE_AFTER_TURNS", "absence", "after_turns", 30, lo=0)  # 茶々ソロ発話がこの回数たまったら次のidleで「中座」→裏でセッションを張り直す（ADR-0027 長命セッション劣化の根治。0で無効）
+ABSENCE_JITTER = config.get_int("ENGAWA_ABSENCE_JITTER", "absence", "jitter_turns", 10, lo=0)          # 中座タイミングのゆらぎ（after_turns に +0〜これ ターン・自然な「たまに」感）
+ABSENCE_GAP = config.get_float("ENGAWA_ABSENCE_GAP", "absence", "gap_sec", 18, lo=1)                   # 不在の長さ（秒）＝この間は黙り、明けにセッションを張り直して戻る
 GUEST_IDLE_LEAVE_TICKS = config.get_int("ENGAWA_GUEST_IDLE_LEAVE", "guest", "idle_leave_ticks", 8, lo=1)  # 来訪中、人間沈黙がこのtick数続いたら客人は辞去（来訪中tickは ACTIVE_BEAT=5〜12s。大きいほど長居・有界は維持）
 GUEST_FILL_CAP = config.get_int("ENGAWA_GUEST_FILL_CAP", "guest", "fill_cap", 3, lo=0)          # 人間待ちの間、茶々が“人間役の代打”で場をつなぐ回数の上限（=人間不在の連続AIターン上限・ADR-0025。0で無効＝従来の純待ち）
 GUEST_FILL_AFTER = config.get_int("ENGAWA_GUEST_FILL_AFTER", "guest", "fill_after_ticks", 2, lo=1)  # 最初の代打までの沈黙tick数（< idle_leave_ticks 前提。予算を使い切ったら idle_leave_ticks で辞去）
@@ -60,6 +63,10 @@ class Scheduler:
         self._spawn_codex = spawn_codex          # 客人(codex)の async factory（adr/0008）
         self._spawn_resident = spawn_resident    # 住人(茶々)再起動用 async factory（timeout 段階回復・None=再起動不可）
         self._resident_timeouts = 0              # 住人 prompt の連続 timeout 回数（成功で 0 復帰）
+        self._turns_since_refresh = 0            # 前回のセッション更新からの住人ソロ発話数（中座の圧・ADR-0027）
+        self._absent = False                     # 茶々が中座中か（不在の間は黙り、明けにセッション更新）
+        self._away_until = 0.0                   # 中座から戻る予定時刻（time.time()）
+        self._absence_target = self._roll_absence_target()   # 次に中座する発話数の目標（after_turns＋ゆらぎ）
         self._guest_timed_out = False            # room 中に客人が無応答だった（→急用で退場）
         self._room_resident_timeout = False      # room 中に住人が無応答だった（→退場＋段階回復）
         self.active = None                               # 進行中 source（割り込みで消えない）
@@ -109,6 +116,7 @@ class Scheduler:
                 await self._resident_timed_out()
             else:
                 self._resident_timeouts = 0              # 応答が返った＝健康。カウンタ復帰
+                self._turns_since_refresh += 1           # 中座の圧を溜める（前回セッション更新からの発話数・ADR-0027）
             return stop_reason
 
     async def _emit(self, res):
@@ -162,10 +170,47 @@ class Scheduler:
             self.view.system("  （茶々を呼び直せなんだ。縁側を閉じるわ）")
             self.stop.set()
 
+    # ── 中座＝世界観に溶かした定期セッション更新（ADR-0027）──────────────
+    def _roll_absence_target(self):
+        """次に中座する発話数の目標。after_turns にゆらぎ(+0〜jitter)を足す＝自然な「たまに」感。"""
+        jitter = random.randint(0, ABSENCE_JITTER) if ABSENCE_JITTER else 0
+        return ABSENCE_AFTER_TURNS + jitter
+
+    def _maybe_step_away(self):
+        """idle で圧（前回更新からの発話数）が満ちてたら中座に入る。入ったら True。
+        leave はローカル定型（LLM 非経由）＝劣化してるかもしれない今のセッションに喋らせない。"""
+        if ABSENCE_AFTER_TURNS <= 0:                     # 0＝中座無効（従来どおり若返りなし）
+            return False
+        if self._turns_since_refresh < self._absence_target:
+            return False
+        self.view.say("茶々", prompts.absence_leave())   # 「ちょっと外すわ」＝確定発話で直接表示
+        self._absent = True
+        self._away_until = time.time() + ABSENCE_GAP
+        log.debug("茶々 中座へ: %d 発話 >= 目標 %d（gap %.0fs・裏でセッション更新）",
+                  self._turns_since_refresh, self._absence_target, ABSENCE_GAP)
+        return True
+
+    async def _return_from_away(self):
+        """中座から戻る。不在の裏で住人セッションを張り直し（黙って若返り）、戻りの一言を出す。
+        再起動手段が無ければ今の茶々のまま戻る（＝ただの休憩に degrade・有害でない）。
+        tick と on_user_input の両方から呼ばれ得るので冪等（不在でなければ何もしない）。"""
+        if not self._absent:
+            return
+        self._absent = False                             # 先に降ろす＝二重復帰を防ぐ
+        await self._restart_resident()                   # 黙って新セッション（成否問わず戻る）
+        self._turns_since_refresh = 0                    # 圧をリセット＝次の中座までまた溜める
+        self._absence_target = self._roll_absence_target()
+        self.view.say("茶々", prompts.absence_return())  # 「お待たせ」「どこまで話しとったっけ」＝忘却も自然
+        log.debug("茶々 中座から復帰（セッション更新済み・圧リセット→次目標 %d）", self._absence_target)
+
     # ── ティック ──────────────────────────────────────────
     async def _tick(self, ctx):
         for k in self.cooldowns:
             self.cooldowns[k] = max(0, self.cooldowns[k] - 1)
+        if self._absent:                                 # 中座中: 戻り時刻まで黙る。時が来たら裏で更新して戻る（ADR-0027）
+            if time.time() >= self._away_until:
+                await self._return_from_away()
+            return
         if self.game is not None:                        # (0a) 対局中＝AIの番なら1手進める（人間の番/終局は待つ）
             try:
                 if self.game.over:
@@ -198,6 +243,8 @@ class Scheduler:
             log.debug("tick→自発来訪: %s", guest.persona)
             await self._start_room(guest.persona)        #      3人会話の部屋を開く（ADR-0015）
             return
+        if self._maybe_step_away():                      # (2a') idle で圧が満ちたら中座＝裏でセッション更新（ADR-0027・来訪より後・アークより前）
+            return
         if random.random() < ARC_START_PROB:             # (2b) 箱庭アーク抽選（guest を除く・gate＋cooldown）
             eligible = [s for s in self.sources
                         if s.key != "guest" and s.eligible(ctx) and self.cooldowns.get(s.key, 0) <= 0]
@@ -213,8 +260,8 @@ class Scheduler:
             await self._inject(narr)
 
     def _next_interval(self):
-        """次ビートまでの間合い。アーク/来訪が進行中(active)は短く、何もない時は長い ambient。"""
-        if self.active is not None:
+        """次ビートまでの間合い。アーク/来訪が進行中(active)や中座中は短く、何もない時は長い ambient。"""
+        if self._absent or self.active is not None:      # 中座中は短間隔で「戻り時刻」を拾う（ADR-0027）
             return random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
         return random.uniform(TICK_MIN, TICK_MAX)
 
@@ -260,6 +307,8 @@ class Scheduler:
         if line.startswith("/"):
             await self._command(line)
             return
+        if self._absent:                                 # 中座中に話しかけられた＝茶々は戻る（新セッションで応じる・ADR-0027）
+            await self._return_from_away()
         self.last_user_ts = time.time()
         if self.game is not None and not self.game.over:     # 対局中＝入力は「手」（ADR-0017）
             if not self.game.waiting_for_human:

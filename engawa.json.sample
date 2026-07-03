@@ -42,6 +42,12 @@
     "resident_restart_at": 2,
     "resident_guard": 1
   },
+  "absence": {
+    "_comment": "茶々の「中座」＝世界観に溶かした定期セッション更新（ADR-0027。長命セッション劣化=染み出しの根治）。after_turns=茶々ソロ発話がこの回数たまったら次の idle で中座に入り、不在の裏でセッションを張り直す(黙って若返り)。0で中座オフ(従来どおり若返りなし・染み出しは resident_guard の対症のみ)。jitter_turns=中座タイミングのゆらぎ(after_turns に +0〜これ・自然な『たまに』感)。gap_sec=不在の長さ(秒。この間は黙り、明けに『お待たせ』等ローカル定型で戻る)。中座は idle 限定(会話/来訪/対局中は行かない)＝話の途中で忘れない。手動で今すぐ張り直すなら /restart。",
+    "after_turns": 30,
+    "jitter_turns": 10,
+    "gap_sec": 18
+  },
   "debug": {
     "_comment": "デバッグログ。enabled=1 で engawa.log(gitignore) に主要ライフサイクル(種の注入/来訪/room/cancel/timeout)を吐く。既定オフ＝縁側の窓/console 本文は汚さない。env ENGAWA_DEBUG=1 / ENGAWA_LOG_FILE でパス変更可。tail -f engawa.log で眺める。",
     "enabled": 0,

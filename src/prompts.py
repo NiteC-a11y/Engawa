@@ -118,6 +118,24 @@ def guest_timeout_leave():
     return random.choice(_GUEST_TIMEOUT_LEAVE)
 
 
+# ── 茶々の「中座」（ADR-0027）。leave/return はローカル定型＝劣化してるかもしれない今の
+#    セッションに喋らせない（guest_timeout_leave と同じ流儀）。中座の裏でセッションを張り直す。
+_ABSENCE_LEAVE = ("ちょっと手ぇ洗てくるわ。", "小用に立つわ、すぐ戻る。", "ちょっと外すな。",
+                  "お茶いれ直してくるわ。", "ちょっと縁側はずすわ。")
+_ABSENCE_RETURN = ("ふぅ、すっきりした。", "戻ったで。", "お待たせ。",
+                   "……どこまで話しとったかいな。", "ただいま。")
+
+
+def absence_leave():
+    """中座に入る時の一言（ローカル定型・LLM 非経由）。"""
+    return random.choice(_ABSENCE_LEAVE)
+
+
+def absence_return():
+    """中座から戻る時の一言（ローカル定型・LLM 非経由）。"""
+    return random.choice(_ABSENCE_RETURN)
+
+
 _RESIDENT_SCENE = {
     conversation.REACT:       "縁側に客人が来た。茶々として、短くひとこと反応する。",
     conversation.REPLY:       "あなた（茶々）に向けられた話。茶々として自然に短く応じる。",

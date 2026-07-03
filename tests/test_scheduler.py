@@ -3,6 +3,7 @@
 import asyncio
 import os
 import sys
+import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
@@ -967,6 +968,111 @@ class TestRestartAndGuard(unittest.IsolatedAsyncioTestCase):
             sched.RESIDENT_GUARD = guard
         body = " ".join(self._bodies(v))
         self.assertIn("As Chacha", body)               # guard=0 は素通し（従来挙動）
+
+
+class TestAbsenceRefresh(unittest.IsolatedAsyncioTestCase):
+    """茶々の「中座」＝世界観に溶かした定期セッション更新（ADR-0027）。"""
+
+    @staticmethod
+    def _says(v):
+        return [text for (t, _sp, text) in v.events if t == "say"]
+
+    def _sched(self, spawn=None):
+        return sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
+                               views.CaptureView(), spawn_resident=spawn)
+
+    async def test_step_away_when_pressure_met(self):
+        s = self._sched()
+        g = sched.ABSENCE_AFTER_TURNS
+        sched.ABSENCE_AFTER_TURNS = 5
+        try:
+            s._turns_since_refresh, s._absence_target = 5, 5
+            stepped = s._maybe_step_away()
+        finally:
+            sched.ABSENCE_AFTER_TURNS = g
+        self.assertTrue(stepped)
+        self.assertTrue(s._absent)
+        self.assertTrue(self._says(s.view))            # 中座の一言が出る（ローカル定型）
+
+    async def test_no_step_away_before_pressure(self):
+        s = self._sched()
+        g = sched.ABSENCE_AFTER_TURNS
+        sched.ABSENCE_AFTER_TURNS = 5
+        try:
+            s._turns_since_refresh, s._absence_target = 3, 5   # まだ溜まってない
+            self.assertFalse(s._maybe_step_away())
+        finally:
+            sched.ABSENCE_AFTER_TURNS = g
+        self.assertFalse(s._absent)
+
+    async def test_disabled_never_steps_away(self):
+        s = self._sched()
+        g = sched.ABSENCE_AFTER_TURNS
+        sched.ABSENCE_AFTER_TURNS = 0                   # 中座オフ
+        try:
+            s._turns_since_refresh, s._absence_target = 999, 0
+            self.assertFalse(s._maybe_step_away())
+        finally:
+            sched.ABSENCE_AFTER_TURNS = g
+        self.assertFalse(s._absent)
+
+    async def test_inject_counts_turns(self):
+        s = self._sched()
+        before = s._turns_since_refresh
+        await s._inject(sources.Narration("よお", "ambient"))
+        self.assertEqual(s._turns_since_refresh, before + 1)   # 発話ごとに圧が溜まる
+
+    async def test_return_refreshes_session_and_resets_pressure(self):
+        old = FakeResident()
+        healthy = FakeResident()
+
+        async def spawn():
+            return healthy
+
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView(),
+                            spawn_resident=spawn)
+        s._absent, s._turns_since_refresh = True, 42
+        await s._return_from_away()
+        self.assertIs(s.resident, healthy)             # 裏で新セッションに若返り
+        self.assertTrue(old.closed)
+        self.assertFalse(s._absent)
+        self.assertEqual(s._turns_since_refresh, 0)    # 圧リセット
+        self.assertTrue(self._says(s.view))            # 戻りの一言
+
+    async def test_tick_returns_after_gap(self):
+        old = FakeResident()
+        healthy = FakeResident()
+
+        async def spawn():
+            return healthy
+
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView(),
+                            spawn_resident=spawn)
+        s._absent, s._away_until = True, time.time() - 1   # 戻り時刻を過ぎている
+        await s._tick(sources.build_context(None, []))
+        self.assertFalse(s._absent)
+        self.assertIs(s.resident, healthy)
+
+    async def test_tick_stays_absent_before_gap(self):
+        s = self._sched()
+        s._absent, s._away_until = True, time.time() + 100   # まだ戻らない
+        await s._tick(sources.build_context(None, []))
+        self.assertTrue(s._absent)
+
+    async def test_user_input_ends_absence(self):
+        old = FakeResident()
+        healthy = FakeResident()
+
+        async def spawn():
+            return healthy
+
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView(),
+                            spawn_resident=spawn)
+        s._absent = True
+        await s.on_user_input("茶々おるか")
+        self.assertFalse(s._absent)                    # 話しかけられたら戻る
+        self.assertIs(s.resident, healthy)             # 新セッションで応じる
+        self.assertIn("茶々おるか", " ".join(healthy.prompts))
 
 
 if __name__ == "__main__":
