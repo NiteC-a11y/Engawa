@@ -146,4 +146,4 @@ Chacha (current sprite):
 
 ## License
 
-A personal project with no license set at this time. Terms for use and redistribution are to be decided later.
+Licensed under the [MIT License](LICENSE) (© 2026 NiteC-a11y). A personal project — feel free to learn from, modify, and redistribute it.
