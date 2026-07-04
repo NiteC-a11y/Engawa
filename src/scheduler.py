@@ -185,6 +185,7 @@ class Scheduler:
             return False
         self.view.say("茶々", prompts.absence_leave())   # 「ちょっと外すわ」＝確定発話で直接表示
         self._absent = True
+        self.view.set_absent(True)                       # web は茶々スプライトを消す＝空っぽの縁側（console は no-op）
         self._away_until = time.time() + ABSENCE_GAP
         log.debug("茶々 中座へ: %d 発話 >= 目標 %d（gap %.0fs・裏でセッション更新）",
                   self._turns_since_refresh, self._absence_target, ABSENCE_GAP)
@@ -200,6 +201,7 @@ class Scheduler:
         await self._restart_resident()                   # 黙って新セッション（成否問わず戻る）
         self._turns_since_refresh = 0                    # 圧をリセット＝次の中座までまた溜める
         self._absence_target = self._roll_absence_target()
+        self.view.set_absent(False)                      # 茶々が戻る＝スプライト復帰（フェードイン）
         self.view.say("茶々", prompts.absence_return())  # 「お待たせ」「どこまで話しとったっけ」＝忘却も自然
         log.debug("茶々 中座から復帰（セッション更新済み・圧リセット→次目標 %d）", self._absence_target)
 

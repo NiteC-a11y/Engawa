@@ -993,6 +993,7 @@ class TestAbsenceRefresh(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(stepped)
         self.assertTrue(s._absent)
         self.assertTrue(self._says(s.view))            # 中座の一言が出る（ローカル定型）
+        self.assertIn(("set_absent", True, None), s.view.events)   # web は空っぽの縁側へ
 
     async def test_no_step_away_before_pressure(self):
         s = self._sched()
@@ -1038,6 +1039,7 @@ class TestAbsenceRefresh(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(s._absent)
         self.assertEqual(s._turns_since_refresh, 0)    # 圧リセット
         self.assertTrue(self._says(s.view))            # 戻りの一言
+        self.assertIn(("set_absent", False, None), s.view.events)  # 茶々スプライト復帰
 
     async def test_tick_returns_after_gap(self):
         old = FakeResident()

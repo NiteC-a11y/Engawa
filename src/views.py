@@ -49,6 +49,7 @@ class View:
     def say(self, speaker, text): ...          # 3人会話の確定発話を1行で出す（茶々/客人を一様に・ADR-0015）
     def set_font(self, scale): return False    # 文字倍率をライブ適用（/font・web のみ True／console は no-op）
     def current_font(self): return None        # 今の文字倍率（web=float／console=None＝設定対象外）
+    def set_absent(self, absent): return False  # 中座の in/out（web は茶々スプライトを消す/戻す＝空っぽの縁側・ADR-0027／console は no-op）
     # ゲーム観戦（ADR-0017 Inc4）。console=テキスト / web=隣の観戦窓。snapshot は構造化状態、lines は文字表現
     def game_open(self, title): ...            # 対局開始（web は観戦窓を開く）
     def game_update(self, snapshot, lines): ...  # 局面更新（web は札を描く／console は lines を出す）
@@ -148,6 +149,7 @@ class CaptureView(View):
         self._kind = None
         self._buf = []
         self._font = 1.0          # 文字倍率（/font テスト用・web と同じく設定対象扱い）
+        self._absent = False      # 中座の in/out（テスト記録用）
         self._q = asyncio.Queue()
 
     def turn_start(self, who, kind, label=None, voice=None):
@@ -180,6 +182,11 @@ class CaptureView(View):
     def set_font(self, scale):                 # /font のライブ適用を記録（web の代役）
         self._font = float(scale)
         self.events.append(("set_font", self._font, None))
+
+    def set_absent(self, absent):              # 中座の in/out を記録（web の代役・スプライト消灯/点灯）
+        self._absent = bool(absent)
+        self.events.append(("set_absent", self._absent, None))
+        return True
         return True
 
     def current_font(self):
@@ -226,6 +233,7 @@ class WebView(View):
         self._corner = "br"             # 観戦窓の配置（run_web が set_layout で設定）
         self._main_wh = (340, 360)      # メイン窓サイズ（配置計算用・既定）
         self._font = 1.0                # 文字倍率（ENGAWA_UI_FONT・観戦窓にも一貫適用）
+        self._absent = False            # 茶々が中座中か（poll で JS へ→スプライトを消す/戻す・ADR-0027）
 
     def set_layout(self, corner, main_w, main_h, font=1.0):
         self._corner = corner
@@ -242,6 +250,13 @@ class WebView(View):
     def current_font(self):
         with self._lock:
             return self._font
+
+    def set_absent(self, absent):
+        """中座の in/out（poll が返す absent を JS が拾い、茶々スプライトをフェードで消す/戻す＝
+        空っぽの縁側・ADR-0027）。font と同じく poll に毎回載せる持続フラグ方式（cross-thread evaluate_js 回避）。"""
+        with self._lock:
+            self._absent = bool(absent)
+        return True
 
     def _bump(self):
         self._rev += 1
@@ -380,7 +395,7 @@ class WebView(View):
                         and not collapse_ws(i["text"]) and not i["voice"]:
                     continue                    # 空の live ターンはまだ出さない（lazy）
                 items.append(self._serialize(i))
-            return {"items": items, "cursor": self._rev, "font": self._font}
+            return {"items": items, "cursor": self._rev, "font": self._font, "absent": self._absent}
 
     @staticmethod
     def _serialize(i):
@@ -562,7 +577,9 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   .floor{position:absolute;bottom:0;left:0;right:0;height:46%;
     background:repeating-linear-gradient(90deg,#caa46b 0 17px,#bd9a5c 17px 19px)}
   #cha{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:2;
-    image-rendering:pixelated;width:118px;height:118px}
+    image-rendering:pixelated;width:118px;height:118px;transition:opacity .55s ease}
+  /* 中座＝茶々が席を外す：スプライトと接地影をフェードで消す＝空っぽの縁側（ADR-0027） */
+  #cha.gone,#chashadow.gone{opacity:0}
   /* 単一フレームのスプライト用：下端固定の縦伸縮＝呼吸（座布団は動かさず猫がふくらむ） */
   #cha.breathe{transform-origin:bottom center;animation:breathe 4s ease-in-out infinite}
   @keyframes breathe{0%,100%{transform:translateX(-50%) scaleY(1)}50%{transform:translateX(-50%) scaleY(.98)}}
@@ -631,11 +648,18 @@ function render(it){
   h+='<div class="cha"><span class="who">茶々 ›</span>'+esc(it.text)+'</div>';
   return h;
 }
+let absent=false;
+function setAbsent(a){                                          // 中座＝茶々スプライト（＋接地影）をフェードで消す/戻す（ADR-0027）
+  if(a===absent) return; absent=a;
+  document.getElementById('cha').classList.toggle('gone',a);
+  const sh=document.getElementById('chashadow'); if(sh) sh.classList.toggle('gone',a);
+}
 async function tick(){
   if(busy||!window.pywebview) return; busy=true;
   try{
     const r=await window.pywebview.api.poll(since);
     applyFont(r.font);                                          // /font のライブ適用（--fz 差し替え）
+    setAbsent(!!r.absent);                                      // 中座＝空っぽの縁側（poll の absent を反映）
     // append 前に「下端付近にいるか」を見る。上へスクロールして履歴を見ている時は引き戻さない
     const stick=log.scrollHeight-log.scrollTop-log.clientHeight<48;
     for(const it of r.items){
