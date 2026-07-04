@@ -22,4 +22,4 @@
 - Aseprite（pixel-plugin 経由で Claude Code から生成可）の JSON でコマ/タイミングも管理。
 
 ## 備考
-- UI配線は P3（双方向）の後。先に皮を被せると「話しかけられない水槽」になるため（順序は spec Phase Gate）。
+- UI配線は P3（双方向）の後。先に皮を被せると「話しかけられない一方通行の見世物」になるため（順序は spec Phase Gate）。
