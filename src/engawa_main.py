@@ -32,6 +32,17 @@ def _resident_spawner():
     return acp.AcpAgent.spawn_resident
 
 
+def _guest_spawner():
+    """客人（codex）の Agent factory を backend で選ぶ（ADR-0026）。ENGAWA_GUEST_BACKEND: 'acp' 既定
+    （codex-acp・ChatGPT 認証）/ 'openai'（ローカル OpenAI 互換 API＝住人と同じ endpoint を共有）。
+    /codex 召喚も自発来訪も同経路。人格は毎ターン prompt 注入なので backend に依らない（ADR-0008）。"""
+    backend = config.get_str("ENGAWA_GUEST_BACKEND", "backend", "guest", "acp").lower()
+    if backend in ("openai", "api", "lmstudio", "local"):
+        import agent_openai
+        return agent_openai.OpenAIAgent.spawn_guest
+    return acp.AcpAgent.spawn_guest
+
+
 def _resident_tag(resident):
     """起動行の住人表示。sessionId は ACP 固有なので getattr で任意扱い（OpenAIAgent は持たない）。"""
     sid = getattr(resident, "sessionId", None)
@@ -46,10 +57,11 @@ def _build(resident, view):
         game_rlcard.register_rlcard_games()
     except ImportError:
         pass   # rlcard 未導入＝/game は遊べないが縁側は通常起動
+    guest_spawn = _guest_spawner()                             # 客人も backend で acp/openai（ADR-0026）
     return sched.Scheduler(resident,
-                           sources.default_sources(spawn_codex=acp.AcpAgent.spawn_guest),
+                           sources.default_sources(spawn_codex=guest_spawn),
                            sources.WeatherSource(), view,
-                           spawn_codex=acp.AcpAgent.spawn_guest,
+                           spawn_codex=guest_spawn,
                            spawn_resident=_resident_spawner())   # timeout 段階回復の再起動用（backend で acp/openai）
 
 

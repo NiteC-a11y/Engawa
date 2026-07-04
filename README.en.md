@@ -95,7 +95,8 @@ Common environment variables:
 ENGAWA_UI=web              launch in the corner veranda window
 ENGAWA_MODEL=opus          model for the resident (Chacha = Claude)
 ENGAWA_CODEX_MODEL=...      model for the guest (codex)
-ENGAWA_RESIDENT_BACKEND=openai       run Chacha on a local LLM (LM Studio / Ollama) instead of Claude (the guest still uses Codex; ADR-0026)
+ENGAWA_RESIDENT_BACKEND=openai       run Chacha on a local LLM (LM Studio / Ollama) instead of Claude (ADR-0026)
+ENGAWA_GUEST_BACKEND=openai          run the guest on a local LLM too (default: Codex, needs a ChatGPT login)
 ENGAWA_OPENAI_BASE_URL=http://localhost:1234/v1   the OpenAI-compatible endpoint for the above (default = LM Studio)
 ENGAWA_GUEST_PROB=0.1       probability of a spontaneous visit
 ENGAWA_DEBUG=1              record key lifecycle events to engawa.log

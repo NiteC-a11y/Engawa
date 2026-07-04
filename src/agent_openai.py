@@ -49,6 +49,16 @@ def _max_tokens():
     return config.get_int("ENGAWA_OPENAI_MAX_TOKENS", "openai", "max_tokens", 0, lo=0)  # 0=無指定（暴走防止に上限を置くなら>0）
 
 
+def _guest_model():
+    return config.get_str("ENGAWA_OPENAI_GUEST_MODEL", "openai", "guest_model", "")   # 空=住人と同じ（8GB は endpoint が1モデル共有）
+
+
+# 客人用 system。人格は召喚時に prompt へ動的注入されるので（ADR-0008）、ここに茶々の人格は載せず、
+# 汎用の「客人を演じる／セリフだけ短く」枠だけ置く（room_guest_prompt が役名を毎ターン与える）。
+GUEST_SYSTEM = ("あなたは縁側をふらりと訪ねてきた客人を演じます。プロンプトで指定された役になりきり、"
+                "地の文や説明・ト書きはせず、短いセリフだけで自然に応じてください。同席するのは住人の茶々と人間です。")
+
+
 class OpenAIAgent:
     """`agent.Agent` の OpenAI 互換 API 実装（構造的に prompt/cancel/close/model/reported_model/last_stop_reason
     を満たす）。会話履歴を self._messages に自前保持（先頭が system=人格）。"""
@@ -73,6 +83,16 @@ class OpenAIAgent:
         繋がらなければ RuntimeError（composition root が『LM Studio を起動して』と案内）。"""
         self = cls(_base_url(), model or _model(), _api_key(), _timeout(),
                    reasoning=_reasoning(), max_tokens=_max_tokens())
+        await self._probe()
+        return self
+
+    @classmethod
+    async def spawn_guest(cls, model=None):
+        """客人（Codex 代替）を OpenAI 互換 endpoint で（ADR-0026・任意）。system は茶々の人格を載せず汎用の
+        『客人を演じる』枠だけ＝役は召喚時に prompt へ動的注入（ADR-0008）。8GB 等では住人と同じロード済み
+        モデルを共有する点に注意（別モデル同時ロードは非現実的＝素の口調は似る・役と履歴は別インスタンス）。"""
+        self = cls(_base_url(), model or _guest_model() or _model(), _api_key(), _timeout(),
+                   system=GUEST_SYSTEM, reasoning=_reasoning(), max_tokens=_max_tokens())
         await self._probe()
         return self
 

@@ -356,5 +356,32 @@ class TestResidentBackend(unittest.TestCase):
         self.assertNotIn("session=", tag)
 
 
+class TestGuestBackend(unittest.TestCase):
+    """客人 backend の切替（ADR-0026・composition root）。既定=ACP(codex)／openai=OpenAIAgent。"""
+
+    def setUp(self):
+        import engawa_main
+        self.em = engawa_main
+        self._env = os.environ.pop("ENGAWA_GUEST_BACKEND", None)
+        self._cfg = config._CFG
+        config._CFG = {}
+
+    def tearDown(self):
+        config._CFG = self._cfg
+        if self._env is None:
+            os.environ.pop("ENGAWA_GUEST_BACKEND", None)
+        else:
+            os.environ["ENGAWA_GUEST_BACKEND"] = self._env
+
+    def test_default_is_acp(self):
+        import acp
+        self.assertEqual(self.em._guest_spawner(), acp.AcpAgent.spawn_guest)
+
+    def test_openai_backend_selects_openai_guest(self):
+        import agent_openai
+        config._CFG = {"backend": {"guest": "openai"}}
+        self.assertEqual(self.em._guest_spawner(), agent_openai.OpenAIAgent.spawn_guest)
+
+
 if __name__ == "__main__":
     unittest.main()

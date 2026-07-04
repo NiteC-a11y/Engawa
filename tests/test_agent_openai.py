@@ -150,6 +150,30 @@ class TestOpenAIAgentProbe(unittest.IsolatedAsyncioTestCase):
             await a._probe()
 
 
+class TestOpenAIAgentGuest(unittest.IsolatedAsyncioTestCase):
+    """客人（Codex 代替）は system に茶々の人格を載せず汎用の客人枠のみ＝役は prompt 注入（ADR-0008）。"""
+
+    async def test_spawn_guest_uses_guest_system_not_resident_persona(self):
+        import persona
+        orig = OpenAIAgent._probe
+
+        async def noprobe(self):        # ネットに出ずに spawn を通す
+            pass
+
+        OpenAIAgent._probe = noprobe
+        try:
+            g = await OpenAIAgent.spawn_guest()
+        finally:
+            OpenAIAgent._probe = orig
+        self.assertEqual(g._messages[0]["content"], agent_openai.GUEST_SYSTEM)
+        self.assertNotEqual(g._messages[0]["content"], persona.RESIDENT_PERSONA)
+
+    def test_guest_system_is_not_resident_persona(self):
+        import persona
+        self.assertNotEqual(agent_openai.GUEST_SYSTEM, persona.RESIDENT_PERSONA)
+        self.assertNotIn("あなたの人格", agent_openai.GUEST_SYSTEM)   # 茶々の人格ヘッダを含まない
+
+
 class TestOpenAIAgentPortShape(unittest.TestCase):
     """agent.Agent ポートを構造的に満たす（Scheduler が無改造で差せる）。"""
 

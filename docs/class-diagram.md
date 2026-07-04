@@ -114,7 +114,7 @@ classDiagram
 
 ## Port & Adapter ② — ACP（エージェント接続）
 
-ADR-0013 ②＋**ADR-0026**。LLM 接続の中立ポート `Agent`（`prompt/cancel/close`）の背後に**2アダプタ**: `AcpAgent`（外部 `claude-agent-acp`/`codex-acp` を包む・Claude Code サブスク）と `OpenAIAgent`（ローカル OpenAI 互換 API＝LM Studio 等・API はステートレスなので履歴を自前保持）。`Scheduler` は `Agent` と中立 `AgentTimeoutError` だけを知り実体を知らない＝住人 backend は `ENGAWA_RESIDENT_BACKEND` で選択（客人は ACP）。
+ADR-0013 ②＋**ADR-0026**。LLM 接続の中立ポート `Agent`（`prompt/cancel/close`）の背後に**2アダプタ**: `AcpAgent`（外部 `claude-agent-acp`/`codex-acp` を包む・Claude Code サブスク）と `OpenAIAgent`（ローカル OpenAI 互換 API＝LM Studio 等・API はステートレスなので履歴を自前保持）。`Scheduler` は `Agent` と中立 `AgentTimeoutError` だけを知り実体を知らない＝住人/客人とも backend を `ENGAWA_RESIDENT_BACKEND`/`ENGAWA_GUEST_BACKEND` で選択（客人 openai は persona を prompt 注入・住人と同じ endpoint 共有）。
 
 ```mermaid
 classDiagram
