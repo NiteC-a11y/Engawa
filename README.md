@@ -95,6 +95,8 @@ Windows ではランチャの `.bat` も同梱しています:
 ENGAWA_UI=web              隅の縁側窓で起動
 ENGAWA_MODEL=opus          住人（茶々=Claude）のモデル
 ENGAWA_CODEX_MODEL=...     客人（codex）のモデル
+ENGAWA_RESIDENT_BACKEND=openai       茶々を Claude でなくローカル LLM(LM Studio/Ollama)で動かす（客人は Codex のまま・ADR-0026）
+ENGAWA_OPENAI_BASE_URL=http://localhost:1234/v1   上の OpenAI 互換 endpoint（既定=LM Studio）
 ENGAWA_GUEST_PROB=0.1      自発来訪の確率
 ENGAWA_DEBUG=1             engawa.log に主要ライフサイクルを記録
 ```

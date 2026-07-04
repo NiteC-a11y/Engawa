@@ -21,6 +21,23 @@ import sources
 import views
 
 
+def _resident_spawner():
+    """住人（茶々）の Agent factory を backend で選ぶ（ADR-0026）。中座の再spawn もこの factory 経由なので
+    差し替えは1点。ENGAWA_RESIDENT_BACKEND: 'acp'(既定・Claude Code) / 'openai'(ローカル OpenAI 互換 API＝
+    LM Studio 等)。openai は任意経路＝選択時のみ agent_openai を import。"""
+    backend = config.get_str("ENGAWA_RESIDENT_BACKEND", "backend", "resident", "acp").lower()
+    if backend in ("openai", "api", "lmstudio", "local"):
+        import agent_openai
+        return agent_openai.OpenAIAgent.spawn_resident
+    return acp.AcpAgent.spawn_resident
+
+
+def _resident_tag(resident):
+    """起動行の住人表示。sessionId は ACP 固有なので getattr で任意扱い（OpenAIAgent は持たない）。"""
+    sid = getattr(resident, "sessionId", None)
+    return (f"session={sid[:8]}… / " if sid else "") + f"茶々={resident.model or '既定'}"
+
+
 def _build(resident, view):
     # rlcard ゲームを composition root で1度だけ登録（任意依存・未導入でも起動は妨げない・ADR-0017）。
     # ＝Scheduler(core) が adapter モジュールを参照しないための寄せ。register は lambda 登録のみで idempotent。
@@ -33,19 +50,19 @@ def _build(resident, view):
                            sources.default_sources(spawn_codex=acp.AcpAgent.spawn_guest),
                            sources.WeatherSource(), view,
                            spawn_codex=acp.AcpAgent.spawn_guest,
-                           spawn_resident=acp.AcpAgent.spawn_resident)   # timeout 段階回復の再起動用
+                           spawn_resident=_resident_spawner())   # timeout 段階回復の再起動用（backend で acp/openai）
 
 
 async def run_console():
     print("[*] 茶々の縁側を開きます（箱庭アーク / event-source 構成）")
     print("[*] 起動中…（初回は npx ダウンロード）  話しかけてみて。/help、/arc で試写\n")
     try:
-        resident = await acp.AcpAgent.spawn_resident()
+        resident = await _resident_spawner()()
     except RuntimeError as e:
         print("[x]", e)
-        print("    認証エラーなら、先に `claude` で本命サブスクにログインのこと。")
+        print("    認証エラーなら、先に `claude` で本命サブスクにログインのこと（openai backend なら LM Studio を起動）。")
         return 1
-    print(f"[ok] 縁側が開きました（session={resident.sessionId[:8]}… / 茶々={resident.model or '既定'}）\n")
+    print(f"[ok] 縁側が開きました（{_resident_tag(resident)}）\n")
     await _build(resident, views.ConsoleView()).run()
     print("[*] 縁側を閉じます。茶々はまた留守番。")
     return 0
@@ -54,12 +71,12 @@ async def run_console():
 async def _serve_web(view):
     view.system("[*] 起動中…（初回は npx ダウンロード）")
     try:
-        resident = await acp.AcpAgent.spawn_resident()
+        resident = await _resident_spawner()()
     except RuntimeError as e:
         view.system(f"[x] {e}")
-        view.system("認証エラーなら、先に `claude` で本命サブスクにログインのこと。")
+        view.system("認証エラーなら、先に `claude` でログイン（openai backend なら LM Studio を起動）。")
         return
-    view.system(f"[ok] 縁側が開きました（{resident.sessionId[:8]}… / 茶々={resident.model or '既定'}）話しかけてみて")
+    view.system(f"[ok] 縁側が開きました（{_resident_tag(resident)}）話しかけてみて")
     await _build(resident, view).run()
 
 

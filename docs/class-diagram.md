@@ -114,7 +114,7 @@ classDiagram
 
 ## Port & Adapter ② — ACP（エージェント接続）
 
-ADR-0013 ②＋**ADR-0026**。LLM 接続の中立ポート `Agent`（`prompt/cancel/close`）の背後に、外部アダプタ（`claude-agent-acp` / `codex-acp`）を包む `AcpAgent` を置く。`Scheduler` は `Agent` と中立 `AgentTimeoutError` だけを知り、実体（ACP）を知らない（将来 `OpenAIAgent`＝ローカル API を同じ面に並べる）。
+ADR-0013 ②＋**ADR-0026**。LLM 接続の中立ポート `Agent`（`prompt/cancel/close`）の背後に**2アダプタ**: `AcpAgent`（外部 `claude-agent-acp`/`codex-acp` を包む・Claude Code サブスク）と `OpenAIAgent`（ローカル OpenAI 互換 API＝LM Studio 等・API はステートレスなので履歴を自前保持）。`Scheduler` は `Agent` と中立 `AgentTimeoutError` だけを知り実体を知らない＝住人 backend は `ENGAWA_RESIDENT_BACKEND` で選択（客人は ACP）。
 
 ```mermaid
 classDiagram
@@ -143,6 +143,17 @@ classDiagram
         +close()
     }
 
+    class OpenAIAgent {
+        <<API adapter>>
+        +base_url: str
+        +model / reported_model
+        +_messages: list
+        +spawn_resident()$ OpenAIAgent
+        +prompt(text, on_chunk)
+        +cancel()
+        +close()
+    }
+
     class Agent {
         <<Port · ADR-0026>>
         +model / reported_model / last_stop_reason
@@ -160,6 +171,7 @@ classDiagram
     }
 
     AcpAgent ..|> Agent : ACP 実装
+    OpenAIAgent ..|> Agent : OpenAI 互換API 実装（履歴自前保持）
     ACPTimeoutError --|> AgentTimeoutError
     AcpAgent *-- ACPClient
     AcpAgent ..> ACPTimeoutError : prompt timeout

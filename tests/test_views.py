@@ -322,5 +322,39 @@ class TestSceneBgInjection(unittest.TestCase):
         self.assertIn("linear-gradient", h)                       # グラデ背景（フォールバック）
 
 
+class TestResidentBackend(unittest.TestCase):
+    """住人 backend の切替（ADR-0026・composition root）。既定=ACP／openai=OpenAIAgent／表示は sessionId 任意。"""
+
+    def setUp(self):
+        import engawa_main
+        self.em = engawa_main
+        self._env = os.environ.pop("ENGAWA_RESIDENT_BACKEND", None)
+        self._cfg = config._CFG
+        config._CFG = {}
+
+    def tearDown(self):
+        config._CFG = self._cfg
+        if self._env is None:
+            os.environ.pop("ENGAWA_RESIDENT_BACKEND", None)
+        else:
+            os.environ["ENGAWA_RESIDENT_BACKEND"] = self._env
+
+    def test_default_is_acp(self):
+        import acp
+        self.assertEqual(self.em._resident_spawner(), acp.AcpAgent.spawn_resident)
+
+    def test_openai_backend_selects_openai_agent(self):
+        import agent_openai
+        config._CFG = {"backend": {"resident": "openai"}}
+        self.assertEqual(self.em._resident_spawner(), agent_openai.OpenAIAgent.spawn_resident)
+
+    def test_resident_tag_without_sessionid(self):
+        import agent_openai
+        a = agent_openai.OpenAIAgent("http://x/v1", "qwen", "k", 30)
+        tag = self.em._resident_tag(a)                            # sessionId 無し（OpenAIAgent）→ model だけ
+        self.assertIn("茶々=qwen", tag)
+        self.assertNotIn("session=", tag)
+
+
 if __name__ == "__main__":
     unittest.main()

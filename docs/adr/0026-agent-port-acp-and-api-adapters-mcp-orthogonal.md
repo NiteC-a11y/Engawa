@@ -1,7 +1,7 @@
 # ADR-0026: LLM 接続は Agent ポートで中立化（ACP と API の2アダプタ・MCP は直交レイヤ）
 
-- ステータス: Accepted（**Agent ポート抽出は実装済み 2026-07-04**・`src/agent.py` に `Agent` Protocol＋`AgentTimeoutError`／`AcpAgent` が実装／`Scheduler` は `acp` を import せず中立例外だけ捕捉。**残り＝第2アダプタ `OpenAIAgent`（ローカル API）実装**。ADR-0001 の refine）
-- 日付: 2026-07-03（ポート抽出 2026-07-04）
+- ステータス: Accepted（**Agent ポート＋2アダプタ実装済み 2026-07-04**・`src/agent.py`＝`Agent` Protocol＋`AgentTimeoutError`／`AcpAgent`（ACP・Claude Code）＋`OpenAIAgent`（`agent_openai.py`・OpenAI 互換 API＝LM Studio/Ollama）／`Scheduler` は `acp` を import せず中立例外だけ捕捉／住人 backend は `ENGAWA_RESIDENT_BACKEND=acp|openai` で選択。**客人は ACP のまま**。ADR-0001 の refine）
+- 日付: 2026-07-03（ポート抽出＋OpenAIAgent 2026-07-04）
 - 関連: ADR-0001（ローカル駆動は MCP でなく ACP）, ADR-0002（サブスク認証・APIキー不使用）, ADR-0006（cancel 優先）, ADR-0008（客人＝ツールを持たせない）, ADR-0020（モデルは config で選ぶ）, ADR-0021（ACP timeout/段階回復）
 - 影響: ADR-0001 を **refine（追補）**。Supersede しない——「ローカル駆動の既定は ACP」は不変。その口を中立ポートの背後に置き、非ACPバックエンド（ローカル API）を将来許容する余地を、境界と用語ごと明文化する。
 
@@ -45,7 +45,8 @@
 - **MCP sampling を推論経路にする**: 逆トポロジ＋ deprecated（ADR-0001 で既に却下）。不採用を再確認。
 
 ## 影響 / 帰結
-- **[実装済み 2026-07-04] Agent ポート抽出**: `src/agent.py` に `Agent`（構造的 Protocol・`prompt/cancel/close`＋`model/reported_model/last_stop_reason`）と中立 `AgentTimeoutError` を新設。`acp.ACPTimeoutError` は `AgentTimeoutError` を継承＝型で正規化。`AcpAgent` は `agent.Agent` の ACP 実装（`ACPClient` は ACP 内部に留置）。`Scheduler` は `acp` を import せず `from agent import AgentTimeoutError` の中立例外だけ捕捉（`scheduler` 内のローカル変数 `agent` と衝突しないよう名前 import）。振る舞い不変（テスト緑）。テスト `test_scheduler.TestAgentPort`(2)＝acp 非取り込み／非ACP の中立例外でも同じ段階回復。**残り＝第2アダプタ `OpenAIAgent`（ローカル API）**。
+- **[実装済み 2026-07-04] Agent ポート抽出**: `src/agent.py` に `Agent`（構造的 Protocol・`prompt/cancel/close`＋`model/reported_model/last_stop_reason`）と中立 `AgentTimeoutError` を新設。`acp.ACPTimeoutError` は `AgentTimeoutError` を継承＝型で正規化。`AcpAgent` は `agent.Agent` の ACP 実装（`ACPClient` は ACP 内部に留置）。`Scheduler` は `acp` を import せず `from agent import AgentTimeoutError` の中立例外だけ捕捉（`scheduler` 内のローカル変数 `agent` と衝突しないよう名前 import）。振る舞い不変（テスト緑）。テスト `test_scheduler.TestAgentPort`(2)＝acp 非取り込み／非ACP の中立例外でも同じ段階回復。
+- **[実装済み 2026-07-04] 第2アダプタ `OpenAIAgent`**（`src/agent_openai.py`・任意経路）: OpenAI 互換 chat completions（LM Studio/Ollama）を Agent ポートとして包む。API がステートレスなので**会話履歴を自前保持**（＝local 版の「長命セッション」ADR-0005・中座/`close()` でリセット＝ADR-0027 整合）。人格は `persona.py`（backend 中立に一元化）を system メッセージへ。HTTP は stdlib `urllib`＋`to_thread`（依存ゼロ＝ユーザー方針）、非ストリーミング（住人ガードが一括描画）、cancel は flag＋結果破棄（local は速く従量課金無し＝ADR-0006 の趣旨を満たす）、接続失敗/timeout は `AgentTimeoutError` で段階回復。config `ENGAWA_RESIDENT_BACKEND`／`ENGAWA_OPENAI_*`。テスト `test_agent_openai`(10)。**残り＝客人(codex)側の API アダプタ化（今は ACP のまま・任意）／実機での実 LLM 発話トーン確認（目視）**。
 - **config**: バックエンド選択のつまみが要る（例 `ENGAWA_BACKEND=acp|api`、API 系は `base_url`/`model`）。ADR-0020 のモデル選択（住人=ANTHROPIC_MODEL / 客人=CODEX_CONFIG）は「ACP アダプタのモデル注入方法」と位置づけ直す＝API アダプタは自前の model 指定を持つ。
 - **LM Studio 導入**: API アダプタ（`OpenAIAgent`→`localhost:1234/v1`）か ACP シムの2択（どちらもポートの1アダプタ）。
 - **テスト**: ポート契約はモック実装でユニット化できる（現状 `Speaker` 注入と同じ土俵）。実 LLM の発話トーンは目視（ADR-0015/0025 と同じ分担）。

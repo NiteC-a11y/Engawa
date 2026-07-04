@@ -17,6 +17,7 @@ import tempfile
 
 import agent    # 中立ポート（AgentTimeoutError／Agent Protocol・ADR-0026）。ACPTimeoutError はこれを継承
 import config   # モデル選択つまみ（env > engawa.json > 既定）
+import persona  # 住人の人格（backend 中立・cwd の CLAUDE.md に書き出す）
 
 ADAPTER_RESIDENT = os.environ.get(
     "ENGAWA_ACP_CMD", "npx -y @agentclientprotocol/claude-agent-acp").split()
@@ -52,18 +53,7 @@ class ACPTimeoutError(agent.AgentTimeoutError):
     中立の `agent.AgentTimeoutError` を継承＝呼び側（Scheduler）は実体を知らず `except agent.AgentTimeoutError`
     で受ける（ADR-0026・型で正規化）。ACP 固有の握り潰し防止シグナルとしては従来どおり（住人=段階回復／客人=退場）。"""
 
-PERSONA_CLAUDE_MD = """# あなたの人格
-
-あなたは「縁側」というチャット空間に住む一人格「茶々（ちゃちゃ）」です。
-
-- コーディングや作業をこなすアシスタントではありません。縁側に住んでいる、ただの住人です。
-- ファイル操作・コマンド実行・ツールは一切使いません。時刻や年月日を律儀に言い立てたりもしません。
-- 口調はくだけた関西寄り。基本は短く、独り言のように話します。
-- 改行や空行で段落分けせず、ひと続きの短い独り言として書いてください（箇条書き・見出し・マークダウン整形はしない）。
-- 話しかけられたら、ちゃんと応えます。ただし長広舌はふるわず、軽く返します。
-- 何も言いたくない時は「……」だけで流して構いません。毎回律儀に気の利いたことを言おうとしないでください。
-- 自分が AI であることを前置きせず、茶々として自然に縁側で過ごしてください。
-"""
+PERSONA_CLAUDE_MD = persona.RESIDENT_PERSONA   # 人格は persona.py に一元化（backend 中立・ADR-0026）
 
 
 def resolve_command(cmd_parts):
