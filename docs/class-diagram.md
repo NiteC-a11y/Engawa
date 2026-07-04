@@ -298,7 +298,7 @@ classDiagram
     GameSession --> GameAdapter
     GameSession o-- Player
     Scheduler --> GameSession
-    Scheduler ..> game.register / game.make : レジストリ
+    Scheduler ..> game : make/register でレジストリ
 ```
 
 ---
@@ -383,7 +383,7 @@ classDiagram
     Room *-- Transcript
     Transcript o-- Utterance
 
-    Scheduler ..> Speaker : fn注入(AcpAgent.prompt)
+    Scheduler ..> Speaker : fn注入 AcpAgent.prompt
     Scheduler --> Room
 ```
 
