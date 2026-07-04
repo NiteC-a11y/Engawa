@@ -1076,6 +1076,16 @@ class TestAbsenceRefresh(unittest.IsolatedAsyncioTestCase):
         self.assertIs(s.resident, healthy)             # 新セッションで応じる
         self.assertIn("茶々おるか", " ".join(healthy.prompts))
 
+    async def test_no_ambient_fetch_during_absence_or_game(self):
+        # 中座中/対局中は天気・ネタを取得しない（無駄回避＋中座の戻りを gap 通りに締める）
+        s = self._sched()
+        self.assertTrue(s._should_fetch_ambient())     # idle＝取得する
+        s._absent = True
+        self.assertFalse(s._should_fetch_ambient())    # 中座中＝取得しない
+        s._absent = False
+        s.game = object()                              # 対局中＝取得しない（遅延回避）
+        self.assertFalse(s._should_fetch_ambient())
+
 
 if __name__ == "__main__":
     unittest.main()

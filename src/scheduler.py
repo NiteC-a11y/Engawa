@@ -267,6 +267,11 @@ class Scheduler:
             return random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
         return random.uniform(TICK_MIN, TICK_MAX)
 
+    def _should_fetch_ambient(self):
+        """天気/トピックを取得するか。ゲーム中は不要（遅延回避）、中座中は席を外してるので無駄＋
+        取得のネットワーク遅延が毎tick乗ると戻り(_return_from_away)が gap より延びるので取得しない（ADR-0027）。"""
+        return self.game is None and not self._absent
+
     async def _tick_loop(self):
         self._next_at = time.time() + random.uniform(TICK_MIN, TICK_MAX)   # 起動直後は即つぶやかない
         while not self.stop.is_set():
@@ -283,7 +288,7 @@ class Scheduler:
                 (self.active is not None and self.active.key == "guest")
             if not active_mode and now - self.last_user_ts < QUIET_AFTER_USER:
                 continue                                 # 会話直後は静か（ただしゲーム/来訪は止めない）
-            if self.game is None:                        # ゲーム中は天気/ネタ取得をしない（不要・遅延回避）
+            if self._should_fetch_ambient():             # ゲーム中/中座中は天気・ネタ取得をしない（不要・遅延回避）
                 self.weather = await asyncio.to_thread(sources.fetch_weather)
                 if now - self._topics_at > sources.TOPIC_REFRESH_MIN * 60:
                     self.topics = await asyncio.to_thread(sources.fetch_topics)
