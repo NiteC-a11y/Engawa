@@ -15,6 +15,7 @@ import shutil
 import sys
 import tempfile
 
+import agent    # 中立ポート（AgentTimeoutError／Agent Protocol・ADR-0026）。ACPTimeoutError はこれを継承
 import config   # モデル選択つまみ（env > engawa.json > 既定）
 
 ADAPTER_RESIDENT = os.environ.get(
@@ -46,9 +47,10 @@ CANCEL_TIMEOUT = config.get_float("ENGAWA_ACP_CANCEL_TIMEOUT", "acp", "cancel_ti
 CANCEL_GRACE = config.get_float("ENGAWA_ACP_CANCEL_GRACE", "acp", "cancel_grace", 10, lo=1)
 
 
-class ACPTimeoutError(TimeoutError):
+class ACPTimeoutError(agent.AgentTimeoutError):
     """ACP の1往復が制限時間内に返らなかった（adapter は生きているが final response を返さない 等）。
-    呼び出し側はこれを「その agent は無応答」シグナルとして握り潰さず処理する（住人=段階回復／客人=退場）。"""
+    中立の `agent.AgentTimeoutError` を継承＝呼び側（Scheduler）は実体を知らず `except agent.AgentTimeoutError`
+    で受ける（ADR-0026・型で正規化）。ACP 固有の握り潰し防止シグナルとしては従来どおり（住人=段階回復／客人=退場）。"""
 
 PERSONA_CLAUDE_MD = """# あなたの人格
 
@@ -271,7 +273,8 @@ class ACPClient:
 
 
 class AcpAgent:
-    """process＋ACPClient＋sessionId＋capabilities の Facade。spawn() が Factory。"""
+    """`agent.Agent` の ACP 実装（構造的に prompt/cancel/close/model/reported_model/last_stop_reason を満たす・
+    ADR-0026）。process＋ACPClient＋sessionId＋capabilities の Facade。spawn() が Factory。"""
     def __init__(self, proc, client, session_id, caps, tasks, persona_dir=None,
                  model=None, reported_model=None):
         self.proc = proc

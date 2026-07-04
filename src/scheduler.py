@@ -13,7 +13,7 @@ import os
 import random
 import time
 
-import acp          # ACPTimeoutError（adapter 無応答の受け）
+from agent import AgentTimeoutError   # 中立 timeout だけ捕捉＝実体(ACP/API)を知らない（ADR-0026・`agent` ローカル変数と衝突しないよう名前で import）
 import config        # 設定解決（env > engawa.json > 既定）
 import conversation  # 3人会話の部屋（State パターン・ADR-0015 Inc2）
 import debuglog      # デバッグログ（ENGAWA_DEBUG=1 で engawa.log・既定オフ＝no-op）
@@ -107,7 +107,7 @@ class Scheduler:
                     stop_reason = clean
                 else:
                     stop_reason = await self.resident.prompt(narration.text, on_chunk=self.view.chunk)
-            except acp.ACPTimeoutError:                  # 茶々が無応答（adapter ハング等）→ 段階回復へ
+            except AgentTimeoutError:                  # 茶々が無応答（adapter ハング等）→ 段階回復へ
                 timed_out, stop_reason = True, "timeout"
             finally:
                 self.speaking = False
@@ -223,7 +223,7 @@ class Scheduler:
                         await self._end_game()
                     elif self.game is not None and self.game.waiting_for_human:
                         self._show_human_turn()
-            except acp.ACPTimeoutError:                  # AI(客人/茶々)が無応答 → 席を立った扱いでお開き
+            except AgentTimeoutError:                  # AI(客人/茶々)が無応答 → 席を立った扱いでお開き
                 await self._abort_game_on_timeout()
             except Exception:                            # adapter 死亡/不正状態 等 → 盤を進めずお開き（tick ループを殺さない）
                 await self._abort_game_on_error()
@@ -296,7 +296,7 @@ class Scheduler:
             async with self.drive_lock:                  # 召喚と active 駆動を競合させない
                 try:
                     await self._tick(sources.build_context(self.weather, self.topics))
-                except acp.ACPTimeoutError:              # 各経路で処理済み（保険）。tick ループは止めない
+                except AgentTimeoutError:              # 各経路で処理済み（保険）。tick ループは止めない
                     pass
             interval = self._next_interval()             # 次の間合い（active 中は短い＝会話が流れる）
             self._next_at = time.time() + interval
@@ -498,7 +498,7 @@ class Scheduler:
                 ctx = sources.build_context(self.weather, self.topics)   # いまの縁側（時刻＋天気）を渡す
                 try:
                     return await self.resident.prompt(prompts.room_resident_prompt(window, kind, ctx))
-                except acp.ACPTimeoutError:              # 茶々が無応答 → フラグだけ立て、後始末は呼び側で
+                except AgentTimeoutError:              # 茶々が無応答 → フラグだけ立て、後始末は呼び側で
                     self._room_resident_timeout = True
                     return ""
                 finally:
@@ -528,7 +528,7 @@ class Scheduler:
             try:
                 return (await agent.prompt(
                     prompts.room_guest_prompt(persona, window, kind, ctx=ctx, air=air))).strip()
-            except acp.ACPTimeoutError:                  # 客人が無応答 → ハング client は二度叩かず急用退場へ
+            except AgentTimeoutError:                  # 客人が無応答 → ハング client は二度叩かず急用退場へ
                 self._guest_timed_out = True
                 return ""
 
@@ -759,7 +759,7 @@ class Scheduler:
                     break
                 try:
                     await self.on_user_input(line)
-                except acp.ACPTimeoutError:               # どの経路でも timeout でアプリは落とさない（最終保険）
+                except AgentTimeoutError:               # どの経路でも timeout でアプリは落とさない（最終保険）
                     self.view.system("  （応答が戻らへん……ちょっと間があいた）")
                 if self.stop.is_set():
                     break

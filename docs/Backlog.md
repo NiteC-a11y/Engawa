@@ -145,7 +145,7 @@
 - [ ] 「茶々が反応しない（……）」の UI 表現（既読スルー感）
 
 ## 技術的負債 / 要確認
-- [ ] **（設計・ADR-0026）Agent ポート抽出**（codexレビュー 7/4）＝今 `Scheduler` は `resident.prompt/cancel/close` の実質 Agent I/F で動くが、timeout だけ `acp.ACPTimeoutError` を直接捕捉。`agent.py` に `Agent` Protocol＋`AgentTimeoutError` を置き `AcpAgent` が ACP 固有例外を正規化、`Scheduler` は `acp` を import しない形へ。ADR-0026 の API アダプタ追加はこの後。※現行 ACP-only では実害なし＝抽象化の最後の一点。
+- [x] **（設計・ADR-0026）Agent ポート抽出（7/4 実装）**＝`src/agent.py` に `Agent` Protocol＋中立 `AgentTimeoutError` を新設。`acp.ACPTimeoutError` は `AgentTimeoutError` を継承（型で正規化）、`AcpAgent` はその ACP 実装、`Scheduler` は `acp` を import せず `from agent import AgentTimeoutError` の中立例外だけ捕捉（scheduler のローカル変数 `agent` と衝突しないよう名前 import）。振る舞い不変。テスト `test_scheduler.TestAgentPort`(2)。**残り＝第2アダプタ `OpenAIAgent`（ローカル OpenAI 互換 API・LM Studio/Ollama）実装**（＝ADR-0026 の本命の続き）。
 - [ ] **（クリーンアップ）View 入力を value 化**（codexレビュー 7/4）＝観戦窓 close が `views.GAME_CLOSE_REQUEST` 特殊文字列、宛先が `"\x00<to>\x00<text>"` 文字列ワイヤ形式で Scheduler に漏れている。`InputEvent(kind,text,to)` 的な小さな value に置き換え、`View.inputs()` 内部で変換して Scheduler から `views` import を外す（UI を増やす時の衝突防止・実害小＝低優先）。
 - [ ] **（任意）`ENGAWA_*_CMD` の分割を `shlex.split(..., posix=False)` に**（codexレビュー 7/4）＝今は `.split()` で空白入りパスの adapter 指定が壊れやすい。shell injection ではないが堅牢化。
 - [x] **デバッグモード（7/1）**＝`ENGAWA_DEBUG=1`（config・既定オフ）で `engawa.log`（gitignore）に主要ライフサイクル（種の注入/来訪/room 開閉/say/cancel/timeout/tick 分岐）を stdlib logging で吐く（`src/debuglog.py`＝薄いラッパ・各モジュール `debuglog.get("<name>")`・`setup` は composition root）。**縁側の窓/console 本文は汚さない**（別ファイル・off は NullHandler＝no-op）。LLM 判断もの（客人が季節ネタを拾うか）の切り分け土台＝「種は入れた」は `assertLogs` でテスト可能。テスト `test_debuglog`(5)＋`test_views.TestDebugConfig`(3)＋`test_scheduler`(種 placed/skip の assertLogs 1)＝全204 PASS。**残（任意）: ACP prompt/応答の詳細ログ（今回スコープ外＝冗長/機微のため既定外し）／観測点の拡充。**

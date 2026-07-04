@@ -114,7 +114,7 @@ classDiagram
 
 ## Port & Adapter ② — ACP（エージェント接続）
 
-ADR-0013 ②。外部アダプタ（`claude-agent-acp` / `codex-acp`）を `AcpAgent` Facade で包む。
+ADR-0013 ②＋**ADR-0026**。LLM 接続の中立ポート `Agent`（`prompt/cancel/close`）の背後に、外部アダプタ（`claude-agent-acp` / `codex-acp`）を包む `AcpAgent` を置く。`Scheduler` は `Agent` と中立 `AgentTimeoutError` だけを知り、実体（ACP）を知らない（将来 `OpenAIAgent`＝ローカル API を同じ面に並べる）。
 
 ```mermaid
 classDiagram
@@ -143,13 +143,28 @@ classDiagram
         +close()
     }
 
+    class Agent {
+        <<Port · ADR-0026>>
+        +model / reported_model / last_stop_reason
+        +prompt(text, on_chunk)
+        +cancel()
+        +close()
+    }
+
+    class AgentTimeoutError {
+        <<Exception>>
+    }
+
     class ACPTimeoutError {
         <<Exception>>
     }
 
+    AcpAgent ..|> Agent : ACP 実装
+    ACPTimeoutError --|> AgentTimeoutError
     AcpAgent *-- ACPClient
     AcpAgent ..> ACPTimeoutError : prompt timeout
-    Scheduler ..> AcpAgent : resident / guest spawn
+    Scheduler ..> Agent : resident / guest（中立ポート・acp を import しない）
+    engawa_main ..> AcpAgent : spawn（実体を注入）
     GuestSource ..> AcpAgent : 使い捨て客人
 ```
 

@@ -1087,5 +1087,35 @@ class TestAbsenceRefresh(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(s._should_fetch_ambient())
 
 
+class TestAgentPort(unittest.IsolatedAsyncioTestCase):
+    """ADR-0026: Scheduler は acp を import せず、中立 agent.AgentTimeoutError だけで回復する
+    ＝実体(ACP/API)を差し替え可能。将来 OpenAIAgent が中立例外を投げても同じ段階回復が効くことを担保。"""
+
+    def test_scheduler_uses_neutral_port_not_acp(self):
+        import scheduler as sm
+        self.assertFalse(hasattr(sm, "acp"))           # acp モジュールを取り込んでいない（ポート経由）
+        self.assertTrue(hasattr(sm, "AgentTimeoutError"))
+
+    async def test_neutral_timeout_recovers_like_acp(self):
+        import agent
+
+        class NeutralTimeoutResident(FakeResident):    # 非ACP の Agent が投げる中立例外
+            async def prompt(self, text, on_chunk=None):
+                raise agent.AgentTimeoutError("neutral timeout")
+
+        old = NeutralTimeoutResident()
+        healthy = FakeResident()
+
+        async def spawn():
+            return healthy
+
+        s = sched.Scheduler(old, [], sources.WeatherSource(), views.CaptureView(),
+                            spawn_resident=spawn)
+        await s.on_user_input("おーい")                # 1
+        await s.on_user_input("おーい")                # 2 → 閾値で再起動（ACP 由来でなくても同じ）
+        self.assertIs(s.resident, healthy)
+        self.assertTrue(old.closed)
+
+
 if __name__ == "__main__":
     unittest.main()

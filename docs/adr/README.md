@@ -29,7 +29,7 @@
 | 0023 | ソース修正はテスト同梱・走らせて緑が必須（Stop フックで強制） | Accepted（実装） |
 | 0024 | 客人複数化＝Mediator＋話す順 Strategy＋AIターン予算で N人会話へ（要 turn 管理再設計・Inc3 後） | Proposed（構想） |
 | 0025 | 人間待ちの間、茶々が“人間役の代打”で場をつなぐ（予算付き有界・0015 の歯止めを追補・fill_cap で終端保証） | Accepted（実装） |
-| 0026 | LLM 接続は Agent ポートで中立化（ACP と API の2アダプタ・MCP は直交レイヤ・0001 の refine） | Proposed（構想・実装は段階的） |
+| 0026 | LLM 接続は Agent ポートで中立化（ACP と API の2アダプタ・MCP は直交レイヤ・0001 の refine） | Accepted（Agent ポート抽出済み・API アダプタは残） |
 | 0027 | 茶々の「中座」で長命セッションを定期リフレッシュ（世界観に溶かした劣化根治・0005 の refine） | Accepted（実装済み） |
 
 形式は Michael Nygard 風（背景 / 決定 / 代替案 / 影響 / 備考）。
