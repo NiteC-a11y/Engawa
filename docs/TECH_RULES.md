@@ -119,7 +119,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 - **ソース修正にはテストを同梱**し、`python -m unittest discover -s tests -t .`（stdlib unittest・GUI/ネット不要）で**全 PASS を確認してから完了**とする。テスト無しの修正は回帰検知が効かず、後の変更で壊しても気づけない。
 - **テスト困難な GUI/外部依存は判断ロジックを純関数に切り出してユニット化**する（例: `engawa_main._web_window_kwargs`/`_ui_config`、`views.build_web_html`）。GUI の見た目自体はユーザー目視（§7 / adr/0018,0019）。
 - **harness で強制**：`.claude/settings.json`（project・committed）の **Stop フック**が src/tests 変更時にテストを走らせ、赤なら完了をブロック（`/hooks` で確認・無効化可）。**開発者向け設定＝Bash 必須**（`grep`/`tail` を使う。Windows は Git Bash 前提）。アプリの利用者には無関係だが、この repo を Claude Code で開く開発者が Windows で Bash 不在だとフックが動かない点に注意。
-- **CI（GitHub Actions・`.github/workflows/ci.yml`）**：push / PR で **tests**（Python 3.10–3.13 マトリクス・stdlib unittest・依存インストール不要＝`import webview`/`rlcard` は遅延）＋ **ruff**（`ruff.toml`＝`select=F,E9` の実バグ級のみ・低ノイズ）を自動実行。ローカルの Stop フックと二段で回帰を止める（フックは開発者ローカル・CI は共有の門番）。ローカルで合わせるなら `python -m ruff check src tests`。
+- **CI（GitHub Actions・`.github/workflows/ci.yml`）**：push / PR で **tests**（Python 3.10–3.13 マトリクス・stdlib unittest・依存インストール不要＝`import webview`/`rlcard` は遅延）＋ **ruff**（`ruff.toml`＝`select=F,E9` の実バグ級のみ・低ノイズ）＋ **mermaid**（docs の `​```mermaid` 図を `@mermaid-js/mermaid-cli`＝mmdc で parse/render 検証＝図の破損を止める・`tests`/`ruff` では拾えないため追加）を自動実行。ローカルの Stop フックと二段で回帰を止める（フックは開発者ローカル・CI は共有の門番）。ローカルで合わせるなら `python -m ruff check src tests`。
 
 ---
 
