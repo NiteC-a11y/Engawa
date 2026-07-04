@@ -9,6 +9,15 @@
 実行: python app.py
 """
 
+# --- 実行ガード（公開レビュー 2026-07-04）---------------------------------------
+# これは方向転換前の【旧実装】（ADR-0004 で撤退した「AI雑談ルーム」・API キー直叩き＝従量課金経路）。
+# 歴史的参照として温存しているだけで、実行してはいけない（原則#1：課金事故を出さない）。
+# 現行アプリは `python src/engawa_main.py`（サブスク認証・API キー不使用・ADR-0002）。
+raise SystemExit(
+    "legacy/app.py は旧実装（ADR-0004 で撤退・API キー直叩きの従量課金経路）。実行しないでください。"
+    "現行は `python src/engawa_main.py`。")
+# -------------------------------------------------------------------------------
+
 import os, time, threading, sqlite3, requests, random, webview
 from dotenv import load_dotenv
 

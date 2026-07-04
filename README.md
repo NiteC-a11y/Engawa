@@ -50,6 +50,10 @@ claude          # Claude Code にサブスクでログイン
 # 2) 個人設定を用意（任意・全キー任意＝消せばコード既定）
 cp engawa.json.sample engawa.json        # Windows は copy
 
+# 任意依存（必要な機能だけ）
+pip install pywebview                     # 隅の縁側窓（ENGAWA_UI=web）に必要
+pip install rlcard                        # /game の対戦相手 AI に必要
+
 # 3) 起動
 python src/engawa_main.py                # console（端末）
 ```
@@ -108,6 +112,7 @@ ENGAWA_DEBUG=1             engawa.log に主要ライフサイクルを記録
 - `ENGAWA_ACP_CMD` / `ENGAWA_CODEX_CMD` は**実行コマンド**、`ENGAWA_SCENE_BG`（`assets.scene_bg`）/ `ENGAWA_SPRITE_CONFIG`（`assets.sprite_config`）は**ローカルファイルのパス**を指定する口です。**第三者から渡された設定・`.bat`・画像/設定ファイルを、中身を確認せずに使わない**でください（信頼できる値だけ指定）。
 - `/codex <人格>` の自由入力 persona は**信頼境界ではありません**。客人（Codex）は fs/terminal 無効・API キー除去済みで、ファイル操作や従量課金には直結しませんが、人格崩れ・不快な出力の余地は残ります。配布用途では既定 persona のアローリストを主にするのが安全です。
 - `ENGAWA_DEBUG=1` の `engawa.log` には**あなたの入力本文が含まれ得ます**。Issue などに貼る前に中身を確認してください。
+- OpenAI backend（`ENGAWA_RESIDENT_BACKEND`/`ENGAWA_GUEST_BACKEND=openai`）は**ローカル/自ホスト専用**です。非ローカル（クラウド等）の `ENGAWA_OPENAI_BASE_URL` は**既定でブロック**します（会話履歴の外部送信・従量課金の事故防止／原則「課金事故を出さない」）。意図的にクラウドの OpenAI 互換 API を使う場合のみ `ENGAWA_OPENAI_ALLOW_REMOTE=1` を明示してください。
 
 ## 構成
 

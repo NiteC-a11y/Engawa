@@ -50,6 +50,10 @@ claude          # log in to Claude Code with your subscription
 # 2) Prepare personal config (optional — every key is optional; delete to fall back to defaults)
 cp engawa.json.sample engawa.json        # use "copy" on Windows
 
+# Optional dependencies (only for the features you want)
+pip install pywebview                    # required for the corner veranda window (ENGAWA_UI=web)
+pip install rlcard                       # required for the /game opponent AI
+
 # 3) Run
 python src/engawa_main.py                # console (terminal)
 ```
@@ -108,6 +112,7 @@ ENGAWA_DEBUG=1              record key lifecycle events to engawa.log
 - `ENGAWA_ACP_CMD` / `ENGAWA_CODEX_CMD` are **commands that get executed**; `ENGAWA_SCENE_BG` (`assets.scene_bg`) / `ENGAWA_SPRITE_CONFIG` (`assets.sprite_config`) point to **local file paths**. **Don't use settings, `.bat` files, or image/config files handed to you by a third party without checking them** — set only values you trust.
 - The free-text persona in `/codex <persona>` is **not a trust boundary**. The guest (Codex) runs with fs/terminal disabled and API keys stripped, so it can't touch files or incur metered billing — but a hostile persona can still derail the character or produce unpleasant output. For distribution, prefer an allowlist of default personas.
 - With `ENGAWA_DEBUG=1`, `engawa.log` **may contain the text you typed**. Check it before pasting into an issue.
+- The OpenAI backend (`ENGAWA_RESIDENT_BACKEND`/`ENGAWA_GUEST_BACKEND=openai`) is **for local / self-hosted endpoints only**. A non-local (e.g. cloud) `ENGAWA_OPENAI_BASE_URL` is **blocked by default** (to avoid sending your conversation off-box and incurring metered billing — the project's "no billing accidents" principle). Set `ENGAWA_OPENAI_ALLOW_REMOTE=1` only if you deliberately want to use a cloud OpenAI-compatible API.
 
 ## Layout
 

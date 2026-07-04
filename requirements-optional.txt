@@ -1,0 +1,12 @@
+# Engawa の任意依存（コア機能は Python 標準ライブラリだけで動く方針）。
+# 必要な機能のぶんだけ入れればよい＝強制ではない。全部入れる必要はない。
+#   pip install -r requirements-optional.txt   # まとめて入れる場合
+#   pip install pywebview                       # 個別に入れる場合
+
+pywebview   # 隅の縁側窓（frameless web UI・ENGAWA_UI=web / engawa.bat）。無ければ console 起動は可
+rlcard      # /game の対戦相手 AI（blackjack / uno / leduc・ADR-0017）。無ければ /game は遊べないが縁側は起動
+
+# 備考:
+# - ローカル LLM backend（ENGAWA_RESIDENT_BACKEND=openai・LM Studio 等）は stdlib urllib のみ＝追加依存なし。
+# - 住人(Claude)・客人(Codex)の ACP アダプタは Node.js の npx で起動（`@zed-industries/claude-code-acp` /
+#   `@openai/codex` 系）＝Python の依存ではないので、ここには含めない（README のセットアップ参照）。

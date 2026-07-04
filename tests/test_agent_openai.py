@@ -10,6 +10,7 @@ import urllib.error
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 import agent
 import agent_openai
+import config
 from agent_openai import OpenAIAgent
 
 
@@ -172,6 +173,38 @@ class TestOpenAIAgentGuest(unittest.IsolatedAsyncioTestCase):
         import persona
         self.assertNotEqual(agent_openai.GUEST_SYSTEM, persona.RESIDENT_PERSONA)
         self.assertNotIn("あなたの人格", agent_openai.GUEST_SYSTEM)   # 茶々の人格ヘッダを含まない
+
+
+class TestOpenAIEndpointGuard(unittest.TestCase):
+    """非ローカル endpoint は既定でブロック（原則#1・課金/会話履歴の外部送信の事故防止・公開レビュー7/4）。
+    ENGAWA_OPENAI_ALLOW_REMOTE=1 で明示 opt-in のみ通す。"""
+
+    def setUp(self):
+        self._env = os.environ.pop("ENGAWA_OPENAI_ALLOW_REMOTE", None)
+        self._cfg = config._CFG
+        config._CFG = {}
+
+    def tearDown(self):
+        config._CFG = self._cfg
+        if self._env is None:
+            os.environ.pop("ENGAWA_OPENAI_ALLOW_REMOTE", None)
+        else:
+            os.environ["ENGAWA_OPENAI_ALLOW_REMOTE"] = self._env
+
+    def test_local_hosts_allowed(self):
+        for u in ("http://localhost:1234/v1", "http://127.0.0.1/v1",
+                  "http://192.168.1.9:1234/v1", "http://box.local/v1"):
+            self.assertTrue(agent_openai._is_local_endpoint(u), u)
+            agent_openai._ensure_endpoint_allowed(u)     # 例外を投げない
+
+    def test_remote_blocked_by_default(self):
+        self.assertFalse(agent_openai._is_local_endpoint("https://api.openai.com/v1"))
+        with self.assertRaises(RuntimeError):
+            agent_openai._ensure_endpoint_allowed("https://api.openai.com/v1")
+
+    def test_remote_allowed_with_optin(self):
+        os.environ["ENGAWA_OPENAI_ALLOW_REMOTE"] = "1"
+        agent_openai._ensure_endpoint_allowed("https://api.openai.com/v1")   # opt-in で通る（例外なし）
 
 
 class TestOpenAIAgentPortShape(unittest.TestCase):

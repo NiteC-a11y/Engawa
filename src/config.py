@@ -4,7 +4,7 @@
 - つまみの優先順位: `ENGAWA_*` 環境変数があれば最優先 → `engawa.json` の値 → コード既定。
   既存の env 運用を壊さず、engawa.json で「永続的なデフォルト」を置けるようにするための薄い層。
 - ファイルは `engawa.json`（リポジトリ直下・env `ENGAWA_CONFIG` でパス差し替え。topic/sprite と同じ流儀）。
-  個人設定なので Git 管理外（.gitignore）。雛形は `engawa.json.sample`（.env/.env.example と同じ流儀）。
+  個人設定なので Git 管理外（.gitignore）。雛形は `engawa.json.sample`（gitignore 個人設定＋追跡サンプルの流儀）。
 - **API キーは入れない**（adr/0002：キーは子 env から除去する思想と分離。ここは挙動つまみ専用）。
 - JSON 欠損/壊れ/型不一致は静かにコード既定へフォールバック（起動を止めない）。
 """

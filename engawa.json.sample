@@ -12,14 +12,15 @@
     "guest": "acp"
   },
   "openai": {
-    "_comment": "backend.resident=openai の時に使う OpenAI 互換 endpoint(ADR-0026)。base_url=既定 LM Studio の http://localhost:1234/v1。model=空ならロード済みの先頭を自動採用(例 qwen3.5-9b)。guest_model=客人用モデル(空=住人と同じ・backend.guest=openai の時のみ・env ENGAWA_OPENAI_GUEST_MODEL)。api_key=local は不問(ダミー可)。timeout=秒(初回はモデルロードで遅いので長め)。reasoning=reasoning_effort。茶々の独り言に CoT は不要なので既定 none で推論オフ（Qwen3.5 等は既定で長考し本文が空になる＝実機で判明。空文字にすると reasoning_effort フィールド自体を送らない＝解さない endpoint 向け・low/medium も可）。max_tokens=0で無指定(暴走防止に上限を置くなら>0)。env ENGAWA_OPENAI_BASE_URL/_MODEL/_API_KEY/_TIMEOUT/_REASONING/_MAX_TOKENS。会話履歴はアプリ側が保持し中座でリセット。",
+    "_comment": "backend.resident=openai の時に使う OpenAI 互換 endpoint(ADR-0026)。base_url=既定 LM Studio の http://localhost:1234/v1。model=空ならロード済みの先頭を自動採用(例 qwen3.5-9b)。guest_model=客人用モデル(空=住人と同じ・backend.guest=openai の時のみ・env ENGAWA_OPENAI_GUEST_MODEL)。api_key=local は不問(ダミー可)。allow_remote=**ローカル/自ホスト専用の安全弁**。非ローカル(クラウド等)の base_url は既定でブロック=会話履歴の外部送信/従量課金の事故防止(原則#1・ADR-0002)。意図的にクラウド OpenAI 互換 API を使う時だけ 1(env ENGAWA_OPENAI_ALLOW_REMOTE)。timeout=秒(初回はモデルロードで遅いので長め)。reasoning=reasoning_effort。茶々の独り言に CoT は不要なので既定 none で推論オフ（Qwen3.5 等は既定で長考し本文が空になる＝実機で判明。空文字にすると reasoning_effort フィールド自体を送らない＝解さない endpoint 向け・low/medium も可）。max_tokens=0で無指定(暴走防止に上限を置くなら>0)。env ENGAWA_OPENAI_BASE_URL/_MODEL/_API_KEY/_TIMEOUT/_REASONING/_MAX_TOKENS。会話履歴はアプリ側が保持し中座でリセット。",
     "base_url": "http://localhost:1234/v1",
     "model": "",
     "guest_model": "",
     "api_key": "lm-studio",
     "timeout": 120,
     "reasoning": "none",
-    "max_tokens": 0
+    "max_tokens": 0,
+    "allow_remote": 0
   },
   "guest": {
     "_comment": "自発来訪。from_hour=開始時刻(既定15=夕方/time_of_day準拠・0で終日)。prob=tickあたりの来訪確率＝**arc 抽選から独立**なのでこの値がほぼ実効レート(0.05で間隔ざっくり数十分・来訪後は20tickのcooldown)。頻繁にしたいなら 0.1〜0.2 へ。idle_leave_ticks=来訪中に人間沈黙がこのtick数続いたら客人が辞去(来訪中tickは active_beat=数秒〜十数秒。既定8。大きいほど長居・話しかければリセット・有界は維持)。fill_cap=人間が黙っている間に茶々が“人間役の代打”で場をつなぐ回数の上限(=人間不在の連続AIターン上限・ADR-0025。既定3。0で代打オフ＝従来の純待ち。使い切ると idle_leave_ticks で辞去)。fill_after_ticks=最初の代打までの沈黙tick数(既定2・idle_leave_ticks より小さくする)。fill_slowdown=回ごとに代打の間隔を延ばす量(n回目=fill_after+n×これ・既定1・0で一定。来た直後は賑やか→ネタ切れで間延び→帰る、を模す)。召喚 /codex はこのゲートを受けない。",

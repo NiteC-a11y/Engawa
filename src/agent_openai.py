@@ -12,8 +12,10 @@ HTTP 完了後に結果を破棄して抑制する（local は速く従量課金
 この葉は他アダプタ（acp）に依存しない＝2アダプタは相互非依存。
 """
 import asyncio
+import ipaddress
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import config
@@ -53,6 +55,34 @@ def _guest_model():
     return config.get_str("ENGAWA_OPENAI_GUEST_MODEL", "openai", "guest_model", "")   # 空=住人と同じ（8GB は endpoint が1モデル共有）
 
 
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0", ""}
+
+
+def _is_local_endpoint(base_url):
+    """base_url がローカル/自ホスト/私設LANか（＝会話履歴の外部送信・従量課金の事故が起きにくい先）。"""
+    host = (urllib.parse.urlparse(base_url).hostname or "").lower()
+    if host in _LOCAL_HOSTS or host.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip.is_private
+    except ValueError:
+        return False                                   # ホスト名（api.openai.com 等）＝非ローカル扱い
+
+
+def _ensure_endpoint_allowed(base_url):
+    """非ローカル endpoint は既定でブロック（原則#1：課金事故ゼロ・ADR-0002）。会話履歴の外部送信＋従量課金の
+    事故を防ぐ。クラウド OpenAI 互換 API を意図的に使う場合のみ ENGAWA_OPENAI_ALLOW_REMOTE=1 で明示 opt-in。"""
+    if _is_local_endpoint(base_url):
+        return
+    if config.get_str("ENGAWA_OPENAI_ALLOW_REMOTE", "openai", "allow_remote", "0") in ("1", "true", "True", "on", "yes"):
+        return
+    raise RuntimeError(
+        f"非ローカルの OpenAI 互換 endpoint（{base_url}）はブロックしました＝会話履歴の外部送信/従量課金の"
+        f"事故防止（原則#1・ADR-0002）。Engawa の OpenAI backend はローカル/自ホスト前提です。意図的に"
+        f"クラウド API を使う場合のみ ENGAWA_OPENAI_ALLOW_REMOTE=1 を明示してください。")
+
+
 # 客人用 system。人格は召喚時に prompt へ動的注入されるので（ADR-0008）、ここに茶々の人格は載せず、
 # 汎用の「客人を演じる／セリフだけ短く」枠だけ置く（room_guest_prompt が役名を毎ターン与える）。
 GUEST_SYSTEM = ("あなたは縁側をふらりと訪ねてきた客人を演じます。プロンプトで指定された役になりきり、"
@@ -81,7 +111,9 @@ class OpenAIAgent:
     async def spawn_resident(cls, model=None):
         """住人（茶々）を OpenAI 互換 endpoint で。疎通確認して実モデルを掴む。
         繋がらなければ RuntimeError（composition root が『LM Studio を起動して』と案内）。"""
-        self = cls(_base_url(), model or _model(), _api_key(), _timeout(),
+        base = _base_url()
+        _ensure_endpoint_allowed(base)                # 非ローカルは既定ブロック（原則#1・課金/外部送信事故防止）
+        self = cls(base, model or _model(), _api_key(), _timeout(),
                    reasoning=_reasoning(), max_tokens=_max_tokens())
         await self._probe()
         return self
@@ -91,7 +123,9 @@ class OpenAIAgent:
         """客人（Codex 代替）を OpenAI 互換 endpoint で（ADR-0026・任意）。system は茶々の人格を載せず汎用の
         『客人を演じる』枠だけ＝役は召喚時に prompt へ動的注入（ADR-0008）。8GB 等では住人と同じロード済み
         モデルを共有する点に注意（別モデル同時ロードは非現実的＝素の口調は似る・役と履歴は別インスタンス）。"""
-        self = cls(_base_url(), model or _guest_model() or _model(), _api_key(), _timeout(),
+        base = _base_url()
+        _ensure_endpoint_allowed(base)                # 非ローカルは既定ブロック（原則#1・課金/外部送信事故防止）
+        self = cls(base, model or _guest_model() or _model(), _api_key(), _timeout(),
                    system=GUEST_SYSTEM, reasoning=_reasoning(), max_tokens=_max_tokens())
         await self._probe()
         return self
