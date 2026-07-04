@@ -101,6 +101,11 @@ ENGAWA_DEBUG=1             engawa.log に主要ライフサイクルを記録
 
 ---
 
+## セキュリティ・共有時の注意
+- `ENGAWA_ACP_CMD` / `ENGAWA_CODEX_CMD` は**実行コマンド**、`ENGAWA_SCENE_BG`（`assets.scene_bg`）/ `ENGAWA_SPRITE_CONFIG`（`assets.sprite_config`）は**ローカルファイルのパス**を指定する口です。**第三者から渡された設定・`.bat`・画像/設定ファイルを、中身を確認せずに使わない**でください（信頼できる値だけ指定）。
+- `/codex <人格>` の自由入力 persona は**信頼境界ではありません**。客人（Codex）は fs/terminal 無効・API キー除去済みで、ファイル操作や従量課金には直結しませんが、人格崩れ・不快な出力の余地は残ります。配布用途では既定 persona のアローリストを主にするのが安全です。
+- `ENGAWA_DEBUG=1` の `engawa.log` には**あなたの入力本文が含まれ得ます**。Issue などに貼る前に中身を確認してください。
+
 ## 構成
 
 ```

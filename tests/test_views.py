@@ -296,5 +296,31 @@ class TestAssetSwap(unittest.TestCase):
         self.assertEqual(views._sprite_config_path(), "D:/skins/alt/sprite.json")
 
 
+class TestSceneBgInjection(unittest.TestCase):
+    """背景 data URI が #scene に注入され .shoji/.floor が隠れる／無ければグラデにフォールバック
+    （build_web_html を触った時の背景 marker 消し忘れ・placeholder 非表示漏れを検知・codexレビュー）。"""
+
+    def setUp(self):
+        self._orig = views._load_scene_bg
+
+    def tearDown(self):
+        views._load_scene_bg = self._orig
+
+    def test_bg_present_injects_and_hides_placeholders(self):
+        views._load_scene_bg = lambda: "data:image/png;base64,AAAA"
+        h = views.build_web_html(1.0)
+        self.assertNotIn("/*SCENEBG*/", h)                        # プレースホルダ消費
+        self.assertIn("#scene{background:url(data:image/png;base64,AAAA)", h)
+        self.assertIn(".shoji,.floor{display:none}", h)           # 板プレースホルダを隠す
+
+    def test_bg_absent_falls_back_to_gradient(self):
+        views._load_scene_bg = lambda: None
+        h = views.build_web_html(1.0)
+        self.assertNotIn("/*SCENEBG*/", h)                        # プレースホルダは空に消費
+        self.assertNotIn("background:url(data:image/png", h)      # 画像注入なし
+        self.assertNotIn(".shoji,.floor{display:none}", h)        # 板は残る
+        self.assertIn("linear-gradient", h)                       # グラデ背景（フォールバック）
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -101,6 +101,11 @@ ENGAWA_DEBUG=1              record key lifecycle events to engawa.log
 
 ---
 
+## Security & sharing notes
+- `ENGAWA_ACP_CMD` / `ENGAWA_CODEX_CMD` are **commands that get executed**; `ENGAWA_SCENE_BG` (`assets.scene_bg`) / `ENGAWA_SPRITE_CONFIG` (`assets.sprite_config`) point to **local file paths**. **Don't use settings, `.bat` files, or image/config files handed to you by a third party without checking them** — set only values you trust.
+- The free-text persona in `/codex <persona>` is **not a trust boundary**. The guest (Codex) runs with fs/terminal disabled and API keys stripped, so it can't touch files or incur metered billing — but a hostile persona can still derail the character or produce unpleasant output. For distribution, prefer an allowlist of default personas.
+- With `ENGAWA_DEBUG=1`, `engawa.log` **may contain the text you typed**. Check it before pasting into an issue.
+
 ## Layout
 
 ```

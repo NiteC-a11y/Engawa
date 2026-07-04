@@ -368,7 +368,7 @@ class Scheduler:
             await self._play_arc_now(parts[1] if len(parts) > 1 else None)
         elif cmd == "/codex":
             rest = line.split(maxsplit=1)
-            persona = rest[1].strip() if len(rest) > 1 else "気まぐれな旅の客"
+            persona = prompts.sanitize_persona(rest[1] if len(rest) > 1 else "")  # 自由入力を最小サニタイズ（公開前の最低線）
             await self._summon_guest(persona)
         elif cmd == "/game":                             # 汎用ゲーム起動: /game <id> [見る]
             rest = [p for p in parts[1:] if p not in ("見る", "観戦", "watch")]

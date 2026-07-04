@@ -65,5 +65,28 @@ class TestStripResidentLeak(unittest.TestCase):
         self.assertEqual(out, "ほな、ぼちぼちいこか。")
 
 
+class TestSanitizePersona(unittest.TestCase):
+    """/codex 自由入力 persona の最小サニタイズ（制御文字/改行/長さ・公開前の最低線）。"""
+
+    def test_passthrough_normal(self):
+        self.assertEqual(prompts.sanitize_persona("近所の物知りなご隠居"), "近所の物知りなご隠居")
+
+    def test_strips_newlines_tabs_control(self):
+        out = prompts.sanitize_persona("旅の\n行商人\tだよ\x00")
+        for bad in ("\n", "\t", "\x00"):
+            self.assertNotIn(bad, out)
+        self.assertEqual(out, "旅の 行商人 だよ")
+
+    def test_collapses_whitespace(self):
+        self.assertEqual(prompts.sanitize_persona("  絵   描き  "), "絵 描き")
+
+    def test_caps_length(self):
+        self.assertLessEqual(len(prompts.sanitize_persona("あ" * 200)), 60)
+
+    def test_empty_falls_back_to_default(self):
+        self.assertEqual(prompts.sanitize_persona(""), "気まぐれな旅の客")
+        self.assertEqual(prompts.sanitize_persona("   \n\t "), "気まぐれな旅の客")
+
+
 if __name__ == "__main__":
     unittest.main()
