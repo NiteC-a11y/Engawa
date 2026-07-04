@@ -80,7 +80,7 @@ Plain text is **talking to Chacha**; input starting with `/` is a **command to t
 
 | Command | Description |
 |---|---|
-| `/codex <persona>` | Summon a guest (Codex). It visits wearing the given persona |
+| `/codex <persona>` | Summon a guest (Codex) wearing **any persona you type** (e.g. `/codex 近所のご隠居`) |
 | `/game <id> [見る]` | Mini-games (`blackjack` / `uno` / `leduc`). "見る" = spectate. Requires `pip install rlcard` |
 | `/arc [雀\|猫\|風]` | Replay a diorama event (arc) — for debugging |
 | `/model` | Show the current models (resident / guest) |
