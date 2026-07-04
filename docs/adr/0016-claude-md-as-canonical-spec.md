@@ -15,7 +15,7 @@
 
 ## 決定
 1. **現行全体像の正本は `CLAUDE.md` とする。** 既に de-facto 正本で常時メンテされている。「どう動くか（1枚で）」が全体像を担う。
-2. **`engawa-acp-spec.md` は旧構想（Superseded）として降格・温存。** 削除しない（`legacy/app.py` の温存と同じ思想）。冒頭に「旧構想／ADR-0004 でピボット済み」の banner を付す。なお ACP の機構面で今も有効な契約は **TECH_RULES §2 が正本**。
+2. **`engawa-acp-spec.md` は旧構想（Superseded）として降格・温存。** 削除しない（旧構想・旧実装は歴史ごと残す思想＝非実行の設計文書は据え置き。なお実行できる `legacy/app.py` は 7/4 に削除＝git 履歴に温存・footgun 回避）。冒頭に「旧構想／ADR-0004 でピボット済み」の banner を付す。なお ACP の機構面で今も有効な契約は **TECH_RULES §2 が正本**。
 3. **新規 `engawa-spec-v2.md` は作らない。** v2 を別途書くと「正本がまた同期ずれする」本問題を再生産するため。`TECH_RULES.md` / `README.md` の `engawa-spec-v2.md`（「spec v2」）参照は **`CLAUDE.md`（正本）へ向け直す**。
 
 ## 検討した代替案

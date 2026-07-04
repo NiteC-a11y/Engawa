@@ -10,7 +10,7 @@
 ## 決定
 1. **コードは `src/`** … 現行ランタイム9本（`engawa_main` / `acp` / `sources` / `scheduler` / `views` / `config` / `conversation` / `game` / `game_rlcard`）。フラット import のまま（`python src/engawa_main.py` で `src/` が `sys.path[0]` になり相互 import 維持）。
 2. **実使用アセットは `assets/`** … `sprite.json` + `chacha.png`。Gemini 生成元の生 PNG は `assets/raw/`（gitignore 継続）。
-3. **PoC基準点は `poc/`** … `engawa_p1/p2/p3_*.py`。**温存・触らない**（検証済みの戻り先）方針は不変（ADR/CLAUDE.md）。`legacy/` は別物（捨てた旧実装）として据え置き分離。
+3. **PoC基準点は `poc/`** … `engawa_p1/p2/p3_*.py`。**温存・触らない**（検証済みの戻り先）方針は不変（ADR/CLAUDE.md）。`legacy/` は別物（捨てた旧実装）として据え置き分離していたが、**2026-07-04 に削除**（実行できる API 直叩きの従量課金 footgun・公開レビュー。コードは git 履歴＋ADR-0004 に温存＝歴史は失わない）。poc/ の「検証済み戻り先」は不変。
 4. **文書は `docs/`** … `Backlog.md` / `TECH_RULES.md` / `engawa-acp-spec.md` / `adr/`。
 5. **ユーザーが触る設定（`engawa.json` / `topic_sources.json`）と `CLAUDE.md` は root 維持。** 設定は日常編集対象で発見性を優先、`CLAUDE.md` は Claude Code / codex が**リポジトリ直下から自動で読む正本**のため動かせない。
 6. **設定/アセットは `src/` から repo-root 基準で解決する。** `_path()` 系を `dirname(dirname(__file__))`（＝`src/` の親）基準へ変更。`engawa.json`/`topic_sources.json` は root、`sprite.json`+`chacha.png` は `assets/`。env つまみ（`ENGAWA_CONFIG` / `ENGAWA_TOPIC_CONFIG` / `ENGAWA_SPRITE_CONFIG`）の上書きは従来通り優先。
