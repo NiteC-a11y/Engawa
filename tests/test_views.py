@@ -383,5 +383,34 @@ class TestGuestBackend(unittest.TestCase):
         self.assertEqual(self.em._guest_spawner(), agent_openai.OpenAIAgent.spawn_guest)
 
 
+class TestEnterMode(unittest.TestCase):
+    """入力欄の Enter の振る舞いを config で切替（ui.enter・send=Enter送信/newline=Enter改行）。build_web_html が注入。"""
+
+    def setUp(self):
+        self._env = os.environ.pop("ENGAWA_UI_ENTER", None)
+        self._cfg = config._CFG
+        config._CFG = {}
+
+    def tearDown(self):
+        config._CFG = self._cfg
+        if self._env is None:
+            os.environ.pop("ENGAWA_UI_ENTER", None)
+        else:
+            os.environ["ENGAWA_UI_ENTER"] = self._env
+
+    def test_default_is_send(self):
+        h = views.build_web_html(1.0)
+        self.assertIn('const ENTER_MODE="send"', h)
+        self.assertNotIn("/*ENTERMODE*/", h)                     # マーカー消費
+
+    def test_newline_mode(self):
+        config._CFG = {"ui": {"enter": "newline"}}
+        self.assertIn('const ENTER_MODE="newline"', views.build_web_html(1.0))
+
+    def test_invalid_falls_back_to_send(self):
+        config._CFG = {"ui": {"enter": "bogus"}}
+        self.assertIn('const ENTER_MODE="send"', views.build_web_html(1.0))
+
+
 if __name__ == "__main__":
     unittest.main()
