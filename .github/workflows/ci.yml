@@ -35,3 +35,30 @@ jobs:
       # 設定は ruff.toml（select = F, E9 ＝実バグ級のみ）。
       - name: Ruff check
         run: python -m ruff check src tests
+
+  mermaid:
+    name: mermaid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install mermaid-cli
+        run: npm install -g @mermaid-js/mermaid-cli@11
+      # docs の全 ```mermaid ブロックを mmdc で parse/render（構文エラーなら非0で落ちる）。
+      # CI は root 実行なので Chromium sandbox を切る（--no-sandbox）。
+      - name: Validate Mermaid diagrams
+        run: |
+          echo '{"args":["--no-sandbox","--disable-gpu"]}' > /tmp/pptr.json
+          rc=0
+          for f in $(grep -rl '```mermaid' --include='*.md' .); do
+            echo "::group::mmdc $f"
+            if mmdc -q -p /tmp/pptr.json -i "$f" -o "/tmp/$(basename "$f").out.md"; then
+              echo "OK: $f"
+            else
+              echo "::error file=$f::Mermaid parse/render failed"; rc=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $rc
