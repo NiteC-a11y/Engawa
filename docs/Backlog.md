@@ -133,7 +133,7 @@
 ## Open Questions（spec §15）
 - [~] 長命セッションの compaction 戦略 / fork 閾値（Naraku の外部状態方式を流用できるか）
   - **染み出し不具合（7/3 実機報告）**＝長時間稼働で茶々ソロ出力に「注入プロンプトの復唱＋地の思考(英語/メタ)＋本物の台詞」が全部混じる（内部 compaction で「茶々として答えるだけ」の枠を失う筋）。Engawa は `agent_message_chunk` しか描画してない＝**モデルが本文チャンクとして吐いている**＝描画フィルタでなくモデル出力側の崩れ。
-  - **対症（実装済み 7/3・commit 9d3a297）**: ①表示ガード `prompts.strip_resident_leak`（注入文の復唱＋先頭の思考を表示前に純関数で除去・原因を問わず効く・`ENGAWA_RESIDENT_GUARD` 既定1・ソロは一括描画に）＋②`/restart`（住人セッションを張り直し＝timeout 段階回復と同じ respawn 経路を共用）。テスト: `test_prompts`(8) ＋ `test_scheduler.TestRestartAndGuard`(5)。
+  - **対症（実装済み 7/3・commit 0e1ffe0）**: ①表示ガード `prompts.strip_resident_leak`（注入文の復唱＋先頭の思考を表示前に純関数で除去・原因を問わず効く・`ENGAWA_RESIDENT_GUARD` 既定1・ソロは一括描画に）＋②`/restart`（住人セッションを張り直し＝timeout 段階回復と同じ respawn 経路を共用）。テスト: `test_prompts`(8) ＋ `test_scheduler.TestRestartAndGuard`(5)。
   - **根治（実装済み 7/3・ADR-0027）**: ③茶々の「中座」＝世界観に溶かした定期セッション更新。住人ソロ発話が `absence.after_turns`(既定30＋ゆらぎ)たまったら次の idle で中座に入り、不在(`gap_sec` 既定18)の裏で `_restart_resident()`（黙って若返り）→ローカル定型で戻る。idle 限定（会話/来訪/対局中は行かない＝話の途中で忘れない）・`after_turns=0` でオフ。leave/return は LLM 非経由（`prompts.absence_leave/return`）。テスト: `test_scheduler.TestAbsenceRefresh`(8)。**発話トーン/頻度の体感は実機目視（engawa.json[absence] で調整）**。
   - **残**: 染み出し検知→自動再生成（1回崩れたターンを黙って引き直す）／room 側（`room_resident_prompt`）へのガード横展開／不在中の「空っぽの縁側」スプライト（P5 後日）。
 - [ ] /codex <自由テキスト> のプロンプトインジェクション（配布時のみ要対策。検討メモ 6/27）
