@@ -39,17 +39,29 @@ def _timeout():
     return config.get_float("ENGAWA_OPENAI_TIMEOUT", "openai", "timeout", 120.0, lo=5.0)  # 秒（初回はモデルロードで遅い）
 
 
+def _reasoning():
+    # 推論(think)モードの強さ。茶々の独り言に CoT は不要＝既定 none で抑止（Qwen3.5 等は既定で長考し本文が空になる）。
+    # 空文字ならフィールド自体を送らない（reasoning_effort を解さない endpoint 向け）。low/medium 等も可。
+    return config.get_str("ENGAWA_OPENAI_REASONING", "openai", "reasoning", "none")
+
+
+def _max_tokens():
+    return config.get_int("ENGAWA_OPENAI_MAX_TOKENS", "openai", "max_tokens", 0, lo=0)  # 0=無指定（暴走防止に上限を置くなら>0）
+
+
 class OpenAIAgent:
     """`agent.Agent` の OpenAI 互換 API 実装（構造的に prompt/cancel/close/model/reported_model/last_stop_reason
     を満たす）。会話履歴を self._messages に自前保持（先頭が system=人格）。"""
 
-    def __init__(self, base_url, model, api_key, timeout, system=None):
+    def __init__(self, base_url, model, api_key, timeout, system=None, reasoning="none", max_tokens=0):
         self.base_url = base_url
         self.model = model or None                    # 我々が要求したモデル（未指定 None）
         self.reported_model = None                    # endpoint が /models で報告した実モデル
         self.last_stop_reason = None
         self._api_key = api_key
         self._timeout = timeout
+        self._reasoning = reasoning                   # reasoning_effort（none=推論オフ・空=フィールド送らない）
+        self._max_tokens = max_tokens
         self._system = persona.RESIDENT_PERSONA if system is None else system
         self._messages = [{"role": "system", "content": self._system}]
         self._cancelled = False
@@ -59,7 +71,8 @@ class OpenAIAgent:
     async def spawn_resident(cls, model=None):
         """住人（茶々）を OpenAI 互換 endpoint で。疎通確認して実モデルを掴む。
         繋がらなければ RuntimeError（composition root が『LM Studio を起動して』と案内）。"""
-        self = cls(_base_url(), model or _model(), _api_key(), _timeout())
+        self = cls(_base_url(), model or _model(), _api_key(), _timeout(),
+                   reasoning=_reasoning(), max_tokens=_max_tokens())
         await self._probe()
         return self
 
@@ -84,6 +97,10 @@ class OpenAIAgent:
             self._cancelled = False
             self._messages.append({"role": "user", "content": text})
             body = {"model": self.model or "", "messages": self._messages, "stream": False}
+            if self._reasoning:
+                body["reasoning_effort"] = self._reasoning     # none=推論オフ（Qwen3.5 等の長考抑止・本文が空になる事故を防ぐ）
+            if self._max_tokens:
+                body["max_tokens"] = self._max_tokens
             try:
                 resp = await asyncio.wait_for(
                     asyncio.to_thread(self._post, "/chat/completions", body),

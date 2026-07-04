@@ -100,6 +100,36 @@ class TestOpenAIAgentPrompt(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([m["role"] for m in a._messages], ["system"])   # 中座/再spawn で若返る
 
 
+class TestOpenAIAgentRequestBody(unittest.IsolatedAsyncioTestCase):
+    """既定で reasoning_effort=none を送る＝Qwen3.5 等が長考して本文が空になる事故を防ぐ（実機で判明）。"""
+
+    async def test_default_sends_reasoning_none_and_no_max_tokens(self):
+        a = _mk()                                    # reasoning 既定 "none"・max_tokens 既定 0
+        seen = {}
+
+        def post(path, body):
+            seen.update(body)
+            return _reply("よ")
+
+        a._post = post
+        await a.prompt("やあ")
+        self.assertEqual(seen.get("reasoning_effort"), "none")
+        self.assertNotIn("max_tokens", seen)         # 0=無指定＝フィールドを送らない
+
+    async def test_empty_reasoning_omits_field_and_max_tokens_sent(self):
+        a = OpenAIAgent("http://x/v1", "m", "k", 30, reasoning="", max_tokens=128)
+        seen = {}
+
+        def post(path, body):
+            seen.update(body)
+            return _reply("よ")
+
+        a._post = post
+        await a.prompt("やあ")
+        self.assertNotIn("reasoning_effort", seen)   # 空=解さない endpoint 向けにフィールドごと省く
+        self.assertEqual(seen.get("max_tokens"), 128)
+
+
 class TestOpenAIAgentProbe(unittest.IsolatedAsyncioTestCase):
 
     async def test_probe_picks_first_model_when_unset(self):
