@@ -86,7 +86,7 @@
 3. **AI同士の*自律・無際限*会話に戻さない。** 客人は環境イベント＝来訪（常駐させない・滞在は有界・adr/0008）。※「人間アンカーで有界な3人会話」は **adr/0015 で Inc1/Inc2 実装済み**（部屋＝State パターンで必ず人間待ちへ戻る）。人間待ちの沈黙中は茶々が“人間役の代打”で場をつなげる（adr/0025）が、**予算 `fill_cap` 回で必ず辞去＝終端保証**・人間入力は常に最優先で割り込む＝*無際限*の自律往復は依然禁止。
 4. **設計判断を勝手に覆さない。** adr/ に却下理由付きで残る。変えるなら新 ADR（Superseded で旧を残す）。取得先/アセットはコードに埋めず config（`topic_sources.json` / `sprite.json`）。
 5. **LLM/ツール仕様は思い込みで書かず、都度確認する。** ACPのcapabilityは initialize 応答を読んで分岐。
-6. **ソース修正はテストと一緒に・走らせて緑を確認。** コードを変えたら対応するテストを足し、`python -m unittest discover -s tests -t .` を実行して全 PASS を見てから「完了」とする。テスト困難な GUI/外部依存（pywebview の窓・実 agent spawn）は、判断ロジックを**純関数に切り出して**そこをユニット化する（例: `engawa_main._web_window_kwargs`/`_ui_config`）。テスト無しの修正は回帰検知が効かず、後の変更で壊しても気づけない。harness 側でも Stop フックで src 変更時のテスト実行を強制（adr/0023・TECH_RULES §9・**開発者向け＝Bash 必須**）。
+6. **ソース修正はテストと一緒に・走らせて緑を確認。** コードを変えたら対応するテストを足し、`python -m unittest discover -s tests -t .` を実行して全 PASS を見てから「完了」とする。テスト困難な GUI/外部依存（pywebview の窓・実 agent spawn）は、判断ロジックを**純関数に切り出して**そこをユニット化する（例: `engawa_main._web_window_kwargs`/`_ui_config`）。テスト無しの修正は回帰検知が効かず、後の変更で壊しても気づけない。harness 側でも Stop フックで src 変更時のテスト実行を強制（adr/0023・TECH_RULES §9・**開発者向け＝Bash 必須**）＋ **CI（GitHub Actions・`.github/workflows/ci.yml`）で push/PR に tests(3.10–3.13)＋ruff(`ruff.toml`・実バグ級のみ)** を自動実行。
 7. **ソース修正後はドキュメントの齟齬を点検する。** コードを変えたら、完了前/セッション終わり際に関連 docs（本 `CLAUDE.md` のファイル一覧・現況／`docs/TECH_RULES.md`／`docs/Backlog.md`／`docs/adr/`＋README／`docs/class-diagram.md`／`engawa.json.sample`）を差分と突き合わせ、古い記述を直す。齟齬チェックは**意味判断ゆえ機械化できない**（フックはリマインダ止まり＝テスト必須とは別物）＝点検を習慣にする。大きい回はサブエージェントで網羅。
 
 ---

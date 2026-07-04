@@ -2,7 +2,6 @@
 実ファイル書き込みは一時パスで検証（実 engawa.log を汚さない）。"""
 import logging
 import os
-import re
 import sys
 import tempfile
 import unittest

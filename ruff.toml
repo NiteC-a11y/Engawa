@@ -1,0 +1,13 @@
+# Engawa の ruff 設定（CI/ローカル共用）。方針＝低ノイズ：実バグ級ルールだけを見る。
+# 日本語コメント・flat import・短め関数名などこのコードのスタイルは尊重し、スタイル nitpick は入れない。
+# ローカルで合わせるなら: python -m ruff check src tests
+target-version = "py310"
+line-length = 120
+# poc/ は検証済み基準点＝温存・触らない（ADR-0018）ので lint 対象外。
+exclude = ["poc"]
+
+[lint]
+# F  = pyflakes（未定義名・未使用 import/変数・f-string ミス 等＝実バグの元）
+# E9 = 構文/実行時エラー（IndentationError・SyntaxError 相当）
+# スタイル系（E1/E2/E5 の行長など）は入れない＝ノイズを避ける。増やしたくなったら B(bugbear)/UP を検討。
+select = ["F", "E9"]

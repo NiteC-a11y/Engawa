@@ -30,7 +30,7 @@ def user_narration(text, ctx=None):
     # ただし「聞かれてないのに天気を言い立てない」よう持たせるだけ。ctx 無しは時刻のみ。
     now = (ctx or {}).get("now") or datetime.datetime.now()
     tod = (ctx or {}).get("tod") or time_of_day(now)
-    lines = [f"[縁側]", f"時刻 {now.strftime('%H:%M')}（{tod}）。"]
+    lines = ["[縁側]", f"時刻 {now.strftime('%H:%M')}（{tod}）。"]
     w = (ctx or {}).get("weather")
     if w:
         s = f"外は{ctx['desc']}"

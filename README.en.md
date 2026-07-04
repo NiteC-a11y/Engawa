@@ -2,6 +2,8 @@
 
 [日本語](README.md) | **English**
 
+[![CI](https://github.com/NiteC-a11y/Engawa/actions/workflows/ci.yml/badge.svg)](https://github.com/NiteC-a11y/Engawa/actions/workflows/ci.yml)
+
 > A Tamagotchi-like desktop companion app — you share your day with "Chacha," an AI resident who lives in the corner of your screen.
 
 *Engawa* (縁側) is the wooden veranda that wraps around a traditional Japanese house — the in-between place where you sit and watch the weather go by. Chacha is **not a chat assistant**. She simply *lives* on that veranda: she murmurs at the time of day and the weather, and answers lightly when you talk to her. Now and then a guest (Codex) drops by wearing a role, and chats with Chacha for a while — then leaves.
