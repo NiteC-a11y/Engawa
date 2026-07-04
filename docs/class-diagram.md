@@ -426,11 +426,11 @@ flowchart TB
     Scheduler --> prompts
     prompts -.-> sources
 
-    View <|-- ConsoleView
-    View <|-- WebView
-    GameAdapter <|-- RLCardAdapter
-    EventSource <|-- BoxGardenArc
-    EventSource <|-- GuestSource
+    ConsoleView -.-> View
+    WebView -.-> View
+    RLCardAdapter -.-> GameAdapter
+    BoxGardenArc -.-> EventSource
+    GuestSource -.-> EventSource
     Room --> Speaker
     Speaker -.-> AcpAgent
 ```
