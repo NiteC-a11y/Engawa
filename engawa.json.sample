@@ -60,5 +60,10 @@
     "w": 400,
     "h": 520,
     "font": 1.0
+  },
+  "assets": {
+    "_comment": "見た目の差し替え口（皮＝ADR-0010。茶々スプライトも縁側背景も好みの絵に丸ごと替えられる）。sprite_config=茶々スプライト設定 sprite.json のパス(空=assets/sprite.json。シートPNGはその隣で解決＝設定ごと替えれば絵も替わる。frame_w/h・display_px・shadow_*・animations は sprite.json 側)。scene_bg=縁側の背景画像PNGのパス(空=assets/scene.png。無ければ CSS のグラデ＋障子/床プレースホルダにフォールバック。透かしは消す・下端中央に猫が座る前提で床は下側に)。env ENGAWA_SPRITE_CONFIG / ENGAWA_SCENE_BG でも指定可(env>engawa.json>既定)。差し替えたら再起動で反映。",
+    "sprite_config": "",
+    "scene_bg": ""
   }
 }

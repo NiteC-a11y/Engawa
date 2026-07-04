@@ -261,5 +261,40 @@ class TestDebugConfig(unittest.TestCase):
         self.assertTrue(path.endswith("engawa.log"))
 
 
+class TestAssetSwap(unittest.TestCase):
+    """背景/スプライトを好みで差し替え（env > engawa.json[assets] > 既定・ADR-0010 の皮を背景にも拡張）。"""
+
+    def setUp(self):
+        self._env = os.environ.pop("ENGAWA_SCENE_BG", None)
+        self._cfg = config._CFG
+        config._CFG = {}                                   # engawa.json 相当を空に（決定的に）
+
+    def tearDown(self):
+        config._CFG = self._cfg
+        if self._env is None:
+            os.environ.pop("ENGAWA_SCENE_BG", None)
+        else:
+            os.environ["ENGAWA_SCENE_BG"] = self._env
+
+    def test_default_falls_back_to_assets_dir(self):
+        p = views._asset_path("ENGAWA_SCENE_BG", "scene_bg", "scene.png")
+        self.assertEqual(os.path.basename(p), "scene.png")
+        self.assertTrue(p.endswith(os.path.join("assets", "scene.png")))
+
+    def test_engawa_json_overrides_default(self):
+        config._CFG = {"assets": {"scene_bg": "C:/skins/my_room.png"}}
+        self.assertEqual(views._asset_path("ENGAWA_SCENE_BG", "scene_bg", "scene.png"),
+                         "C:/skins/my_room.png")
+
+    def test_env_wins_over_engawa_json(self):
+        config._CFG = {"assets": {"scene_bg": "from_json.png"}}
+        os.environ["ENGAWA_SCENE_BG"] = "from_env.png"
+        self.assertEqual(views._asset_path("ENGAWA_SCENE_BG", "scene_bg", "scene.png"), "from_env.png")
+
+    def test_sprite_config_path_is_swappable(self):
+        config._CFG = {"assets": {"sprite_config": "D:/skins/alt/sprite.json"}}
+        self.assertEqual(views._sprite_config_path(), "D:/skins/alt/sprite.json")
+
+
 if __name__ == "__main__":
     unittest.main()

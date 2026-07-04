@@ -13,7 +13,16 @@ import queue
 import sys
 import threading
 
-SPRITE_CONFIG = os.environ.get("ENGAWA_SPRITE_CONFIG", "")   # 茶々スプライト設定（既定 sprite.json）
+import config   # アセット(皮)の差し替えパス解決（env(ENGAWA_*) > engawa.json[assets] > 既定・ADR-0010 の皮を背景にも拡張）
+
+_ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+
+
+def _asset_path(env, key, default_name):
+    """アセット（皮＝スプライト設定/背景画像）のパスを解決: env > engawa.json[assets][key] > assets/<default_name>。
+    好みの絵に丸ごと差し替えられる差し替え口（ADR-0010）。空/未指定は既定 assets/ を使う。"""
+    p = config.get_str(env, "assets", key, "")
+    return p if p else os.path.join(_ASSETS_DIR, default_name)
 
 # 観戦窓×→入力チャネルに流す制御トークン（scheduler が「対局を畳んで縁側へ戻す」合図に使う）。
 #   入力キュー(_inq)経由＝スレッド安全。ESC 始まりで通常入力/宛先マーカー(\x00)と衝突しない。
@@ -557,7 +566,7 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   #app{display:flex;flex-direction:column;height:100vh;position:relative;
     border:1px solid #1a1410;box-sizing:border-box}
   #scene{position:relative;flex:0 0 200px;overflow:hidden;cursor:move;
-    background:linear-gradient(#bcd6e6 0%,#dbe7ec 54%,#e8dcc8 54%,#decba8 100%)}
+    background:linear-gradient(#bcd6e6 0%,#dbe7ec 38%,#e8dcc8 38%,#decba8 100%)}
   #close{position:absolute;top:3px;right:5px;z-index:20;width:20px;height:20px;padding:0;
     line-height:18px;text-align:center;border:0;border-radius:4px;cursor:pointer;
     background:rgba(40,30,24,.45);color:#f0e9e0;font-size:14px}
@@ -571,10 +580,10 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   #kehai.on{animation:drift 2.4s ease-in-out}
   @keyframes drift{0%{opacity:0;transform:translate(10px,-4px) rotate(0)}
     25%{opacity:.85}100%{opacity:0;transform:translate(-48px,12px) rotate(-200deg)}}
-  .shoji{position:absolute;top:0;left:0;right:0;height:54%;opacity:.5;
+  .shoji{position:absolute;top:0;left:0;right:0;height:38%;opacity:.5;
     background:repeating-linear-gradient(90deg,#b9a988 0 2px,transparent 2px 25%),
       repeating-linear-gradient(0deg,#b9a988 0 2px,transparent 2px 33%),#efe7d6}
-  .floor{position:absolute;bottom:0;left:0;right:0;height:46%;
+  .floor{position:absolute;bottom:0;left:0;right:0;height:62%;
     background:repeating-linear-gradient(90deg,#caa46b 0 17px,#bd9a5c 17px 19px)}
   #cha{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:2;
     image-rendering:pixelated;width:118px;height:118px;transition:opacity .55s ease}
@@ -611,6 +620,7 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   #addrbar .ac.sel{background:#caa46b;color:#2a2320;border-color:#caa46b}
   #in{flex:1;padding:8px;border:1px solid #5a4a3a;border-radius:6px;background:#2e2620;color:#f0e9e0;font-size:calc(13px * var(--fz))}
   #send{padding:8px 13px;border:0;border-radius:6px;background:#caa46b;color:#2a2320;cursor:pointer}
+  /*SCENEBG*/
 </style></head>
 <body><div id="app">
   <div id="scene" class="pywebview-drag-region"><div class="shoji"></div><div class="floor"></div>
@@ -772,15 +782,23 @@ function drawChacha(t){
 if(SPRITE&&SPRITE.frame_w){                       // 表示サイズ・位置を scene 寸法から自動算出（どんなコマ寸法でも収まる）
   const scene=document.getElementById('scene'), sh=scene.clientHeight||200;
   const botM=Math.round(sh*0.05), topR=Math.round(sh*0.12);   // 床際まで下げて接地感／空の余白
-  const fit=Math.max(1,Math.floor((sh-botM-topR)/SPRITE.frame_h));
-  const sc=Math.max(1,Math.min(SPRITE.scale||fit,fit));       // 指定倍率を fit でクランプ（整数倍＝クリスプ）
-  const dw=SPRITE.frame_w*sc;
-  cv.width=SPRITE.frame_w; cv.height=SPRITE.frame_h;           // 内部は等倍
-  cv.style.width=dw+'px'; cv.style.height=(SPRITE.frame_h*sc)+'px';
+  cv.width=SPRITE.frame_w; cv.height=SPRITE.frame_h;           // buffer=絵の実寸（drawImage は 1:1）
+  let dw, dh;
+  if(SPRITE.display_px){                                       // 縮尺方式: 表示pxを指定→CSSがスムーズ縮小（非ドット絵向け・画像を作り直さずサイズ調整）
+    dh=SPRITE.display_px; dw=Math.round(dh*SPRITE.frame_w/SPRITE.frame_h);
+    cv.style.imageRendering='auto';                           // スムーズ（CSS の pixelated を上書き）
+  }else{                                                       // 従来: 整数倍アップスケール＋pixelated（ドット絵向け）
+    const fit=Math.max(1,Math.floor((sh-botM-topR)/SPRITE.frame_h));
+    const sc=Math.max(1,Math.min(SPRITE.scale||fit,fit));     // 指定倍率を fit でクランプ（整数倍＝クリスプ）
+    dw=SPRITE.frame_w*sc; dh=SPRITE.frame_h*sc;
+  }
+  cv.style.width=dw+'px'; cv.style.height=dh+'px';
   cv.style.bottom=botM+'px';
   cv.classList.add('breathe');                                 // 猫だけの絵（座布団なし）＝呼吸を戻す
-  const shd=document.getElementById('chashadow');             // 足元に接地影＝浮き感を消す
-  shd.style.width=Math.round(dw*0.7)+'px'; shd.style.bottom=Math.max(0,botM-2)+'px'; shd.style.display='block';
+  const shd=document.getElementById('chashadow');             // 足元に接地影＝浮き感を消す（幅/上下/高さは sprite.json で調整）
+  const shw=(SPRITE.shadow_w??0.7), shdy=(SPRITE.shadow_dy??-2), shh=(SPRITE.shadow_h??9);
+  shd.style.width=Math.round(dw*shw)+'px'; shd.style.height=shh+'px';
+  shd.style.bottom=Math.max(0,botM+shdy)+'px'; shd.style.display='block';
   g.imageSmoothingEnabled=false;
 }
 requestAnimationFrame(SPRITE?drawSheet:drawChacha);   // シートがあればコマ送り、無ければ procedural
@@ -810,10 +828,9 @@ cv.addEventListener('dblclick',meow);
 
 
 def _sprite_config_path():
-    # sprite.json と chacha.png は assets/。src/ から見て親の assets/（シートは sprite.json 隣で解決）。
-    return SPRITE_CONFIG or os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "assets", "sprite.json")
+    # 茶々スプライト設定。env ENGAWA_SPRITE_CONFIG > engawa.json[assets].sprite_config > assets/sprite.json
+    # （シート PNG は sprite.json 隣で解決＝設定ごと差し替えれば絵も丸ごと替わる）。
+    return _asset_path("ENGAWA_SPRITE_CONFIG", "sprite_config", "sprite.json")
 
 
 def _load_sprite():
@@ -836,13 +853,28 @@ def _load_sprite():
         return None
 
 
+def _load_scene_bg():
+    """縁側の背景画像を dataURI で返す。パスは env ENGAWA_SCENE_BG > engawa.json[assets].scene_bg >
+    assets/scene.png。無ければ None＝CSS のグラデ背景（＋.shoji/.floor プレースホルダ）にフォールバック
+    ＝好みの背景に丸ごと差し替え可能（ADR-0010 の皮を背景にも拡張）。"""
+    try:
+        with open(_asset_path("ENGAWA_SCENE_BG", "scene_bg", "scene.png"), "rb") as f:
+            return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+    except Exception:
+        return None
+
+
 def build_web_html(font=1.0):
-    """WEB_HTML に sprite 設定と文字倍率(font)を注入して返す（run_web が使う）。
+    """WEB_HTML に sprite 設定・縁側背景・文字倍率(font)を注入して返す（run_web が使う）。
     font は本文/入力のフォントだけを calc(BASE * var(--fz)) で拡大＝スクロール領域のみ＝入力欄を押し出さない
-    （窓全体の zoom は使わない・6/30 の事故の教訓）。シート無しなら SPRITE=null のまま。"""
+    （窓全体の zoom は使わない・6/30 の事故の教訓）。シート無しなら SPRITE=null／背景無しならグラデのまま。"""
     sprite = _load_sprite()
     html = WEB_HTML.replace("/*SPRITE*/null",
                             json.dumps(sprite, ensure_ascii=False) if sprite else "null")
+    bg = _load_scene_bg()                                  # 縁側背景画像があれば #scene を差し替え＋プレースホルダ .shoji/.floor を隠す
+    html = html.replace("/*SCENEBG*/",
+                        ("#scene{background:url(" + bg + ") center/cover no-repeat}.shoji,.floor{display:none}"
+                         if bg else ""))
     return html.replace("/*FONT*/1", str(font))
 
 

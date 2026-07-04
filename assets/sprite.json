@@ -1,15 +1,18 @@
 {
-  "_comment": "茶々のスプライト（ADR-0010 の皮）。Gemini 生成の三毛猫アニメ列(8コマ・座布団なし)をグレー背景キー抜き→高さ正規化→64高に整列したもの。state→コマ: 0=平常/1=尻尾ふり/2=笑顔(0由来・happy⌒+口あけ+ほっぺ・attentive用)/3=耳ピン(0由来・listen用)/4=ウインク/5=目閉じ笑/6=伏し目/7=びっくり口開け/8=口あき(0由来・talk用)/9=目とじ(0由来・blink用)。2,3,8,9 は『0をマスターに目/口/耳だけ差分』で自作＝ぴくつき防止（元のGemini 2笑顔/3見上げは座り位置がズレるので0由来に差し替え。1,4-7 は未使用の旧Geminiコマ）（gen は scratchpad の delta生成手順）。talk は 0↔8 を喋ってる間ループ・blink は idle 中に9を一瞬。frame_w/h はシート1コマpx・表示サイズ/位置は scene から自動算出・呼吸(CSS breathe)は猫だけなので有効。sheet 無し/欠損は procedural にフォールバック。env ENGAWA_SPRITE_CONFIG で差し替え可。",
+  "_comment": "茶々のスプライト（ADR-0010 の皮）。Gemini 生成の三毛猫（参照画像で絵柄・体格・座り姿を固定し顔だけ差分＝サイズ/中心が揃う）を透過PNG→アルファ基準で切り出し→下端中央そろえで正規化した4コマ。state→コマ: 0=平常(目開き口閉じ)/1=口開け(talk用)/2=目つむり(blink・くつろぎ)/3=目つむり＋口開け(attentive＝話しかけられた反応)。talk は 0↔1 を喋ってる間ループ・blink は idle 中に2を一瞬・listen(客人)は耳ピンコマが無いので平常0。**サイズは display_px で縮尺**（絵はネイティブ解像のまま置き、表示側で CSS がスムーズ縮小＝画像を作り直さずサイズ調整可・非ドット絵なので image-rendering:auto）。display_px を上下すれば大きさが変わる（frame は触らない）。display_px 未指定なら従来の整数倍アップスケール＋pixelated（ドット絵向け）にフォールバック。frame_w/h はシート1コマpx（704x176=4コマ・正方フレームなので表示も無歪み）。呼吸(CSS breathe)は猫だけなので有効。sheet 無し/欠損は procedural にフォールバック。env ENGAWA_SPRITE_CONFIG で差し替え可。足元の接地影は shadow_w(表示幅dwに対する比)/shadow_dy(botM からの上下offset・負で下げる)/shadow_h(高さpx) で調整＝浮き対策（猫は足元を frame 下端に密着させてあるので影は botM 付近）。生成元は assets/raw/chacha_gemini_4exp.png（gitignore）。次に表情を足すなら同じ参照方式で『同じ猫・大きさ/座り位置固定・顔だけ』を守れば正規化パスでそのまま列に足せる。",
   "enabled": true,
   "sheet": "chacha.png",
-  "frame_w": 80,
-  "frame_h": 64,
-  "scale": 2,
+  "frame_w": 176,
+  "frame_h": 176,
+  "display_px": 134,
+  "shadow_w": 0.62,
+  "shadow_dy": -3,
+  "shadow_h": 8,
   "animations": {
     "idle":      {"frames": [0], "fps": 1},
-    "blink":     {"frames": [9], "fps": 1},
-    "talk":      {"frames": [0, 8], "fps": 7},
-    "listen":    {"frames": [3], "fps": 1},
-    "attentive": {"frames": [2], "fps": 1}
+    "blink":     {"frames": [2], "fps": 1},
+    "talk":      {"frames": [0, 1], "fps": 7},
+    "listen":    {"frames": [0], "fps": 1},
+    "attentive": {"frames": [3], "fps": 1}
   }
 }
