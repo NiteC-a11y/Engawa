@@ -691,6 +691,13 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   @keyframes nyaPop{0%{opacity:0;transform:translate(-50%,6px) scale(.7)}
     20%{opacity:1;transform:translate(-50%,0) scale(1.06)}40%{transform:translate(-50%,0) scale(1)}
     100%{opacity:0;transform:translate(-50%,-26px) scale(1)}}
+  /* ダブルクリックで茶々の頭上にハートがふわっと舞う（クライアント完結・トークン0・--dx で横ゆらぎ） */
+  .heart{position:absolute;z-index:29;pointer-events:none;color:#ff7a9c;
+    text-shadow:0 1px 2px rgba(0,0,0,.35);will-change:transform,opacity;
+    animation:floatUp 1s ease-out forwards}
+  @keyframes floatUp{0%{opacity:0;transform:translate(0,4px) scale(.5)}
+    25%{opacity:1;transform:translate(calc(var(--dx) * .35),-16px) scale(1)}
+    100%{opacity:0;transform:translate(var(--dx),-64px) scale(.9)}}
   /* 接地影：浮き感を消す（スプライトの足元に敷く） */
   #chashadow{position:absolute;left:50%;transform:translateX(-50%);height:9px;display:none;z-index:1;
     background:rgba(0,0,0,.22);border-radius:50%;filter:blur(3px)}
@@ -911,11 +918,28 @@ if(SPRITE&&SPRITE.frame_w){                       // 表示サイズ・位置を
   g.imageSmoothingEnabled=false;
 }
 requestAnimationFrame(SPRITE?drawSheet:drawChacha);   // シートがあればコマ送り、無ければ procedural
-// 茶々をダブルクリック → ニャー（吹き出し＋こっち見てにっこり）。LLM/客人を介さないクライアント完結の小ネタ＝トークン消費なし・即反応
+// 茶々をダブルクリック → ニャー（吹き出し＋こっち見てにっこり）＋ハートがふわっと舞う。
+// LLM/客人を介さないクライアント完結の小ネタ＝トークン消費なし・即反応
+function hearts(){                                              // 頭上に数個♥を撒いて浮かせ、終わったら除去
+  const scene=document.getElementById('scene');
+  const r=cv.getBoundingClientRect(), sr=scene.getBoundingClientRect();   // translateX(-50%) 込みの実描画位置
+  const cx=r.left-sr.left+r.width/2, cy=r.top-sr.top+r.height*0.26;       // 茶々の頭あたり（真上中央）
+  for(let i=0;i<5;i++){
+    const h=document.createElement('span'); h.className='heart'; h.textContent='♥';
+    h.style.left=(cx+(Math.random()*24-12))+'px';
+    h.style.top=cy+'px';
+    h.style.fontSize=(10+Math.random()*7)+'px';
+    h.style.setProperty('--dx',(Math.random()*36-18).toFixed(1)+'px');
+    h.style.animationDelay=(Math.random()*0.18).toFixed(2)+'s';
+    scene.appendChild(h);
+    setTimeout(()=>h.remove(),1300);                           // アニメ後に DOM 掃除（溜めない）
+  }
+}
 function meow(){
   const nya=document.getElementById('nya'), scene=document.getElementById('scene');
   nya.style.bottom=(scene.clientHeight-cv.offsetTop+2)+'px';   // 茶々の頭の真上に出す（procedural/sprite どちらの寸法でも追従）
   nya.classList.remove('show'); void nya.offsetWidth; nya.classList.add('show');   // 連打でも頭から再生
+  hearts();                                                    // ♥ を舞わせる
   chacha.lastUser=performance.now();                            // 反応＝既存 attentive（こっち見てにっこり）
 }
 cv.addEventListener('dblclick',meow);

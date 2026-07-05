@@ -515,5 +515,16 @@ class TestEnterMode(unittest.TestCase):
         self.assertIn('const ENTER_MODE="send"', views.build_web_html(1.0))
 
 
+class TestHeartParticles(unittest.TestCase):
+    """茶々ダブルクリックのハート演出（クライアント完結・トークン0）。JS/CSS が HTML に入る配線を担保
+    （実アニメは目視・JS 構文は node --check）。"""
+    def test_web_html_has_heart_effect(self):
+        h = views.build_web_html()
+        self.assertIn("function hearts(", h)          # ♥ を撒く関数
+        self.assertIn(".heart{", h)                   # 粒の CSS
+        self.assertIn("@keyframes floatUp", h)        # 浮上アニメ
+        self.assertIn("hearts();", h)                 # meow（dblclick）から呼ぶ
+
+
 if __name__ == "__main__":
     unittest.main()
