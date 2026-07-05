@@ -53,6 +53,13 @@ classDiagram
         +close()
     }
 
+    class RoomSpeakerFactory {
+        <<SpeakerFactory · ADR-0029 P4a>>
+        +speakers() Speakers
+        +resident_timed_out: bool
+        +guest_timed_out: bool
+    }
+
     engawa_main ..> Scheduler : 組み立て
     engawa_main ..> AcpAgent : spawn_resident
     engawa_main ..> View : ConsoleView / WebView
@@ -66,9 +73,11 @@ classDiagram
     Scheduler ..> CommandRouter : slash 委譲（/font /daynight・未登録は if/elif）
     GameController --> GameSession : 対局中のみ
     GameController ..> Scheduler : preempt/bump_beat/resident（callback で結ぶ）
+    Scheduler ..> RoomSpeakerFactory : room の Speaker 生成（種/timeout 凝集・resident_speak seam）
+    RoomSpeakerFactory ..> Room : Speaker を供給
 ```
 
-> **⚠ この図は ADR-0029 のリファクタ進行中**（Scheduler を薄い Orchestrator＋controller 群へ段階抽出）。**Phase 1=CommandRouter／Phase 2=`active` 意味分離（`active_source`/`active_guest`）／Phase 3=GameController 抽出済み**（対局の生成/進行/終了を委譲・Scheduler 状態への結び目は callback で注入・後方互換で `Scheduler.game` プロパティ）。以後 Phase 4〜6 で VisitController・ResidentSessionManager・Tick/Input の CoR 化が進むと、Scheduler の箱（`_start_room`/`_maybe_step_away` 等）はそれぞれの controller へ移り縮む。**背景の昼夜（`daynight.py`・ADR-0028）は `WebView` が使う純関数**＝下記「Port & Adapter ①」/ 責務テーブル参照。
+> **⚠ この図は ADR-0029 のリファクタ進行中**（Scheduler を薄い Orchestrator＋controller 群へ段階抽出）。**Phase 1=CommandRouter／Phase 2=`active` 意味分離（`active_source`/`active_guest`）／Phase 3=GameController／Phase 4a=RoomSpeakerFactory 抽出済み**（対局の生成/進行/終了を委譲・Scheduler 状態への結び目は callback で注入・後方互換で `Scheduler.game` プロパティ）。以後 Phase 4〜6 で VisitController・ResidentSessionManager・Tick/Input の CoR 化が進むと、Scheduler の箱（`_start_room`/`_maybe_step_away` 等）はそれぞれの controller へ移り縮む。**背景の昼夜（`daynight.py`・ADR-0028）は `WebView` が使う純関数**＝下記「Port & Adapter ①」/ 責務テーブル参照。
 
 ---
 
