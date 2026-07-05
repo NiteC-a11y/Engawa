@@ -39,8 +39,8 @@ def _find_chromium():
 _CHROME = _find_chromium() if _HAS_PW else None
 
 
-@unittest.skipUnless(_ENABLED and _HAS_PW and _CHROME,
-                     "browser tests off (set ENGAWA_BROWSER_TESTS=1 と playwright+chromium が要る)")
+@unittest.skipUnless(_ENABLED and _HAS_PW,
+                     "browser tests off (set ENGAWA_BROWSER_TESTS=1 と playwright が要る)")
 class TestWebBehavior(unittest.TestCase):
     """実 WEB_HTML を chromium で開き、pywebview.api.poll を mock して DOM の変化を確認する。"""
 
@@ -62,7 +62,9 @@ class TestWebBehavior(unittest.TestCase):
             pass
 
     def _open(self, pw, init_script):
-        b = pw.chromium.launch(executable_path=_CHROME)
+        # glob で拾えた chromium を優先（pip playwright とインストール版のバージョン差を吸収）。
+        # 見つからなければ playwright 既定の解決に任せる（CI＝バージョン一致なので既定で launch できる）。
+        b = pw.chromium.launch(**({"executable_path": _CHROME} if _CHROME else {}))
         pg = b.new_page()
         pg.add_init_script(init_script)      # ページ script より先に pywebview.api を注入
         pg.goto(self._url)

@@ -62,3 +62,23 @@ jobs:
             echo "::endgroup::"
           done
           exit $rc
+
+  browser:
+    name: browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install playwright + chromium
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      # views.py の WEB_HTML(JS) を headless chromium で実行し DOM の振る舞いを検証（既定 opt-in を CI で有効化）。
+      # skipped でも exit0＝偽陽性の緑になり得るので、実際に走った(Ran>=1)＋skip無しを明示チェック。
+      - name: Run browser behavior tests
+        run: |
+          ENGAWA_BROWSER_TESTS=1 python -m unittest tests.test_web_behavior -v 2>&1 | tee out.txt
+          if grep -q "skipped" out.txt; then echo "::error::browser tests skipped — not actually run"; exit 1; fi
+          if ! grep -qE "Ran [1-9]" out.txt; then echo "::error::no browser tests ran"; exit 1; fi
