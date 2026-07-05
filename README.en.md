@@ -83,6 +83,8 @@ Windows launcher `.bat` files are also included:
 
 Plain text is **talking to Chacha**; input starting with `/` is a **command to the veranda**.
 
+(Double-click Chacha and she meows with a little flurry of hearts ♥ — like giving her a pat.)
+
 | Command | Description |
 |---|---|
 | `/codex <persona>` | Summon a guest (Codex) wearing **any persona you type** (e.g. `/codex 近所のご隠居`) |
