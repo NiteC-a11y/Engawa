@@ -28,11 +28,18 @@ classDiagram
         +game: GameSession
         +run()
         -_inject(narration)
+        -_command(line)
         -_start_room()
         -_start_game()
         -_restart_resident()
         -_maybe_step_away()
         -_return_from_away()
+    }
+
+    class CommandRouter {
+        <<Command パターン · ADR-0029 P1>>
+        +has(name) bool
+        +dispatch(ctx, line, parts) bool
     }
 
     engawa_main ..> Scheduler : 組み立て
@@ -45,7 +52,10 @@ classDiagram
     Scheduler --> View : 出力・入力
     Scheduler --> Room : 来訪中のみ
     Scheduler --> GameSession : 対局中のみ
+    Scheduler ..> CommandRouter : slash 委譲（/font /daynight・未登録は if/elif）
 ```
+
+> **⚠ この図は ADR-0029 のリファクタ進行中**（Scheduler を薄い Orchestrator＋controller 群へ段階抽出）。**Phase 1 = CommandRouter 抽出済み**（`/font` `/daynight` を委譲）。以後 Phase 2〜6 で `active` 分離・GameController・VisitController・ResidentSessionManager・Tick/Input の CoR 化が進むと、上の Scheduler の箱（`_start_game`/`_start_room`/`_maybe_step_away` 等）はそれぞれの controller へ移り縮む。**背景の昼夜（`daynight.py`・ADR-0028）は `WebView` が使う純関数**＝下記「Port & Adapter ①」/ 責務テーブル参照。
 
 ---
 
@@ -447,6 +457,7 @@ flowchart TB
 | ゲーム | `GameAdapter` | `RLCardAdapter`（+ `BlackjackRender`） |
 | 3人会話の発話 | `Speaker`（DI） | Scheduler が `AcpAgent.prompt` を fn として注入 |
 | LLM 文言生成 | （Port なし・関数群） | `prompts.py`（注入プロンプト工場・`sources` から分離・`prompts→sources` 一方向） |
+| スラッシュコマンド | `Command`／`CommandRouter`（登録制） | `commands.py`（`FontCommand`/`DayNightCommand`＋薄い `CommandContext`・`Scheduler._command` が委譲・adr/0029 Phase 1。残コマンドは controller 抽出に合わせ移行） |
 | 背景の昼夜 tint | （Port なし・純関数） | `daynight.py`（時刻→`{tint,glow,lamp}`・`WebView.poll` が大阪時刻で配信→JS が #scene の膜3枚［乗算tint＋月明かりglow＋室内灯lamp］へ・adr/0028。`/daynight` プレビューの仮想時刻解決＝`parse_override`/`override_minute`/`effective_layers` も純関数） |
 | デバッグログ | （stdlib logging ラッパ） | `debuglog.py`（`ENGAWA_DEBUG=1`→`engawa.log`・既定オフ＝no-op・各モジュールは `get("<name>")` の子ロガー） |
 

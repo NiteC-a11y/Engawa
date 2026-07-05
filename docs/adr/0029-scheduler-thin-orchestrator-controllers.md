@@ -93,6 +93,9 @@ engawa_main
 - **leak guard を room prompt に効かせるか**（判断B）：初手は適用可だが表示経路は分ける。room 発話での染み出し実測が出たら判断（ADR-0027 の Open Question とも地続き）。
 - 各フェーズは独立 PR ＋ 完了時に本 ADR へ実装メモを追補。
 
+## 実装メモ
+- **Phase 1（CommandRouter・2026-07-05・branch `refactor/adr-0029-command-router`）**: `src/commands.py` 新設＝`Command`／`CommandRouter`（登録制・別名対応・大小無視）／`CommandContext`（薄い adapter＝今は View だけ）＋`FontCommand`・`DayNightCommand`（ロジックは Scheduler から **verbatim 移設**＝振る舞い不変）。`Scheduler._command` は `self._commands.has(cmd)` なら Router へ委譲、未登録は従来 if/elif にフォールバック。`_cmd_font`/`_cmd_daynight` を削除、`import os`/`import daynight` も不要になり除去。`/font` クランプ定数は commands.py が正本（`FONT_MIN/MAX`）＝scheduler は後方互換で再輸出（`UI_FONT_MIN/MAX`・既存テストの `sched.UI_FONT_MAX` 参照を保つ＝テスト再編と混ぜない・判断D）。**scheduler.py 839→763 行**（−76）。テスト: 既存 `TestFontCommand`/`TestDayNightCommand`（統合・characterization）緑のまま＋新 `tests/test_commands.py`（Router 機構＋command 単体・9件）＝全 347 PASS・ruff clean。help テキストの各コマンドへの co-location は次段以降（今回は dispatch のみ移譲）。
+
 ### ADR に明示した合意（Codex 第2R「ADR に残すべき判断」）
 - top-level は State でなく **CoR**（実施は controller 抽出後・判断A）。
 - `active` は **`active_source` / `active_guest`** に分ける（arc progression と guest lifecycle の混在解消・判断C）。
