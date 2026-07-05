@@ -121,7 +121,7 @@ ENGAWA_DEBUG=1              record key lifecycle events to engawa.log
 ```
 src/           the app itself (engawa_main / acp / sources / scheduler / views / prompts / conversation / game …)
 assets/        Chacha's sprite (sprite.json + chacha.png)
-docs/adr/      design decisions and why alternatives were rejected (ADRs 0001–0027)
+docs/adr/      design decisions and why alternatives were rejected (ADRs 0001–0028)
 docs/          TECH_RULES.md (tech spec & boundaries) / Backlog.md (task inventory) / class-diagram.md
 poc/           verified reference points for each phase (preserved)
 CLAUDE.md      the canonical picture of the current whole (a developer-facing guide)

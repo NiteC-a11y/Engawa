@@ -16,6 +16,7 @@ import time
 from agent import AgentTimeoutError   # 中立 timeout だけ捕捉＝実体(ACP/API)を知らない（ADR-0026・`agent` ローカル変数と衝突しないよう名前で import）
 import config        # 設定解決（env > engawa.json > 既定）
 import conversation  # 3人会話の部屋（State パターン・ADR-0015 Inc2）
+import daynight      # 背景の昼夜 tint の純関数＋/daynight プレビューの override 解決（ADR-0028）
 import debuglog      # デバッグログ（ENGAWA_DEBUG=1 で engawa.log・既定オフ＝no-op）
 import game          # ゲームの Port&Adapter 核（ADR-0017。rlcard はアダプタに隔離）
 import prompts       # LLM 文言ビルダー（注入プロンプト工場・sources から分離・ADR-0013）
@@ -362,6 +363,7 @@ class Scheduler:
             self.view.system("  /game <id> [見る] → ゲーム（id=blackjack/uno/leduc・「見る」で観戦・要 rlcard。/blackjack は別名）")
             self.view.system("  /model           → 今のモデルを表示（住人=Claude / 客人=codex）")
             self.view.system("  /font [倍率|save] → 文字サイズ（例 /font 1.4・/font で今の値・/font save で保存）")
+            self.view.system("  /daynight [on|off|HH:MM|demo|auto] → 背景の昼夜（on/off=有効無効を保存・HH:MM=固定・demo=夕→夜早送り・auto=実時間）")
             self.view.system("  /restart         → 茶々のセッションを張り直す（染み出し/不調の時・文脈はリセット）")
             self.view.system("  /quit            → 縁側を閉じる")
         elif cmd == "/arc":
@@ -380,6 +382,8 @@ class Scheduler:
             await self._start_game("blackjack", watch)
         elif cmd == "/font":                             # 文字サイズをアプリ内でライブ調整（縁側操作＝茶々に流さない・ADR-0007）
             self._cmd_font(parts[1:])
+        elif cmd in ("/daynight", "/tod", "/空"):         # 背景の昼夜をプレビュー（固定/早送り・デバッグ再生＝/arc と同筋・ADR-0028）
+            self._cmd_daynight(parts[1:])
         elif cmd in ("/restart", "/reset"):              # 茶々のセッションを張り直す（染み出し/不調時・文脈リセット・縁側操作＝ADR-0007）
             if self._spawn_resident is None:
                 self.view.system("  （いまは茶々を呼び直せへんのや）")
@@ -436,6 +440,55 @@ class Scheduler:
         n = max(UI_FONT_MIN, min(UI_FONT_MAX, n))        # 0.8〜2.2 にクランプ
         self.view.set_font(n)
         self.view.system(f"  文字サイズを {n:g} 倍にした（/font save で次回も）。")
+
+    def _cmd_daynight(self, args):
+        """/daynight: 背景の昼夜 tint の on/off（永続）とプレビュー（デバッグ再生＝/arc と同筋・ADR-0028）。
+        on|off=機能の有効無効を engawa.json[ui].daynight に保存（ライブ反映・/font save 方式）／HH:MM=時刻固定／
+        demo [from to secs]=夕→夜早送り／auto=プレビュー解除して実時間へ／引数なし=状態表示。
+        web 表示だけ＝console は縁側の窓が無いので no-op。解析・時刻表示は daynight の純関数。"""
+        cur = self.view.current_daynight()
+        if cur is None:                                  # 非対応（console 等＝背景が無い）
+            self.view.system("  背景の昼夜は web の縁側窓だけの見た目や（console には空が無いんよ）。")
+            return
+        spec = daynight.parse_override(" ".join(args))
+        mode = spec["mode"]
+        enabled = self.view.daynight_enabled()
+        if mode in ("enable", "disable"):                # 機能そのものの on/off＝永続保存（/font save と同じ流儀）
+            on = mode == "enable"
+            self.view.set_daynight_enabled(on)           # ライブ反映（トグルは実時間へリセット）
+            state = "有効" if on else "無効"
+            if config.set_value("ui", "daynight", 1 if on else 0):
+                msg = f"  背景の移ろいを{state}にして保存した（次からもこの状態）。"
+                if "ENGAWA_DAYNIGHT" in os.environ:      # env が優先＝次回もそちらが効く（正直に告知・/font save と同じ）
+                    msg += " ※環境変数 ENGAWA_DAYNIGHT が立っとるので次回はそっちが優先や。"
+            else:
+                msg = f"  背景の移ろいを{state}にした（ただし engawa.json に保存できんかった＝次回は既定に戻る）。"
+            self.view.system(msg)
+            return
+        if mode == "show":                               # /daynight ＝今の状態
+            head = "有効" if enabled else "無効"
+            if not enabled:
+                self.view.system(f"  背景の移ろいは今 {head}（/daynight on で有効化）。")
+            elif cur["mode"] == "pin":
+                self.view.system(f"  {head}・今は {daynight.format_minute(cur['minute'])} に固定中（/daynight auto で実時間へ）。")
+            elif cur["mode"] == "demo":
+                self.view.system(f"  {head}・今は夕→夜の早送り再生中（/daynight auto で実時間へ）。")
+            else:
+                self.view.system(f"  {head}・実時間の空や（/daynight 18:30=固定・/daynight demo=早送り・/daynight off=無効化）。")
+            return
+        if mode == "bad":
+            self.view.system("  使い方: /daynight on|off（有効無効を保存）・HH:MM（固定）・demo（夕→夜早送り）・auto（実時間へ）。")
+            return
+        if not enabled and mode in ("pin", "demo"):      # 無効中はプレビューしても見えない＝促す
+            self.view.system("  今は背景の移ろいが無効や（/daynight on で有効にしてから見てな）。")
+            return
+        self.view.set_daynight(spec)                     # auto/pin/demo＝プレビュー（一時・保存しない）
+        if mode == "auto":
+            self.view.system("  空を実時間に戻した。")
+        elif mode == "pin":
+            self.view.system(f"  空を {daynight.format_minute(spec['minute'])} の色に固定した（/daynight auto で実時間へ）。")
+        else:                                            # demo
+            self.view.system(f"  {daynight.format_minute(spec['from'])}→{daynight.format_minute(spec['to'])} の移ろいを {spec['secs']:g} 秒で流すで（終わったら実時間に戻る）。")
 
     async def _summon_guest(self, persona):
         """/codex <人格>：客人を直接召喚（取り次ぎなし・即）。箱庭アーク中なら畳んで通す。

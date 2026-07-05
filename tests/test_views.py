@@ -5,6 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 import config
+import daynight
 import views
 
 
@@ -188,6 +189,108 @@ class TestFontLiveApply(unittest.TestCase):
 
     def test_game_html_has_apply_font(self):
         self.assertIn("applyFont", views.build_game_html())  # 観戦窓 JS も同様
+
+
+class TestDayNightTint(unittest.TestCase):
+    """背景の昼夜 tint（ADR-0028）: poll が {tint,glow} を運ぶ／ENGAWA_DAYNIGHT=0 で無効／
+    HTML に膜2枚＋適用口。色の中身は daynight の純関数テスト側・見た目は目視。"""
+    def setUp(self):
+        self._saved = dict(os.environ)
+        os.environ.pop("ENGAWA_DAYNIGHT", None)
+        config._CFG = {}
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._saved)
+        config._CFG = None
+
+    def test_poll_carries_day_when_enabled(self):
+        v = views.WebView()                              # 既定オン
+        day = v.poll(0)["day"]
+        self.assertIsNotNone(day)
+        self.assertIn("tint", day)
+        self.assertIn("glow", day)
+        self.assertTrue(day["tint"].startswith("rgb("))
+
+    def test_poll_day_none_when_disabled(self):
+        os.environ["ENGAWA_DAYNIGHT"] = "0"
+        config._CFG = {}
+        v = views.WebView()
+        self.assertIsNone(v.poll(0)["day"])              # 無効＝JS は膜を素通し（背景そのまま）
+
+    def test_web_html_has_tint_layers_and_apply(self):
+        h = views.build_web_html()
+        self.assertIn('id="tint"', h)                    # 染めの膜（乗算）
+        self.assertIn('id="lamp"', h)                    # 室内灯の膜（障子ごしの暖色・screen）
+        self.assertIn('id="glow"', h)                    # 光の膜（加算月光）
+        self.assertIn("mix-blend-mode:multiply", h)
+        self.assertIn("mix-blend-mode:screen", h)
+        self.assertIn("applyDay", h)                     # poll の {tint,glow,lamp} を膜へ適用する口
+
+
+class TestDayNightPreview(unittest.TestCase):
+    """/daynight プレビューの View 配線（ADR-0028）: 固定(pin)/実時間へ戻す(off)/早送り終了で自動復帰。
+    console は no-op。色の中身・時刻解釈は daynight の純関数テスト側。"""
+    def setUp(self):
+        self._saved = dict(os.environ)
+        os.environ.pop("ENGAWA_DAYNIGHT", None)          # 既定オンで
+        config._CFG = {}
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._saved)
+        config._CFG = None
+
+    def test_console_daynight_is_noop(self):
+        c = views.ConsoleView()
+        self.assertIsNone(c.current_daynight())          # 対象外（背景が無い）
+        self.assertIsNone(c.daynight_enabled())
+        self.assertFalse(c.set_daynight({"mode": "pin", "minute": 100}))
+        self.assertFalse(c.set_daynight_enabled(False))
+
+    def test_pin_makes_poll_return_that_time(self):
+        v = views.WebView()
+        v.set_daynight({"mode": "pin", "minute": 18 * 60})
+        self.assertEqual(v.poll(0)["day"], daynight.layers_for_minute(18 * 60))   # 実時間でなく 18:00 の色
+        self.assertEqual(v.current_daynight(), {"mode": "pin", "minute": 18 * 60})
+
+    def test_auto_clears_override_to_real_time(self):
+        v = views.WebView()
+        v.set_daynight({"mode": "pin", "minute": 0})
+        v.set_daynight({"mode": "auto"})                 # プレビュー解除＝実時間へ
+        self.assertEqual(v.current_daynight(), {"mode": "real"})
+        self.assertIsNotNone(v.poll(0)["day"])           # 機能は有効のまま＝実時間の色
+
+    def test_enabled_toggle_live_gates_poll(self):
+        v = views.WebView()
+        self.assertTrue(v.daynight_enabled())            # 既定オン
+        self.assertIsNotNone(v.poll(0)["day"])
+        v.set_daynight_enabled(False)                    # ライブ無効化＝再起動不要
+        self.assertFalse(v.daynight_enabled())
+        self.assertIsNone(v.poll(0)["day"])              # 無効＝背景固定
+        v.set_daynight_enabled(True)
+        self.assertIsNotNone(v.poll(0)["day"])           # 再び有効
+
+    def test_enable_toggle_resets_preview_to_real(self):
+        v = views.WebView()
+        v.set_daynight({"mode": "pin", "minute": 0})     # 夜に固定中
+        v.set_daynight_enabled(False)                    # トグルはプレビューを解除
+        v.set_daynight_enabled(True)
+        self.assertEqual(v.current_daynight(), {"mode": "real"})   # 前の固定を残さない
+
+    def test_demo_self_clears_when_finished(self):
+        v = views.WebView()
+        v.set_daynight({"mode": "demo", "from": 960, "to": 1320, "secs": 0})   # secs=0＝即終了
+        day = v.poll(0)["day"]                            # poll で expired 判定→override を外す
+        self.assertIsNotNone(day)
+        self.assertEqual(v.current_daynight(), {"mode": "real"})   # 自動で実時間へ戻った
+
+    def test_disabled_feature_ignores_override(self):
+        os.environ["ENGAWA_DAYNIGHT"] = "0"              # 機能オフ
+        config._CFG = {}
+        v = views.WebView()
+        v.set_daynight({"mode": "pin", "minute": 18 * 60})
+        self.assertIsNone(v.poll(0)["day"])              # オフなら override 有無に関わらず None
 
 
 class TestUiWindowWiring(unittest.TestCase):

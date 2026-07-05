@@ -121,7 +121,7 @@ ENGAWA_DEBUG=1             engawa.log に主要ライフサイクルを記録
 ```
 src/           アプリ本体（engawa_main / acp / sources / scheduler / views / prompts / conversation / game …）
 assets/        茶々スプライト（sprite.json + chacha.png）
-docs/adr/      設計判断と却下理由（ADR 0001〜0027）
+docs/adr/      設計判断と却下理由（ADR 0001〜0028）
 docs/          TECH_RULES.md（技術仕様・境界）/ Backlog.md（タスク在庫）/ class-diagram.md
 poc/           各フェーズの検証済み基準点（温存）
 CLAUDE.md      現行全体像の正本（開発者向けの「住人の心得」）

@@ -232,6 +232,70 @@ class TestFontCommand(unittest.IsolatedAsyncioTestCase):
             config._CFG = saved_cfg
             os.remove(tf.name)
 
+
+class TestDayNightCommand(unittest.IsolatedAsyncioTestCase):
+    """/daynight: 背景の昼夜プレビュー（固定/早送り/実時間へ・ADR-0028）。縁側操作＝茶々に流さない（ADR-0007）。"""
+    async def test_pin_sets_view_and_does_not_prompt_chacha(self):
+        s, r, v = _make()
+        await s.on_user_input("/daynight 18:30")
+        self.assertEqual(v.current_daynight(), {"mode": "pin", "minute": 18 * 60 + 30})
+        self.assertTrue(any("18:30" in (m or "") for m in _systems(v)))
+        self.assertEqual(len(r.prompts), 0)                 # 茶々には流さない
+
+    async def test_demo_announces_sweep(self):
+        s, r, v = _make()
+        await s.on_user_input("/daynight demo")
+        self.assertEqual(v.current_daynight()["mode"], "demo")
+        self.assertTrue(any("移ろい" in (m or "") for m in _systems(v)))
+
+    async def test_auto_returns_to_real(self):
+        s, r, v = _make()
+        await s.on_user_input("/daynight 21:00")
+        await s.on_user_input("/daynight auto")          # プレビュー解除
+        self.assertEqual(v.current_daynight(), {"mode": "real"})
+
+    async def test_no_arg_shows_state(self):
+        s, r, v = _make()
+        await s.on_user_input("/daynight")
+        self.assertTrue(any("実時間" in (m or "") for m in _systems(v)))
+
+    async def test_bad_arg_rejected(self):
+        s, r, v = _make()
+        await s.on_user_input("/daynight 25:00")
+        self.assertEqual(v.current_daynight(), {"mode": "real"})   # 固定されない
+        self.assertTrue(any("使い方" in (m or "") for m in _systems(v)))
+
+    async def test_on_off_toggles_live_and_persists(self):
+        import tempfile
+        tf = tempfile.NamedTemporaryFile(suffix=".json", delete=False); tf.close()
+        saved_env, saved_cfg = os.environ.get("ENGAWA_CONFIG"), config._CFG
+        os.environ["ENGAWA_CONFIG"] = tf.name
+        os.environ.pop("ENGAWA_DAYNIGHT", None)          # env 優先の注記を出さない条件で
+        config._CFG = None
+        try:
+            s, r, v = _make()
+            await s.on_user_input("/daynight off")
+            self.assertFalse(v.daynight_enabled())                       # ライブ反映
+            self.assertEqual(config.get_int("ABSENT", "ui", "daynight", 1), 0)   # 永続保存
+            self.assertTrue(any("無効" in (m or "") for m in _systems(v)))
+            await s.on_user_input("/daynight on")
+            self.assertTrue(v.daynight_enabled())
+            self.assertEqual(config.get_int("ABSENT", "ui", "daynight", 0), 1)
+        finally:
+            if saved_env is None:
+                os.environ.pop("ENGAWA_CONFIG", None)
+            else:
+                os.environ["ENGAWA_CONFIG"] = saved_env
+            config._CFG = saved_cfg
+            os.remove(tf.name)
+
+    async def test_preview_when_disabled_prompts_enable(self):
+        s, r, v = _make()
+        v.set_daynight_enabled(False)                    # 機能オフ
+        await s.on_user_input("/daynight 18:30")         # 無効中のプレビュー
+        self.assertEqual(v.current_daynight(), {"mode": "real"})   # 固定しない
+        self.assertTrue(any("無効" in (m or "") for m in _systems(v)))
+
     async def test_font_console_is_noop(self):
         # console（set_font 非対応）は端末フォント依存＝no-op で注記のみ
         r = FakeResident()

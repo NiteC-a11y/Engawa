@@ -447,6 +447,7 @@ flowchart TB
 | ゲーム | `GameAdapter` | `RLCardAdapter`（+ `BlackjackRender`） |
 | 3人会話の発話 | `Speaker`（DI） | Scheduler が `AcpAgent.prompt` を fn として注入 |
 | LLM 文言生成 | （Port なし・関数群） | `prompts.py`（注入プロンプト工場・`sources` から分離・`prompts→sources` 一方向） |
+| 背景の昼夜 tint | （Port なし・純関数） | `daynight.py`（時刻→`{tint,glow,lamp}`・`WebView.poll` が大阪時刻で配信→JS が #scene の膜3枚［乗算tint＋月明かりglow＋室内灯lamp］へ・adr/0028。`/daynight` プレビューの仮想時刻解決＝`parse_override`/`override_minute`/`effective_layers` も純関数） |
 | デバッグログ | （stdlib logging ラッパ） | `debuglog.py`（`ENGAWA_DEBUG=1`→`engawa.log`・既定オフ＝no-op・各モジュールは `get("<name>")` の子ロガー） |
 
 `engawa_main.py` が composition root で、`Scheduler` が Mediator として各 Port を結線する（ADR-0013）。`prompts.py` は Scheduler だけが呼ぶ LLM 文言ビルダー（`user_narration`/`room_*_prompt`/`game_move_prompt`/中座の `absence_leave`・`absence_return` 等）を `sources.py` から切り出したもの＋茶々ソロ出力の染み出しガード `strip_resident_leak`（純関数・注入文の復唱＋地の思考を表示前に除去）。`debuglog.setup` は composition root が1度だけ呼ぶ（既定オフ＝縁側の窓/console 本文は汚さない）。
