@@ -26,12 +26,11 @@ classDiagram
         +active_source: EventSource
         +active_guest: GuestSource
         +room: Room
-        +game: GameSession
+        +games: GameController
         +run()
         -_inject(narration)
         -_command(line)
         -_start_room()
-        -_start_game()
         -_restart_resident()
         -_maybe_step_away()
         -_return_from_away()
@@ -43,6 +42,17 @@ classDiagram
         +dispatch(ctx, line, parts) bool
     }
 
+    class GameController {
+        <<Controller · ADR-0029 P3>>
+        +active bool
+        +over bool
+        +start(game_id, watch)
+        +on_tick()
+        +on_user_input(line) bool
+        +abort_by_user()
+        +close()
+    }
+
     engawa_main ..> Scheduler : 組み立て
     engawa_main ..> AcpAgent : spawn_resident
     engawa_main ..> View : ConsoleView / WebView
@@ -52,11 +62,13 @@ classDiagram
     Scheduler --> WeatherSource : idle/fallback
     Scheduler --> View : 出力・入力
     Scheduler --> Room : 来訪中のみ
-    Scheduler --> GameSession : 対局中のみ
+    Scheduler ..> GameController : 対局を委譲（tick/入力/開始/shutdown）
     Scheduler ..> CommandRouter : slash 委譲（/font /daynight・未登録は if/elif）
+    GameController --> GameSession : 対局中のみ
+    GameController ..> Scheduler : preempt/bump_beat/resident（callback で結ぶ）
 ```
 
-> **⚠ この図は ADR-0029 のリファクタ進行中**（Scheduler を薄い Orchestrator＋controller 群へ段階抽出）。**Phase 1 = CommandRouter 抽出済み**（`/font` `/daynight` を委譲）。以後 Phase 2〜6 で `active` 分離・GameController・VisitController・ResidentSessionManager・Tick/Input の CoR 化が進むと、上の Scheduler の箱（`_start_game`/`_start_room`/`_maybe_step_away` 等）はそれぞれの controller へ移り縮む。**背景の昼夜（`daynight.py`・ADR-0028）は `WebView` が使う純関数**＝下記「Port & Adapter ①」/ 責務テーブル参照。
+> **⚠ この図は ADR-0029 のリファクタ進行中**（Scheduler を薄い Orchestrator＋controller 群へ段階抽出）。**Phase 1=CommandRouter／Phase 2=`active` 意味分離（`active_source`/`active_guest`）／Phase 3=GameController 抽出済み**（対局の生成/進行/終了を委譲・Scheduler 状態への結び目は callback で注入・後方互換で `Scheduler.game` プロパティ）。以後 Phase 4〜6 で VisitController・ResidentSessionManager・Tick/Input の CoR 化が進むと、Scheduler の箱（`_start_room`/`_maybe_step_away` 等）はそれぞれの controller へ移り縮む。**背景の昼夜（`daynight.py`・ADR-0028）は `WebView` が使う純関数**＝下記「Port & Adapter ①」/ 責務テーブル参照。
 
 ---
 

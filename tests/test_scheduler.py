@@ -646,7 +646,7 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
         # 開始で game_open→game_update（配り）。終局しても **窓は閉じない**（ユーザーが×で閉じる）
         created = []
         s = self._sched(created)
-        await s._start_game("blackjack", watch=True)
+        await s.games.start("blackjack", watch=True)
         evs = self._game_events(s.view)
         self.assertEqual(evs[0], "game_open")
         self.assertIn("game_update", evs)
@@ -660,7 +660,7 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
     async def test_play_is_human_plus_chacha_no_guest(self):
         created = []
         s = self._sched(created)
-        await s._start_game("blackjack", watch=False)
+        await s.games.start("blackjack", watch=False)
         self.assertIsNotNone(s.game)
         self.assertEqual(len(created), 0)                # 私+茶々のみ＝客人 codex を呼ばない（A）
         self.assertEqual(s.game.adapter.num_players, 2)
@@ -675,7 +675,7 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
     async def test_watch_is_chacha_solo_no_guest(self):
         created = []
         s = self._sched(created)
-        await s._start_game("blackjack", watch=True)
+        await s.games.start("blackjack", watch=True)
         self.assertEqual(len(created), 0)                # 茶々がディーラーと＝客人なし
         self.assertEqual(s.game.adapter.num_players, 1)
         self.assertFalse(s.game.waiting_for_human)       # 全AI（茶々のみ）
@@ -729,7 +729,7 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
     async def test_game_window_close_aborts_game(self):
         # 観戦窓×（GAME_CLOSE_REQUEST）で対局を畳んで縁側へ戻る（ゲームモードのまま固まらない）
         s = self._sched([])
-        await s._start_game("blackjack", watch=False)
+        await s.games.start("blackjack", watch=False)
         self.assertIsNotNone(s.game)
         await s.on_user_input(views.GAME_CLOSE_REQUEST)
         self.assertIsNone(s.game)                          # お開き＝縁側へ復帰
@@ -748,7 +748,7 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
         s = sched.Scheduler(ErrorResident(ValueError("boom")), [], sources.WeatherSource(),
                             views.CaptureView())
         s._make_game = lambda gid, n: FakeGame(n)
-        await s._start_game("blackjack", watch=True)       # 全AI（茶々のみ）
+        await s.games.start("blackjack", watch=True)       # 全AI（茶々のみ）
         self.assertIsNotNone(s.game)
         await s._tick(sources.build_context(None, []))     # ここで例外が漏れたらテストは ERROR で落ちる
         self.assertIsNone(s.game)                          # お開きで縁側へ復帰
@@ -762,7 +762,7 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
                 raise RuntimeError("adapter broke")
         s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(), views.CaptureView())
         s._make_game = lambda gid, n: BrokenGame(n)
-        await s._start_game("blackjack", watch=True)
+        await s.games.start("blackjack", watch=True)
         self.assertIsNotNone(s.game)
         await s._tick(sources.build_context(None, []))     # adapter.play が raise → お開き
         self.assertIsNone(s.game)
@@ -772,7 +772,7 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
     async def test_codex_refused_during_game(self):
         created = []
         s = self._sched(created)
-        await s._start_game("blackjack", watch=False)      # 私+茶々（codex 不要）
+        await s.games.start("blackjack", watch=False)      # 私+茶々（codex 不要）
         self.assertIsNotNone(s.game)
         await s.on_user_input("/codex 近所のご隠居")
         self.assertIsNone(s.room)                          # 部屋は立たない
@@ -793,7 +793,7 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
         # 人数が足りないゲーム（3人固定）の時だけ客人で埋め、終局で破棄
         created = []
         s = self._sched(created, make=lambda gid, n: FakeGame(3))
-        await s._start_game("blackjack", watch=False)    # 私+茶々=2 だが 3人ゲーム → 客人1
+        await s.games.start("blackjack", watch=False)    # 私+茶々=2 だが 3人ゲーム → 客人1
         self.assertEqual(len(created), 1)
         await s.on_user_input("hi")
         for _ in range(8):
@@ -806,15 +806,15 @@ class TestGameMode(unittest.IsolatedAsyncioTestCase):
     async def test_second_game_rejected(self):
         created = []
         s = self._sched(created)
-        await s._start_game("blackjack", watch=True)
+        await s.games.start("blackjack", watch=True)
         s.view.events.clear()
-        await s._start_game("blackjack", watch=True)     # 二重開始は拒否
+        await s.games.start("blackjack", watch=True)     # 二重開始は拒否
         self.assertTrue(any("ゲーム中" in (m or "") for m in self._systems(s.view)))
 
     async def test_input_during_ai_turn_is_held(self):
         created = []
         s = self._sched(created)
-        await s._start_game("blackjack", watch=True)     # 全AI＝人間の番でない
+        await s.games.start("blackjack", watch=True)     # 全AI＝人間の番でない
         s.view.events.clear()
         await s.on_user_input("hi")
         self.assertTrue(any("他のプレイヤーの番" in (m or "") for m in self._systems(s.view)))
@@ -890,7 +890,7 @@ class TestTimeoutRecovery(unittest.IsolatedAsyncioTestCase):
     async def test_game_aborts_on_ai_timeout(self):
         s = sched.Scheduler(TimeoutResident(), [], sources.WeatherSource(), views.CaptureView())
         s._make_game = lambda gid, n: FakeGame(n)
-        await s._start_game("blackjack", watch=True)  # 全AI（茶々のみ）
+        await s.games.start("blackjack", watch=True)  # 全AI（茶々のみ）
         self.assertIsNotNone(s.game)
         await s._tick(sources.build_context(None, []))    # 茶々が打とうとして timeout → お開き
         self.assertIsNone(s.game)
@@ -1147,7 +1147,7 @@ class TestAbsenceRefresh(unittest.IsolatedAsyncioTestCase):
         s._absent = True
         self.assertFalse(s._should_fetch_ambient())    # 中座中＝取得しない
         s._absent = False
-        s.game = object()                              # 対局中＝取得しない（遅延回避）
+        s.games._game = object()                       # 対局中＝取得しない（遅延回避）
         self.assertFalse(s._should_fetch_ambient())
 
 

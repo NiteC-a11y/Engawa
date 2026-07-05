@@ -17,7 +17,7 @@ import commands      # スラッシュコマンドの Command パターン（/fo
 import config        # 設定解決（env > engawa.json > 既定）
 import conversation  # 3人会話の部屋（State パターン・ADR-0015 Inc2）
 import debuglog      # デバッグログ（ENGAWA_DEBUG=1 で engawa.log・既定オフ＝no-op）
-import game          # ゲームの Port&Adapter 核（ADR-0017。rlcard はアダプタに隔離）
+import game_controller  # 対局の運用を委譲するコントローラ（ADR-0029 Phase 3。game モジュールはこちらが参照）
 import prompts       # LLM 文言ビルダー（注入プロンプト工場・sources から分離・ADR-0013）
 import sources
 import views         # GAME_CLOSE_REQUEST（観戦窓×→お開きの制御トークン・入力 wire 形式の共有）
@@ -73,10 +73,7 @@ class Scheduler:
         self.active_source = None                        # 進行中の箱庭アーク source（next_phase で進む・割り込みで消えない）
         self.active_guest = None                         # 来訪中の客人 source（GuestSource＝persona/agent/cooldown/close の holder）
         self.room = None                                 # 3人会話の部屋（来訪中だけ・ADR-0015 Inc2）
-        self.game = None                                 # ゲームのセッション（対局中だけ・ADR-0017 Inc3）
-        self._game_guests = []                           # ゲームのために召喚した客人(codex)＝終局で破棄
-        self._game_render = None                         # ゲーム固有の表示器（adapter.render 由来）
-        self._game_names = []                            # 各スロットの表示名（結果表示で使う）
+        # 対局の state/運用は GameController が所有（ADR-0029 Phase 3）。生成は drive_lock の後（下）。
         self.cooldowns = {s.key: 0 for s in source_list}
         self.turn_lock = asyncio.Lock()                  # resident 注入(_inject)の直列化＝割り込みの単位
         self.drive_lock = asyncio.Lock()                 # active_source/active_guest 駆動を tick と召喚で排他（競合防止）
@@ -93,6 +90,41 @@ class Scheduler:
         # 未登録コマンドは _command が従来の if/elif にフォールバックする（/font /daynight だけ移譲済み）。
         self._cmd_ctx = commands.CommandContext(self.view)
         self._commands = commands.default_router()
+        # 対局の運用を委譲（ADR-0029 Phase 3）。drive_lock は Scheduler 所有のまま注入、Scheduler 状態への
+        # 結び目（場払い・次ビート・住人現物）は callback/provider で渡す（controller に散らさない・Codex 第2R）。
+        self.games = game_controller.GameController(
+            view=self.view, spawn_codex=self._spawn_codex,
+            resident_provider=lambda: self.resident,
+            drive_lock=self.drive_lock, preempt=self._preempt_for_game,
+            bump_beat=self._bump_active_beat)
+
+    # 後方互換のプロパティ（既存テスト/コードが Scheduler 越しに対局状態を見る口・ADR-0029 Phase 3）
+    @property
+    def game(self):
+        return self.games.game                           # 進行中の GameSession（無ければ None）
+
+    @property
+    def _make_game(self):
+        return self.games.make_game                      # ゲームアダプタ生成の差し替え口（テストが FakeGame を挿す）
+
+    @_make_game.setter
+    def _make_game(self, fn):
+        self.games.make_game = fn
+
+    async def _preempt_for_game(self):
+        """対局開始時の場払い（GameController.start から呼ばれる）＝会話/来訪/アークを畳む＋user 活動記録＋
+        喋り中なら cancel（cancel 優先・ADR-0006）。Scheduler 状態（room/active_source/last_user_ts/speaking）を触る。"""
+        if self.room is not None:                        # 会話/来訪中なら畳んで通す
+            await self._end_visit()
+        elif self.active_source is not None:             # 箱庭アーク → 畳んで対局を通す（来訪は上の room 分岐で処理）
+            self._conclude(self.active_source)
+        self.last_user_ts = time.time()
+        if self.speaking:
+            await self.resident.cancel()
+
+    def _bump_active_beat(self):
+        """次ビートを active ペース（短間隔）へ（_next_at は Scheduler 所有）。対局開始直後に AI の手を早く回す。"""
+        self._next_at = time.time() + random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 
     # ── 注入（turn_lock で直列化）──────────────────────────
     async def _inject(self, narration):
@@ -222,20 +254,8 @@ class Scheduler:
             if time.time() >= self._away_until:
                 await self._return_from_away()
             return
-        if self.game is not None:                        # (0a) 対局中＝AIの番なら1手進める（人間の番/終局は待つ）
-            try:
-                if self.game.over:
-                    await self._end_game()
-                elif not self.game.waiting_for_human:
-                    await self.game.step()               # AI が1手（ペースは tick 間隔）
-                    if self.game is not None and self.game.over:
-                        await self._end_game()
-                    elif self.game is not None and self.game.waiting_for_human:
-                        self._show_human_turn()
-            except AgentTimeoutError:                  # AI(客人/茶々)が無応答 → 席を立った扱いでお開き
-                await self._abort_game_on_timeout()
-            except Exception:                            # adapter 死亡/不正状態 等 → 盤を進めずお開き（tick ループを殺さない）
-                await self._abort_game_on_error()
+        if self.games.active:                            # (0a) 対局中＝GameController が1手進める（無応答/エラーはお開き）
+            await self.games.on_tick()
             return
         if self.room is not None:                        # (0) 3人会話の部屋＝人間待ち/沈黙→辞去（State が判断）
             await self.room.on_tick()
@@ -279,7 +299,7 @@ class Scheduler:
     def _should_fetch_ambient(self):
         """天気/トピックを取得するか。ゲーム中は不要（遅延回避）、中座中は席を外してるので無駄＋
         取得のネットワーク遅延が毎tick乗ると戻り(_return_from_away)が gap より延びるので取得しない（ADR-0027）。"""
-        return self.game is None and not self._absent
+        return not self.games.active and not self._absent
 
     async def _tick_loop(self):
         self._next_at = time.time() + random.uniform(TICK_MIN, TICK_MAX)   # 起動直後は即つぶやかない
@@ -293,7 +313,7 @@ class Scheduler:
                 continue
             if self.turn_lock.locked():                  # 注入中は次スライスで再挑戦（next_at 据置＝解け次第すぐ）
                 continue
-            active_mode = self.game is not None or self.room is not None or \
+            active_mode = self.games.active or self.room is not None or \
                 self.active_guest is not None
             if not active_mode and now - self.last_user_ts < QUIET_AFTER_USER:
                 continue                                 # 会話直後は静か（ただしゲーム/来訪は止めない）
@@ -314,7 +334,7 @@ class Scheduler:
     # ── ユーザー入力（割り込み・cancel優先）──────────────────
     async def on_user_input(self, line):
         if line == views.GAME_CLOSE_REQUEST:                 # 観戦窓×（ユーザー操作）→ 対局を畳んで縁側へ戻す
-            await self._abort_game(); return
+            await self.games.abort_by_user(); return
         to, line = _parse_addr(line or "")                   # web チップの明示宛先を本文と分離（C方式・console は無印）
         line = line.strip()
         if not line:
@@ -326,20 +346,7 @@ class Scheduler:
         if self._absent:                                 # 中座中に話しかけられた＝茶々は戻る（新セッションで応じる・ADR-0027）
             await self._return_from_away()
         self.last_user_ts = time.time()
-        if self.game is not None and not self.game.over:     # 対局中＝入力は「手」（ADR-0017）
-            if not self.game.waiting_for_human:
-                self.view.system("  （今は他のプレイヤーの番。待ってな）")
-                return
-            cur = self.game.adapter.current_player()
-            legal = self.game.adapter.legal_moves(cur)
-            move = game.parse_move(line, legal)
-            if move is None:
-                self.view.system(f"  （その手は出せん。打てる手: {' / '.join(map(str, legal))}）")
-                return
-            await self.game.human_move(move)
-            self.view.system(f"  私 → {move}")
-            if self.game.over:
-                await self._end_game()
+        if await self.games.on_user_input(line):         # 対局中＝入力は「手」（GameController が処理して True・ADR-0017）
             return
         if self.room is not None:                            # 3人会話の可能性（ADR-0015）
             async with self.drive_lock:                      # tick と直列化。ロック内で部屋の有無を確定
@@ -387,10 +394,10 @@ class Scheduler:
             rest = [p for p in parts[1:] if p not in ("見る", "観戦", "watch")]
             gid = rest[0].lower() if rest else ""
             watch = any(w in line for w in ("見る", "観戦", "watch"))
-            await self._start_game(gid, watch)           # 空/不明 id は _start_game が一覧を出す
+            await self.games.start(gid, watch)           # 空/不明 id は GameController が一覧を出す
         elif cmd in ("/blackjack", "/bj"):               # /game blackjack の別名（従来コマンド維持）
             watch = any(w in line for w in ("見る", "観戦", "watch"))   # 「/bj 見る」で観戦(全AI)
-            await self._start_game("blackjack", watch)
+            await self.games.start("blackjack", watch)
         elif cmd in ("/restart", "/reset"):              # 茶々のセッションを張り直す（染み出し/不調時・文脈リセット・縁側操作＝ADR-0007）
             if self._spawn_resident is None:
                 self.view.system("  （いまは茶々を呼び直せへんのや）")
@@ -424,7 +431,7 @@ class Scheduler:
         到着を今すぐ、以降は tick で展開。客人来訪中は重ねない（断る）。"""
         if self._spawn_codex is None:
             self.view.system("  [P4] codex 接続が未設定（spawn_codex 無し）。"); return
-        if self.game is not None and not self.game.over:             # 対局中は客人を上げない（room と game の同時成立を防ぐ）
+        if self.games.active and not self.games.over:                # 対局中は客人を上げない（room と game の同時成立を防ぐ）
             self.view.system("  今は対局中や。終わってからな。"); return
         if self.active_guest is not None:                            # 既に客人 → 重ねない
             self.view.system("  今は別の客人が来とる。ちょっと待ってな。"); return
@@ -547,168 +554,6 @@ class Scheduler:
             await self._resident_timed_out()                     # 住人も無応答なら段階回復へ
         return True
 
-    async def _teardown_game(self, msg):
-        """対局を畳んで縁側へ戻す共通処理（state クリア＋客人破棄＋観戦窓クローズ）。
-        これを通さず view.game_close だけだと Scheduler.game が残り『ゲームモードのまま復帰不能』になる。"""
-        if msg:
-            self.view.system(msg)
-        self.game = None
-        self._game_render = None
-        await self._cleanup_game_guests()
-        try:
-            self.view.game_close()                       # ×経由なら既に閉じてる＝no-op
-        except Exception:
-            pass
-
-    async def _abort_game_on_timeout(self):
-        """対局中に AI（客人/茶々）が無応答 → 席を立った扱いでお開き（盤面を勝手に進めない）。観戦窓も閉じる。"""
-        await self._teardown_game("  （プレイヤーの返事が途切れた……席を立ったようや。お開きにしよ）")
-
-    async def _abort_game_on_error(self):
-        """対局中に想定外のエラー（adapter 死亡=ConnectionError・rlcard の不正状態 等）→ 盤を進めずお開き。
-        これを通さず例外が `_tick` を抜けると `_tick_loop` が死に、ゲームモードのまま永久停止する。"""
-        await self._teardown_game("  （対局でなんぞ起きた……お開きにするわ）")
-
-    async def _abort_game(self):
-        """ユーザーが対局を切り上げた（観戦窓×）→ お開きにして縁側へ戻す。対局中でなければ何もしない。"""
-        if self.game is None:                            # 終局後の結果表示を×で閉じただけ＝畳むものは無い
-            return
-        await self._teardown_game("  （お開き。縁側に戻るわ）")
-
-    # ── ゲーム（ADR-0017 Inc3）。GameSession を tick で1手ずつ進める ───────────────
-    def _make_game(self, game_id, num_players):
-        """ゲームのアダプタを作る。ゲーム登録は composition root（engawa_main._build）で済ませる（任意依存の寄せ・ADR-0017）。テストはこれを差し替える。"""
-        return game.make(game_id, num_players)
-
-    def _known_games(self):
-        """登録済みゲーム一覧（id→meta）。検証/一覧用。登録は composition root（engawa_main._build）で実施済み（rlcard 未導入なら空）。"""
-        return game.games()
-
-    def _list_games(self, known, unknown=None):
-        if unknown:
-            self.view.system(f"  そんなゲーム（{unknown}）は知らんな。")
-        avail = " / ".join(f"{k}（{v['label']}）" for k, v in known.items())
-        self.view.system(f"  遊べるの: {avail}")
-        self.view.system("  使い方: /game <id> [見る]（例: /game uno、/game blackjack 見る）")
-
-    def _ai_decider(self, agent, name, slot):
-        """AIプレイヤーの手番: 自分のスロット＋状態＋合法手を見せて手を選ばせる（不正は先頭へフォールバック）。"""
-        async def decide(state, legal_moves):
-            reply = await agent.prompt(prompts.game_move_prompt(name, slot, state, legal_moves))
-            return game.parse_move(reply, legal_moves)
-        return decide
-
-    async def _start_game(self, game_id, watch):
-        """対局開始。会話/アークは畳む。基本は 私＋茶々（観戦は茶々のみ）＝客人 codex は呼ばない（A）。
-        ゲームが要求する人数に足りない時だけ客人で埋める。"""
-        if self.game is not None:
-            self.view.system("  もうゲーム中や。"); return
-        known = self._known_games()                      # 検証＋対応人数(min,max)の取得
-        meta = known.get(game_id)
-        if meta is None:                                 # 空/不明 id → 遊べる一覧を出す
-            self._list_games(known, unknown=game_id or None); return
-        lo, hi = meta["players"]
-        want = min(hi, lo if watch else max(2, lo))      # 観戦=最少AIだけ / 参加=私+茶々(最低2)。min を下回らず max も超えない
-        try:
-            adapter = self._make_game(game_id, want)
-        except ImportError:
-            self.view.system("  （ゲームには rlcard が要る: pip install rlcard）"); return
-        except Exception as e:
-            self.view.system(f"  （ゲームを始められなんだ: {e}）"); return
-        if self.room is not None:                        # 会話/来訪中なら畳んで通す
-            await self._end_visit()
-        elif self.active_source is not None:             # 箱庭アーク → 畳んで対局を通す（来訪は上の room 分岐で処理）
-            self._conclude(self.active_source)
-        self.last_user_ts = time.time()
-        if self.speaking:
-            await self.resident.cancel()
-        async with self.drive_lock:
-            n = adapter.num_players
-            players = []
-            if not watch:
-                players.append(game.Player("私"))        # 人間（観戦時は入れない＝全AI）。slot 0
-            players.append(game.Player("茶々", self._ai_decider(self.resident, "茶々", len(players))))
-            self._game_guests = []
-            while len(players) < n:                      # 人数が足りないゲームの時だけ客人(codex)で埋める（blackjack では起きない）
-                persona = random.choice(sources.GUEST_PERSONAS)
-                try:
-                    agent = await self._spawn_codex()
-                except Exception:
-                    self.view.system("  （客人が来られず中止）")
-                    await self._cleanup_game_guests(); return
-                self._game_guests.append(agent)
-                slot = len(players)                      # 追加位置＝RLCard の player id（自分の手札参照に使う）
-                players.append(game.Player(f"客人〔{persona}〕", self._ai_decider(agent, persona, slot)))
-            players = players[:n]                         # 念のためスロット数に合わせる
-            names = [p.name for p in players]
-            render = adapter.render                        # ゲーム固有の表示器（blackjack は札と勝敗を整形）
-            self._game_render = render
-            self._game_names = names
-            label = game.games().get(game_id, {}).get("label", game_id)
-            who = "観戦＝茶々がディーラーと勝負" if watch else "あなたも参加"
-            self.view.system(f"  〔{label}〕開始（{who}・{n}人）")
-
-            def on_move(name, move, ad, slot):
-                try:                                      # 表示が転けてもゲーム進行は止めない
-                    lines = [render.move(name, move, ad, slot)] if render is not None else [f"  {name} → {move}"]
-                    cur = ad.current_player() if not ad.is_over() else None
-                    self._game_emit(ad, lines, current_slot=cur, over=ad.is_over())
-                except Exception:
-                    self.view.system(f"  {name} → {move}")
-            self.game = game.GameSession(adapter, players, on_move=on_move)
-            self.view.game_open(label)                    # web は隣に観戦窓を開く（console は何もしない）
-            self.game.begin()
-            deal_lines = render.deal(adapter, names) if render is not None else []
-            self._game_emit(adapter, deal_lines, current_slot=adapter.current_player(), over=False)
-            self._next_at = time.time() + random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
-            if self.game.over:
-                await self._end_game()
-            elif self.game.waiting_for_human:
-                self._show_human_turn()
-
-    def _game_emit(self, adapter, lines, current_slot=None, over=False):
-        """局面更新を View へ（snapshot=観戦窓の描画用 / lines=console の文字表現）。"""
-        snap = None
-        render = self._game_render
-        if render is not None and hasattr(render, "snapshot"):
-            snap = render.snapshot(adapter, self._game_names, current_slot, over)
-        self.view.game_update(snap, lines)
-
-    def _show_human_turn(self):
-        cur = self.game.adapter.current_player()
-        legal = self.game.adapter.legal_moves(cur)
-        render = self._game_render
-        if render is not None:
-            self.view.system(render.turn(self.game.adapter, cur, "あなた"))
-        else:
-            self.view.system(f"  あなたの番｜{prompts.describe_state(self.game.adapter.state(cur))}")
-        self.view.system(f"  打てる手: {' / '.join(map(str, legal))}  （そのまま打って）")
-        self._game_emit(self.game.adapter, [], current_slot=cur, over=False)   # 観戦窓に自分の番を反映
-
-    async def _end_game(self):
-        g = self.game
-        self.game = None
-        if g is not None:
-            names = self._game_names or [p.name for p in g.players]
-            render = self._game_render
-            if render is not None:                        # 結果（ディーラー公開＋各自の勝敗）
-                lines = render.result(g.adapter, names)
-                snap = render.snapshot(g.adapter, names, None, True) if hasattr(render, "snapshot") else None
-            else:
-                lines = ["  〔結果〕 " + " / ".join(f"{nm}: {r}" for nm, r in zip(names, g.adapter.result()))]
-                snap = None
-            self.view.game_update(snap, lines)            # 結果（ディーラー公開＋勝敗）を出す。**窓は閉じない**
-        self._game_render = None                          # 閉じるのはユーザーの×か、アプリ終了時の teardown だけ
-        await self._cleanup_game_guests()
-
-    async def _cleanup_game_guests(self):
-        for agent in self._game_guests:                  # ゲームの客人(codex)を破棄（使い捨て）
-            try:
-                await agent.close()
-            except Exception:
-                pass
-        self._game_guests = []
-
     async def _play_arc_now(self, key):
         """/arc：箱庭アークを今すぐ再生（デバッグ）。tick 駆動の active に載せて起→承→転→結を前へ進める。
         以前はここで完走まで while ループでブロックしていて、その間 on_user_input が返らず＝**再生中の
@@ -724,7 +569,7 @@ class Scheduler:
         arc = random.choice(pool)
         async with self.drive_lock:                  # tick と排他で active_source を載せる
             if self.active_source is not None or self.active_guest is not None \
-                    or self.room is not None or self.game is not None:
+                    or self.room is not None or self.games.active:
                 self.view.system("  （今は別のことをしとる。落ち着いてから /arc してな）"); return
             arc.reset()
             self.active_source = arc                 # 自然アーク同様、起が ~1s 後に出る（デバッグ表記は出さず窓を汚さない）
@@ -755,11 +600,7 @@ class Scheduler:
                 await tick_task
             except (asyncio.CancelledError, Exception):
                 pass
-            await self._cleanup_game_guests()            # ゲーム中に終了した時の客人(codex)を刈る
-            try:
-                self.view.game_close()                   # 対局中に終了した時は観戦窓も閉じる
-            except Exception:
-                pass
+            await self.games.close()                     # 対局中に終了した時の客人(codex)を刈る＋観戦窓を閉じる
             visiting = self.active_guest if (self.active_guest is not None and self.active_guest not in self.sources) else None  # 召喚客人は registry 外
             for s in list(self.sources) + [self.idle] + ([visiting] if visiting else []):
                 try:                                     # shutdown teardown（codex leak の最終防波堤）
