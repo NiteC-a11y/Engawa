@@ -30,7 +30,6 @@ Thumbs.db
 # 素材置き場（Gemini 生成の生画像。現行アプリは assets/chacha.png を使用）
 /assets/raw/
 
-# codex のレビュー成果物＋作業指示（本体リポでは追跡しない＝各自ローカル/codex 側で管理。AGENTS.md は
-# dev 固有の絶対パスを含む内部ツーリング＝公開しない・7/4 除外）
-/codex/review-*.md
-/codex/AGENTS.md
+# codex の作業成果物（提案・レビュー往復・作業指示）は本体リポでは追跡しない＝各自ローカル/codex 側で管理。
+# 設計判断は ADR に正本として残るので十分（7/5・ADR-0029 の突き合わせで確認）。AGENTS.md は dev 固有の絶対パス入り。
+/codex/

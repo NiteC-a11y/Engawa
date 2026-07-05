@@ -32,5 +32,6 @@
 | 0026 | LLM 接続は Agent ポートで中立化（ACP と API の2アダプタ・MCP は直交レイヤ・0001 の refine） | Accepted（Agent ポート＋2アダプタ実装: ACP/OpenAI互換API・住人 backend 選択可） |
 | 0027 | 茶々の「中座」で長命セッションを定期リフレッシュ（世界観に溶かした劣化根治・0005 の refine） | Accepted（実装済み） |
 | 0028 | 背景の昼夜は tint 層＋補間で表す（時間帯別 scene.png 差し替えは特別な一枚だけ・0010/0019 に乗る） | Accepted（実装済み） |
+| 0029 | Scheduler を薄い Orchestrator に戻す（責務を controller 群へ段階抽出・トップレベル分岐は Chain of Responsibility・0013 の refine） | Accepted（方針確定・段階実装これから） |
 
 形式は Michael Nygard 風（背景 / 決定 / 代替案 / 影響 / 備考）。
