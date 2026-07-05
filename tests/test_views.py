@@ -227,6 +227,13 @@ class TestDayNightTint(unittest.TestCase):
         self.assertIn("mix-blend-mode:screen", h)
         self.assertIn("applyDay", h)                     # poll の {tint,glow,lamp} を膜へ適用する口
 
+    def test_apply_day_resets_layers_when_disabled(self):
+        # /daynight off（day=None）で前の夜色を残さず素の明るい背景へ戻す（膜を中立化）
+        h = views.build_web_html()
+        self.assertIn("tintEl.style.backgroundColor='#ffffff'", h)   # 乗算で白＝無変化にリセット
+        self.assertIn("glowEl.style.opacity=0", h)                   # 月光を消す
+        self.assertIn("lampEl.style.opacity=0", h)                   # 室内灯を消す
+
 
 class TestDayNightPreview(unittest.TestCase):
     """/daynight プレビューの View 配線（ADR-0028）: 固定(pin)/実時間へ戻す(off)/早送り終了で自動復帰。
