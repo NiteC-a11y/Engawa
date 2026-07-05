@@ -125,28 +125,36 @@ class Scheduler:
         self._next_at = time.time() + random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 
     # ── 注入（turn_lock で直列化）──────────────────────────
+    async def _speak_locked(self, prompt_text, on_chunk=None):
+        """turn_lock を握った前提で resident.prompt（speaking フラグ管理・timeout は raise）。
+        茶々ソロ(_inject)と room 発話(_room_resident_speak)の**共通コア**（判断B の speak 一本化・ADR-0029 P5）。
+        turn_lock 自体は呼び側が持つ＝turn_start/turn_end を lock 内に保てる（barge-in の交錯防止）。"""
+        self.speaking = True
+        try:
+            return await self.resident.prompt(prompt_text, on_chunk=on_chunk)
+        finally:
+            self.speaking = False
+
     async def _inject(self, narration):
         async with self.turn_lock:
             log.debug("inject 茶々 (%s%s)", narration.kind,      # 茶々ソロの発話（ambient つぶやき/アーク beat/ソロ応答）＝タイミングの起点
                       f"/{narration.label}" if narration.label else "")
             self.view.turn_start("茶々", narration.kind, narration.label, narration.voice)
-            self.speaking = True
             timed_out = False
             stop_reason = None
             try:
                 if RESIDENT_GUARD:                       # 染み出しガード: バッファして注入文/思考を除去→一括描画（stream演出は消える・原因を問わず効く）
-                    out = await self.resident.prompt(narration.text)
+                    out = await self._speak_locked(narration.text)
                     clean = prompts.strip_resident_leak(out, narration.text)
                     if clean != out:
                         log.debug("resident guard: leak stripped (%d→%d chars)", len(out), len(clean))
                     self.view.chunk(clean)
                     stop_reason = clean
                 else:
-                    stop_reason = await self.resident.prompt(narration.text, on_chunk=self.view.chunk)
+                    stop_reason = await self._speak_locked(narration.text, on_chunk=self.view.chunk)
             except AgentTimeoutError:                  # 茶々が無応答（adapter ハング等）→ 段階回復へ
                 timed_out, stop_reason = True, "timeout"
             finally:
-                self.speaking = False
                 self.view.turn_end()
             if timed_out:
                 await self._resident_timed_out()
@@ -482,15 +490,11 @@ class Scheduler:
             self._next_at = time.time() + random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
 
     async def _room_resident_speak(self, prompt_text):
-        """room の茶々発話: turn_lock 下で resident.prompt（ambient と同じ直列化・speaking フラグ）。
-        timeout は呼び側（RoomSpeakerFactory）が捕捉。**判断B の seam**＝Phase 5 で
-        ResidentSessionManager.speak() に一本化する（表示なしの共通 core・room は文字列を返すだけ）。"""
+        """room の茶々発話: turn_lock 下で1発話（表示なし・文字列返却・timeout は呼び側=RoomSpeakerFactory が捕捉）。
+        judgment B の **speak 一本化**（ADR-0029 P5）＝ソロ注入(_inject)と同じ共通コア `_speak_locked` を通す
+        （turn_lock/speaking/resident.prompt を1箇所に集約）。表示契約だけ別（room は say・ソロは turn ストリーム）。"""
         async with self.turn_lock:                   # ambient（_inject）と同じ直列化単位＝割り込みの単位
-            self.speaking = True
-            try:
-                return await self.resident.prompt(prompt_text)
-            finally:
-                self.speaking = False
+            return await self._speak_locked(prompt_text)
 
     async def _end_visit(self):
         """来訪終了: codex を破棄（使い捨て・ADR-0008）し cooldown を置いて部屋を閉じる。"""

@@ -77,7 +77,7 @@ classDiagram
     RoomSpeakerFactory ..> Room : Speaker を供給
 ```
 
-> **⚠ この図は ADR-0029 のリファクタ進行中**（Scheduler を薄い Orchestrator＋controller 群へ段階抽出）。**Phase 1=CommandRouter／Phase 2=`active` 意味分離（`active_source`/`active_guest`）／Phase 3=GameController／Phase 4a=RoomSpeakerFactory 抽出済み**（対局の生成/進行/終了を委譲・Scheduler 状態への結び目は callback で注入・後方互換で `Scheduler.game` プロパティ）。以後 Phase 4〜6 で VisitController・ResidentSessionManager・Tick/Input の CoR 化が進むと、Scheduler の箱（`_start_room`/`_maybe_step_away` 等）はそれぞれの controller へ移り縮む。**背景の昼夜（`daynight.py`・ADR-0028）は `WebView` が使う純関数**＝下記「Port & Adapter ①」/ 責務テーブル参照。
+> **⚠ この図は ADR-0029 のリファクタ進行中**（Scheduler を薄い Orchestrator＋controller 群へ段階抽出）。**Phase 1=CommandRouter／Phase 2=`active` 意味分離（`active_source`/`active_guest`）／Phase 3=GameController／Phase 4a=RoomSpeakerFactory／P5=speak 一本化（_speak_locked）済み＝**ここで打ち切り**（P4b/P5full/P6 は費用対効果で保留）**（対局の生成/進行/終了を委譲・Scheduler 状態への結び目は callback で注入・後方互換で `Scheduler.game` プロパティ）。以後 Phase 4〜6 で VisitController・ResidentSessionManager・Tick/Input の CoR 化が進むと、Scheduler の箱（`_start_room`/`_maybe_step_away` 等）はそれぞれの controller へ移り縮む。**背景の昼夜（`daynight.py`・ADR-0028）は `WebView` が使う純関数**＝下記「Port & Adapter ①」/ 責務テーブル参照。
 
 ---
 
