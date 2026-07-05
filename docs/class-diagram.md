@@ -447,6 +447,7 @@ flowchart TB
 | ゲーム | `GameAdapter` | `RLCardAdapter`（+ `BlackjackRender`） |
 | 3人会話の発話 | `Speaker`（DI） | Scheduler が `AcpAgent.prompt` を fn として注入 |
 | LLM 文言生成 | （Port なし・関数群） | `prompts.py`（注入プロンプト工場・`sources` から分離・`prompts→sources` 一方向） |
+| スラッシュコマンド | `Command`／`CommandRouter`（登録制） | `commands.py`（`FontCommand`/`DayNightCommand`＋薄い `CommandContext`・`Scheduler._command` が委譲・adr/0029 Phase 1。残コマンドは controller 抽出に合わせ移行） |
 | 背景の昼夜 tint | （Port なし・純関数） | `daynight.py`（時刻→`{tint,glow,lamp}`・`WebView.poll` が大阪時刻で配信→JS が #scene の膜3枚［乗算tint＋月明かりglow＋室内灯lamp］へ・adr/0028。`/daynight` プレビューの仮想時刻解決＝`parse_override`/`override_minute`/`effective_layers` も純関数） |
 | デバッグログ | （stdlib logging ラッパ） | `debuglog.py`（`ENGAWA_DEBUG=1`→`engawa.log`・既定オフ＝no-op・各モジュールは `get("<name>")` の子ロガー） |
 
