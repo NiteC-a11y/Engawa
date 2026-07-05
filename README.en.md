@@ -12,7 +12,7 @@ This is a personal experiment aiming for "**a single environment-reactive reside
 
 <p align="center">
   <img src="docs/images/engawa.png" width="300" alt="The corner veranda window at dusk: Chacha the calico cat sitting on the engawa, with the chat log and input box"><br>
-  <sub>A little veranda window tucked in the corner of your desktop (at dusk). The background shifts through morning/day/dusk/night in real time, and at night light spills through the shoji screens. Chacha murmurs at the time and weather, and answers when you talk to her.</sub>
+  <sub>A little veranda window tucked in the corner of your desktop (at dusk). The background shifts through morning/day/dusk/night in real time, and at night light spills through the shoji screens. Chacha murmurs at the time and weather, and answers when you talk to her. And when a guest drops by, she strikes up a conversation with them.</sub>
 </p>
 
 ---
