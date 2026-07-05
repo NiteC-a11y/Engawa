@@ -178,7 +178,7 @@ class TestUserInput(unittest.IsolatedAsyncioTestCase):
             def __init__(self):
                 self.agent = type("A", (), {"reported_model": "gpt-5-codex（Codex）"})()
 
-        s.active = _LiveGuest()
+        s.active_guest = _LiveGuest()
         await s.on_user_input("/model")
         systems = _systems(v)
         self.assertTrue(any("来訪中・アダプタ報告" in (m or "") for m in systems))  # live 報告を優先
@@ -578,7 +578,7 @@ class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
             if s.room is None:
                 break
         self.assertIsNone(s.room)                              # 辞去して部屋が閉じた（有界）
-        self.assertIsNone(s.active)
+        self.assertIsNone(s.active_guest)
         self.assertTrue(created[0].closed)                    # codex 破棄（使い捨て・ADR-0008）
 
     async def test_guest_lingers_before_leaving(self):
@@ -883,7 +883,7 @@ class TestTimeoutRecovery(unittest.IsolatedAsyncioTestCase):
                             views.CaptureView(), spawn_codex=spawn)
         await s._summon_guest("ご隠居")
         self.assertIsNone(s.room)                     # 急用退場で部屋は閉じた
-        self.assertIsNone(s.active)
+        self.assertIsNone(s.active_guest)
         self.assertTrue(created[0].closed)            # ハングした codex も close（taskkill 相当）
         self.assertTrue(any("客人は" in (m or "") for m in self._systems(s.view)))  # 去り際の定型ナレ
 
@@ -919,8 +919,8 @@ class TestArcInterruptible(unittest.IsolatedAsyncioTestCase):
     async def test_arc_loads_active_and_returns(self):
         s, r, v, arc = self._make_with_arc("雀")
         await s.on_user_input("/arc 雀")
-        self.assertIs(s.active, arc)                  # tick 駆動の active に載った
-        self.assertEqual(s.active.key, "雀")
+        self.assertIs(s.active_source, arc)           # tick 駆動の active_source に載った
+        self.assertEqual(s.active_source.key, "雀")
         # 完走ブロックしていた頃は起→承→転→結を全部 inject していた。今は1本も inject しない（tick が前進させる）
         self.assertEqual(len(r.prompts), 0)
         # デバッグ表記は出さない＝成功時は無言で active に載るだけ（窓を汚さない）
@@ -934,13 +934,13 @@ class TestArcInterruptible(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.cancels, 1)                # cancel優先で畳む（ADR-0006）
         self.assertTrue(any("こちらを向いた" in (m or "") for m in self._systems(v)))
         self.assertIn("おーい", " ".join(r.prompts))  # ユーザー発話が茶々へ届く
-        self.assertIs(s.active, arc)                  # active(source) は触らない＝QUIET 明けに背景継続
+        self.assertIs(s.active_source, arc)           # active_source は触らない＝QUIET 明けに背景継続
 
     async def test_arc_refused_when_busy(self):
         s, r, v, arc = self._make_with_arc("雀")
-        s.active = FakeArc("猫")                       # 既に別アーク進行中
+        s.active_source = FakeArc("猫")                # 既に別アーク進行中
         await s.on_user_input("/arc 雀")
-        self.assertEqual(s.active.key, "猫")           # 載せ替えない
+        self.assertEqual(s.active_source.key, "猫")    # 載せ替えない
         self.assertTrue(any("別のこと" in (m or "") for m in self._systems(v)))
 
 

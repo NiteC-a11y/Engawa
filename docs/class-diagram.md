@@ -23,7 +23,8 @@ classDiagram
         +sources: EventSource[]
         +idle: WeatherSource
         +view: View
-        +active: EventSource
+        +active_source: EventSource
+        +active_guest: GuestSource
         +room: Room
         +game: GameSession
         +run()
