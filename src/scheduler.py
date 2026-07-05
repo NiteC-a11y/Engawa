@@ -69,7 +69,9 @@ class Scheduler:
         self._absence_target = self._roll_absence_target()   # 次に中座する発話数の目標（after_turns＋ゆらぎ）
         self._guest_timed_out = False            # room 中に客人が無応答だった（→急用で退場）
         self._room_resident_timeout = False      # room 中に住人が無応答だった（→退場＋段階回復）
-        self.active = None                               # 進行中 source（割り込みで消えない）
+        # 進行中 source を意味で2つに分離（ADR-0029 P2）。tick フロー上この2つは相互排他（同時に立たない）。
+        self.active_source = None                        # 進行中の箱庭アーク source（next_phase で進む・割り込みで消えない）
+        self.active_guest = None                         # 来訪中の客人 source（GuestSource＝persona/agent/cooldown/close の holder）
         self.room = None                                 # 3人会話の部屋（来訪中だけ・ADR-0015 Inc2）
         self.game = None                                 # ゲームのセッション（対局中だけ・ADR-0017 Inc3）
         self._game_guests = []                           # ゲームのために召喚した客人(codex)＝終局で破棄
@@ -77,7 +79,7 @@ class Scheduler:
         self._game_names = []                            # 各スロットの表示名（結果表示で使う）
         self.cooldowns = {s.key: 0 for s in source_list}
         self.turn_lock = asyncio.Lock()                  # resident 注入(_inject)の直列化＝割り込みの単位
-        self.drive_lock = asyncio.Lock()                 # self.active 駆動を tick と召喚で排他（競合防止）
+        self.drive_lock = asyncio.Lock()                 # active_source/active_guest 駆動を tick と召喚で排他（競合防止）
         self.speaking = False                            # resident 注入が in-flight か
         self.last_user_ts = 0.0
         self.weather = None                              # 最新天気を保持（起動時1回＋tick毎更新・捏造防止）
@@ -126,7 +128,7 @@ class Scheduler:
     async def _emit(self, res):
         """next_phase の戻りを処理。None=結了 / SILENT=無言 / Narration=注入。"""
         if res is None:
-            self._conclude(self.active)
+            self._conclude(self.active_source)           # _emit は箱庭アーク進行専用（来訪は room 経由）
             return
         if res is sources.SILENT:
             return
@@ -135,7 +137,10 @@ class Scheduler:
     def _conclude(self, src):
         src.reset()
         self.cooldowns[src.key] = src.cooldown_ticks     # close ではなく reset+cooldown（ADR-0013 #2）
-        self.active = None
+        if src is self.active_source:                    # src が入ってる方を降ろす（arc/guest 両対応・ADR-0029 P2）
+            self.active_source = None
+        if src is self.active_guest:
+            self.active_guest = None
 
     async def _restart_resident(self):
         """住人(茶々)のセッションを張り直す（新セッション＝以前の文脈は持たない）。成功 True/失敗 False。
@@ -239,13 +244,13 @@ class Scheduler:
             if self.room.closed:
                 await self._end_visit()
             return
-        if self.active is not None:                      # (1) 進行中アークを前へ
-            await self._emit(await self.active.next_phase(ctx))
+        if self.active_source is not None:               # (1) 進行中アークを前へ
+            await self._emit(await self.active_source.next_phase(ctx))
             return
         guest = next((s for s in self.sources if s.key == "guest"), None)
         if guest is not None and self.cooldowns.get("guest", 0) <= 0 and guest.eligible(ctx):
             guest.reset()                                # (2a) 自発来訪は arc 抽選から独立に判定
-            self.active = guest                          #      ＝prob が実効の per-tick 率（arc と競合させない・夕方×prob×cooldown だけ）
+            self.active_guest = guest                    #      ＝prob が実効の per-tick 率（arc と競合させない・夕方×prob×cooldown だけ）
             log.debug("tick→自発来訪: %s", guest.persona)
             await self._start_room(guest.persona)        #      3人会話の部屋を開く（ADR-0015）
             return
@@ -257,17 +262,17 @@ class Scheduler:
             if eligible:
                 chosen = random.choice(eligible)
                 chosen.reset()
-                self.active = chosen
+                self.active_source = chosen
                 log.debug("tick→アーク: %s", chosen.key)
-                await self._emit(await self.active.next_phase(ctx))   # 箱庭アークは起を即出す
+                await self._emit(await self.active_source.next_phase(ctx))   # 箱庭アークは起を即出す
                 return
         narr = await self.idle.next_phase(ctx)           # (3) 天気つぶやき/移ろい or 沈黙
         if narr is not None and (narr.kind == "transition" or random.random() < MUTTER_PROB):
             await self._inject(narr)
 
     def _next_interval(self):
-        """次ビートまでの間合い。アーク/来訪が進行中(active)や中座中は短く、何もない時は長い ambient。"""
-        if self._absent or self.active is not None:      # 中座中は短間隔で「戻り時刻」を拾う（ADR-0027）
+        """次ビートまでの間合い。アーク/来訪が進行中や中座中は短く、何もない時は長い ambient。"""
+        if self._absent or self.active_source is not None or self.active_guest is not None:  # 進行中(アーク/来訪)・中座中は短間隔（ADR-0027）
             return random.uniform(ACTIVE_BEAT_MIN, ACTIVE_BEAT_MAX)
         return random.uniform(TICK_MIN, TICK_MAX)
 
@@ -289,7 +294,7 @@ class Scheduler:
             if self.turn_lock.locked():                  # 注入中は次スライスで再挑戦（next_at 据置＝解け次第すぐ）
                 continue
             active_mode = self.game is not None or self.room is not None or \
-                (self.active is not None and self.active.key == "guest")
+                self.active_guest is not None
             if not active_mode and now - self.last_user_ts < QUIET_AFTER_USER:
                 continue                                 # 会話直後は静か（ただしゲーム/来訪は止めない）
             if self._should_fetch_ambient():             # ゲーム中/中座中は天気・ネタ取得をしない（不要・遅延回避）
@@ -404,7 +409,7 @@ class Scheduler:
             else:                                        # 未指定かつアダプタ未報告＝こちらは実物を知らない
                 self.view.system("  茶々(住人): 不明（未指定・アダプタ未報告）— 確実に固定するなら ENGAWA_MODEL を設定")
             # 客人は使い捨て＝持続エージェント無し。来訪中なら live な codex の報告を優先、いなければ設定値（来訪時に使う指定）
-            g = self.active if (self.active is not None and self.active.key == "guest") else None
+            g = self.active_guest
             gmodel = getattr(getattr(g, "agent", None), "reported_model", None)
             if gmodel:
                 self.view.system(f"  客人(codex): {gmodel}（来訪中・アダプタ報告）")
@@ -421,19 +426,19 @@ class Scheduler:
             self.view.system("  [P4] codex 接続が未設定（spawn_codex 無し）。"); return
         if self.game is not None and not self.game.over:             # 対局中は客人を上げない（room と game の同時成立を防ぐ）
             self.view.system("  今は対局中や。終わってからな。"); return
-        if self.active is not None and self.active.key == "guest":   # 既に客人 → 重ねない
+        if self.active_guest is not None:                            # 既に客人 → 重ねない
             self.view.system("  今は別の客人が来とる。ちょっと待ってな。"); return
         self.last_user_ts = time.time()                  # 召喚も user 活動（直後の独り言を抑制）
         if self.speaking:                                # 喋ってる最中なら畳む（cancel優先・ロック前に解く）
             await self.resident.cancel()
             self.view.system("[茶々がこちらを向いた]")
-        async with self.drive_lock:                      # ここから active を触る＝tick と排他
-            if self.active is not None and self.active.key == "guest":   # 待機中に自発客人が来た
+        async with self.drive_lock:                      # ここから active_source/active_guest を触る＝tick と排他
+            if self.active_guest is not None:            # 待機中に自発客人が来た
                 self.view.system("  今は別の客人が来とる。ちょっと待ってな。"); return
-            if self.active is not None:                  # 箱庭アーク → 畳んで客人を通す
-                self._conclude(self.active)
+            if self.active_source is not None:           # 箱庭アーク → 畳んで客人を通す
+                self._conclude(self.active_source)
             self.view.system(f"  〔客人〕「{persona}」が訪ねてきた…")
-            self.active = sources.GuestSource(persona, self._spawn_codex)
+            self.active_guest = sources.GuestSource(persona, self._spawn_codex)
             await self._start_room(persona)              # 3人会話の部屋を開く（到着→人間待ち・ADR-0015）
 
     # ── 3人会話の部屋（ADR-0015 Inc2）────────────────────────
@@ -441,11 +446,11 @@ class Scheduler:
         """codex を先に spawn（失敗なら来訪中止）、Speaker を結線して Room を開き、到着の挨拶を出す。
         以後は tick→on_tick / ユーザー入力→on_human で進む。drive_lock 内から呼ぶ前提。"""
         try:
-            await self.active.ensure_agent()             # codex を今 spawn（失敗は例外）
+            await self.active_guest.ensure_agent()       # codex を今 spawn（失敗は例外）
         except Exception as e:
             log.debug("客人 spawn 失敗: %s: %s", type(e).__name__, e)
             self.view.system("  （客人は来られなんだ。codex 接続・ChatGPT 認証を確認してな）")
-            self._conclude(self.active)
+            self._conclude(self.active_guest)
             return
         log.debug("客人 spawn: %s / room open", persona)
         self._topic_cooldown = 0                          # 来訪ごとに種は早めに出せる（cooldown は来訪内で効かせる）
@@ -482,7 +487,7 @@ class Scheduler:
                     self.speaking = False
 
         async def guest_say(window, kind):
-            agent = self.active.agent if self.active is not None else None
+            agent = self.active_guest.agent if self.active_guest is not None else None
             if agent is None:
                 return ""
             ctx = sources.build_context(self.weather, self.topics)   # いまの縁側（時刻＋天気）＝時間感覚のズレ防止
@@ -514,7 +519,7 @@ class Scheduler:
 
     async def _end_visit(self):
         """来訪終了: codex を破棄（使い捨て・ADR-0008）し cooldown を置いて部屋を閉じる。"""
-        src = self.active
+        src = self.active_guest
         log.debug("客人辞去 / room close: %s", getattr(src, "persona", None))
         self.room = None
         if src is not None:
@@ -524,7 +529,7 @@ class Scheduler:
                 pass
             self.cooldowns[src.key] = src.cooldown_ticks
             src.reset()
-            self.active = None
+            self.active_guest = None
 
     async def _check_room_timeout(self):
         """room 中の無応答（客人/住人）を畳む。客人は『急ぎの用で去る』定型退場（ハング client は二度叩かない）。
@@ -612,8 +617,8 @@ class Scheduler:
             self.view.system(f"  （ゲームを始められなんだ: {e}）"); return
         if self.room is not None:                        # 会話/来訪中なら畳んで通す
             await self._end_visit()
-        elif self.active is not None:
-            self._conclude(self.active)
+        elif self.active_source is not None:             # 箱庭アーク → 畳んで対局を通す（来訪は上の room 分岐で処理）
+            self._conclude(self.active_source)
         self.last_user_ts = time.time()
         if self.speaking:
             await self.resident.cancel()
@@ -717,11 +722,12 @@ class Scheduler:
         if not pool:
             self.view.system("  （今出せるアークが無い。/arc 雀 等キー指定で強制できる）"); return
         arc = random.choice(pool)
-        async with self.drive_lock:                  # tick と排他で active を載せる
-            if self.active is not None or self.room is not None or self.game is not None:
+        async with self.drive_lock:                  # tick と排他で active_source を載せる
+            if self.active_source is not None or self.active_guest is not None \
+                    or self.room is not None or self.game is not None:
                 self.view.system("  （今は別のことをしとる。落ち着いてから /arc してな）"); return
             arc.reset()
-            self.active = arc                        # 自然アーク同様、起が ~1s 後に出る（デバッグ表記は出さず窓を汚さない）
+            self.active_source = arc                 # 自然アーク同様、起が ~1s 後に出る（デバッグ表記は出さず窓を汚さない）
         self._next_at = time.time()                  # 次スライス(≤1s)で 起 を出す。以降 tick が前進＝割り込み可
 
     # ── 実行 ──────────────────────────────────────────────
@@ -754,7 +760,7 @@ class Scheduler:
                 self.view.game_close()                   # 対局中に終了した時は観戦窓も閉じる
             except Exception:
                 pass
-            visiting = self.active if self.active not in self.sources else None  # 召喚客人は registry 外
+            visiting = self.active_guest if (self.active_guest is not None and self.active_guest not in self.sources) else None  # 召喚客人は registry 外
             for s in list(self.sources) + [self.idle] + ([visiting] if visiting else []):
                 try:                                     # shutdown teardown（codex leak の最終防波堤）
                     await s.close()
