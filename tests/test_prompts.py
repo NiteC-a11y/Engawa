@@ -8,6 +8,35 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import prompts
 
 
+class TestIsErrorPayload(unittest.TestCase):
+    """backend が API エラーを本文として流した時の門番（生 JSON を縁側に出さない）。"""
+    def test_real_codex_400_error(self):
+        # 実際に縁側へ漏れたペイロード（codex モデル非対応 400・2026-07-09 報告）
+        s = ('{ "type": "error", "error": { "type": "invalid_request_error", '
+             '"code": "unsupported_value", "message": "This model is not supported when '
+             'using X-OpenAI-Internal-Codex-Responses-Lite.", "param": "model" }, "status": 400 }')
+        self.assertTrue(prompts.is_error_payload(s))
+
+    def test_error_object_shape(self):
+        self.assertTrue(prompts.is_error_payload('{"error": {"message": "boom"}}'))
+        self.assertTrue(prompts.is_error_payload('{"type": "error", "status": 500}'))
+
+    def test_truncated_stream_with_signature(self):
+        # 途中で切れて JSON パース不能でも、明白なシグネチャがあれば弾く
+        self.assertTrue(prompts.is_error_payload('{ "type": "error", "error": { "type": "invalid_requ'))
+
+    def test_normal_speech_is_not_error(self):
+        for s in ("そうやなあ、ぼちぼちやで。", "……", "「ふむ」と客人が笑った。", ""):
+            self.assertFalse(prompts.is_error_payload(s))
+
+    def test_none_is_not_error(self):
+        self.assertFalse(prompts.is_error_payload(None))
+
+    def test_plain_json_without_error_key_is_not_error(self):
+        # error/type シグネチャの無い素の dict は弾かない（過剰検出防止）
+        self.assertFalse(prompts.is_error_payload('{"mood": "ねむい"}'))
+
+
 class TestStripResidentLeak(unittest.TestCase):
     def test_passthrough_normal(self):
         s = "そうやなあ……ぼちぼちやで。"

@@ -77,6 +77,16 @@ class TestRoomSpeakerFactory(unittest.IsolatedAsyncioTestCase):
         f = _factory(agent=None)                     # まだ spawn 前など
         self.assertEqual(await f._guest_say([], conversation.REPLY), "")
 
+    async def test_guest_error_payload_suppressed_and_leaves(self):
+        # codex が API エラー（モデル非対応 400）を本文として返した → 生 JSON はセリフにせず退場フラグ
+        err = ('{ "type": "error", "error": { "type": "invalid_request_error", "code": '
+               '"unsupported_value", "message": "This model is not supported when using '
+               'X-OpenAI-Internal-Codex-Responses-Lite.", "param": "model" }, "status": 400 }')
+        f = _factory(agent=FakeAgent(reply=err))
+        out = await f._guest_say([], conversation.REPLY)
+        self.assertEqual(out, "")                     # 生 JSON は縁側に出さない（transcript にも積まれない）
+        self.assertTrue(f.guest_timed_out)            # 応答不能扱い＝呼び側(_check_room_timeout)が急用退場で畳む
+
     async def test_seed_cooldown_spaces_out(self):
         topics = [{"text": "夏至の話", "tone": "季節", "source": "時節"}]
         saved = (sources.TOPIC_PROB, sources.TOPIC_COOLDOWN)
