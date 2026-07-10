@@ -70,8 +70,45 @@ class TestTimeAndContext(unittest.TestCase):
 
     def test_seasonal_topics_shape(self):
         ts = sources._seasonal_topics(datetime.datetime(2026, 6, 28))
-        self.assertEqual(len(ts), 2)
+        self.assertEqual(len(ts), 3)                                  # 二十四節気＋七十二候＋旬
         self.assertTrue(all("text" in t and "source" in t for t in ts))
+        self.assertIn("七十二候", {t["source"] for t in ts})
+
+
+class TestSeventyTwoKou(unittest.TestCase):
+    """七十二候＝節気より細かい5日刻み（ADR-0014・local を厚く）。データ健全性と「直近手前」選び。"""
+    def test_has_72_entries(self):
+        self.assertEqual(len(sources.KOU), 72)
+
+    def test_dates_strictly_ascending(self):
+        # 昇順（1/1 冬至末候 → 12/27 冬至次候）＝転記ミスの歯止め。_current_kou の走査前提でもある。
+        dates = [(row[0], row[1]) for row in sources.KOU]
+        self.assertEqual(dates, sorted(dates))
+        self.assertEqual(len(set(dates)), 72)                          # 重複日なし
+
+    def test_pick_at_kou_start(self):
+        # 2/4＝立春初候の入り → 東風解凍
+        self.assertEqual(sources._current_kou(datetime.datetime(2026, 2, 4))[2], "東風解凍")
+
+    def test_pick_stays_until_next_kou(self):
+        # 2/8 はまだ次候(2/9)前 → 東風解凍のまま
+        self.assertEqual(sources._current_kou(datetime.datetime(2026, 2, 8))[2], "東風解凍")
+        self.assertEqual(sources._current_kou(datetime.datetime(2026, 2, 9))[2], "黄鶯睍睆")
+
+    def test_year_head_wraps_to_last_winter_kou(self):
+        # 1/3 は 1/1(冬至末候 雪下出麦)以降・1/6(小寒初候)前 → 雪下出麦
+        self.assertEqual(sources._current_kou(datetime.datetime(2026, 1, 3))[2], "雪下出麦")
+
+    def test_year_tail_is_last_entry(self):
+        # 12/28・12/31 は 12/27(冬至次候 麋角解)以降で年内に次が無い → 麋角解
+        self.assertEqual(sources._current_kou(datetime.datetime(2026, 12, 28))[2], "麋角解")
+        self.assertEqual(sources._current_kou(datetime.datetime(2026, 12, 31))[2], "麋角解")
+
+    def test_seasonal_topic_carries_name_and_reading(self):
+        ts = sources._seasonal_topics(datetime.datetime(2026, 2, 6))     # 東風解凍
+        kou = next(t for t in ts if t["source"] == "七十二候")
+        self.assertIn("東風解凍", kou["text"])
+        self.assertIn("はるかぜこおりをとく", kou["text"])                 # 読みも種に載る（縁側の柔らかさ）
 
 
 class TestNarration(unittest.TestCase):
@@ -147,7 +184,7 @@ class TestLocalTopics(unittest.TestCase):
 
     def test_no_topics_falls_back_to_seasonal(self):
         ts = sources._local_topics({"name": "時節", "kind": "local"})   # inline 無し
-        self.assertEqual(len(ts), 2)                                     # 二十四節気＋旬
+        self.assertEqual(len(ts), 3)                                     # 二十四節気＋七十二候＋旬
         self.assertTrue(all("persona" not in t for t in ts))            # 季節は persona 無し＝全員共通
 
     def test_length_capped(self):

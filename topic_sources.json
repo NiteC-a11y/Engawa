@@ -5,7 +5,7 @@
       "name": "時節",
       "kind": "local",
       "enabled": true,
-      "note": "二十四節気＋旬。ネット不要・常に在庫・縁側の世界観に馴染む土台。persona 無し＝全員共通"
+      "note": "二十四節気＋七十二候（約5日刻み）＋旬。ネット不要・常に在庫・縁側の世界観に馴染む土台。persona 無し＝全員共通"
     },
     {
       "name": "行商の噂",
@@ -90,7 +90,7 @@
       "domain": "example.jp",
       "tone": "暮らし",
       "persona": ["隠居", "行商"],
-      "note": "やわらかニュースの枠。実在URLを精査し domain を合わせて enabled:true に。NHK等の硬い時事は縁側に合わないので避ける（精査結果より）"
+      "note": "rss 機構のサンプル（enabled:false のまま温存）。生きた feed が見つかれば url/domain を実在値に替え enabled:true にするだけで有効化できる。精査(7/9)では縁側トーンに合う生きた RSS は無かった＝tenki.jp サプリは RSS 終了(2014)・暦生活/All About も feed 無し。詳細は docs/Backlog.md の『やわらかRSS 精査メモ』。NHK 等の硬い時事は縁側に合わないので避ける"
     }
   ]
 }

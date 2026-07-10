@@ -337,6 +337,27 @@ class TestUiWindowWiring(unittest.TestCase):
         self.assertEqual(corner, "br")
 
 
+class TestResolveUi(unittest.TestCase):
+    """_resolve_ui: UIモード決定。exe(--noconsole) は console UI の stdin/stdout が無いので
+    frozen 時は web を既定にする（ダブルクリックで『窓が出ない/一瞬で消える』を防ぐ）。env 明示が最優先。"""
+    def setUp(self):
+        import engawa_main
+        self.em = engawa_main
+
+    def test_frozen_defaults_to_web(self):
+        # exe をダブルクリック（ENGAWA_UI 未設定・frozen=True）→ web 窓を出す
+        self.assertEqual(self.em._resolve_ui({}, True), "web")
+
+    def test_plain_python_defaults_to_console(self):
+        # 素の python 実行（未設定・frozen=False）→ 従来どおり console
+        self.assertEqual(self.em._resolve_ui({}, False), "console")
+
+    def test_env_overrides_frozen(self):
+        # env 明示は frozen より優先（exe でも console を強制できる／大小無視で正規化）
+        self.assertEqual(self.em._resolve_ui({"ENGAWA_UI": "console"}, True), "console")
+        self.assertEqual(self.em._resolve_ui({"ENGAWA_UI": "WEB"}, False), "web")
+
+
 class TestDebugConfig(unittest.TestCase):
     """_debug_config: ENGAWA_DEBUG/ENGAWA_LOG_FILE の解決（既定オフ・空パスは既定へ）。"""
     def setUp(self):
@@ -404,6 +425,33 @@ class TestAssetSwap(unittest.TestCase):
     def test_sprite_config_path_is_swappable(self):
         config._CFG = {"assets": {"sprite_config": "D:/skins/alt/sprite.json"}}
         self.assertEqual(views._sprite_config_path(), "D:/skins/alt/sprite.json")
+
+
+class TestBaseDir(unittest.TestCase):
+    """_base_dir: アセット基準ディレクトリ。frozen(exe)=sys._MEIPASS / 素の python=src の親。
+    onefile では __file__ が展開先を指さないので、同梱アセットを sys._MEIPASS 基準で解決する（exe で実スプライトを出す肝）。"""
+    def setUp(self):
+        self._frozen = getattr(sys, "frozen", None)
+        self._meipass = getattr(sys, "_MEIPASS", None)
+
+    def tearDown(self):
+        for attr, val in (("frozen", self._frozen), ("_MEIPASS", self._meipass)):
+            if val is None:
+                if hasattr(sys, attr):
+                    delattr(sys, attr)
+            else:
+                setattr(sys, attr, val)
+
+    def test_not_frozen_uses_repo_root(self):
+        if hasattr(sys, "frozen"):
+            delattr(sys, "frozen")
+        self.assertEqual(views._base_dir(),
+                         os.path.dirname(os.path.dirname(os.path.abspath(views.__file__))))
+
+    def test_frozen_uses_meipass(self):
+        sys.frozen = True
+        sys._MEIPASS = os.path.join("C:", os.sep, "tmp", "_MEIabc123")
+        self.assertEqual(views._base_dir(), os.path.join("C:", os.sep, "tmp", "_MEIabc123"))
 
 
 class TestSceneBgInjection(unittest.TestCase):

@@ -13,6 +13,7 @@
 ナレーション（event/ambient/transition）は源の責務として `sources.py` 側に残す。
 """
 import datetime
+import json
 import random
 import re
 
@@ -205,6 +206,26 @@ def strip_resident_leak(output, injected=None):
     if m and m.start() >= _MIN_REASONING_LEN:
         text = text[m.start():]
     return text.strip()
+
+
+# ── エージェント出力がエラーペイロードか（backend が API エラーを本文として流した時の門番）──────
+# codex/adapter が 400 等（例: モデル非対応 "unsupported_value"）を agent_message_chunk として流すと、
+# 応答本文＝エラー JSON になり、そのまま客人のセリフとして縁側に出てしまう不具合があった。セリフは日本語
+# の短い台詞＝丸ごとの JSON エラーオブジェクトは来ない。これを検出して生 JSON を出さず「応答不能」扱いに
+# する（room では guest_timed_out へ→急用退場で畳む）。純関数＝strip_resident_leak と同じ出力ガード族。
+_ERR_SIGNS = ('"type": "error"', '"type":"error"', "invalid_request_error", "unsupported_value")
+
+
+def is_error_payload(text):
+    """応答が API エラーの生ペイロードに見えるか（先頭 { ＋ error シグネチャ）。正常なセリフは False。"""
+    s = (text or "").strip()
+    if not s.startswith("{"):
+        return False
+    try:
+        obj = json.loads(s)
+    except ValueError:
+        return any(sig in s for sig in _ERR_SIGNS)   # 途中で切れた等・パース不能でもシグネチャで弾く
+    return isinstance(obj, dict) and (obj.get("type") == "error" or isinstance(obj.get("error"), (dict, str)))
 
 
 def room_resident_prompt(window, kind, ctx=None):

@@ -1,0 +1,64 @@
+name: Release (Windows exe)
+
+# tag push（v1.2.3 形式）で発火し、engawa.spec の PyInstaller ビルドを
+# ネイティブ Windows ランナーで再現して GitHub Releases に上げる。
+# 注意: pywebview は Windows で pythonnet 経由の WebView2 バインディングに依存するため
+#       windows-latest（実機）必須。Wine 系の Linux/Docker ビルドは使わない。
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+# Release 作成・アセットアップロードに必須（既定の read-only では 403 になる）。
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: build & release (windows exe)
+    runs-on: windows-latest   # ネイティブ Windows 必須（pywebview=pythonnet/WebView2・Wine 不可）
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"   # ローカルビルド(3.13.2)＋repo 慣例(ci.yml)に合わせる
+
+      # ビルドに要るのは GUI ランタイム依存 pywebview（→pythonnet/bottle/proxy_tools を自動牽引）と
+      # PyInstaller だけ。rlcard は engawa.spec で excludes 済み＝exe に不要なので入れない
+      # （ローカルビルド環境と同じ＝再現性）。PyInstaller が hook-webview/hook-clr を同梱で持つ。
+      # バージョンはローカルで動作確認済みの版に固定＝リリースを決定的にする（依存の自動更新でビルドが
+      # 静かに変わる/壊れる事故を防ぐ・repo の ci.yml がツールをピンする流儀に合わせる）。上げる時は手動で数字を更新。
+      - name: Install build deps
+        run: pip install "pywebview==6.2.1" "pyinstaller==6.21.0"
+
+      # engawa.spec の EXE(name='engawa') → dist/engawa.exe を生成。
+      # datas で assets/ を同梱、hiddenimports に edgechromium/clr_loader.netfx を明示済み（spec 参照）。
+      - name: Build exe (PyInstaller)
+        run: pyinstaller engawa.spec
+
+      # 配布物の完全性確認用に SHA256 を併記（<hash>  engawa.exe 形式＝sha256sum 互換）。
+      - name: Generate SHA256
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash -Algorithm SHA256 dist/engawa.exe).Hash.ToLower()
+          "$h  engawa.exe" | Out-File -Encoding ascii dist/engawa.exe.sha256
+          Write-Host "SHA256: $h"
+
+      # tag から Release を作成/更新し exe と sha256 を添付。tag_name は push された tag を自動採用。
+      # generate_release_notes: GitHub がコミット/PR から差分ノートを自動生成。
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/engawa.exe
+            dist/engawa.exe.sha256
+          generate_release_notes: true
+          # 安全弁（初回運用）: 下書き Release で止める＝発火とビルドだけ検証し、中身を確認してから
+          # GitHub UI で手動 Publish する。未検証のまま公開 Release が世に出るのを防ぐ。
+          # ビルドが安定して信頼できたら、この行を消せば tag push で即公開される。
+          draft: true
+      # 注意（スコープ外）: WebView2 ランタイムは同梱していない。WebView2 未搭載環境では
+      #                      この exe は白窓になり得る（Win11 標準搭載機なら通常は問題なし）。

@@ -14,6 +14,10 @@ engawa.log
 __pycache__/
 *.py[cod]
 
+# PyInstaller ビルド成果物（onefile exe は 17MB 級・端末ローカル。engawa.spec は追跡する＝ビルド定義）
+build/
+dist/
+
 # sqlite（永続化導入時に必要なら個別に外す）
 *.db
 

@@ -66,8 +66,13 @@ class RoomSpeakerFactory:
             else:
                 self._log.debug("種見送り: prob外れ (%s)", kind)
         try:
-            return (await agent.prompt(
+            reply = (await agent.prompt(
                 prompts.room_guest_prompt(self.persona, window, kind, ctx=ctx, air=air))).strip()
         except AgentTimeoutError:                       # 客人が無応答 → ハング client は二度叩かず急用退場へ
             self.guest_timed_out = True
             return ""
+        if prompts.is_error_payload(reply):             # codex が API エラー（例: モデル非対応 400）を本文として返した
+            self._log.debug("客人エラー応答を抑制→退場: %s", reply[:160])
+            self.guest_timed_out = True                 # 生 JSON を縁側に出さず「応答不能」扱い＝呼び側が急用退場で畳む
+            return ""
+        return reply
