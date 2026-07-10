@@ -5,7 +5,8 @@
   sources.default_sources()         箱庭アーク＋自発来訪を registry に
   Scheduler(resident, sources, WeatherSource, View).run()
 
-View は既定で ConsoleView、`ENGAWA_UI=web` で WebView（pywebview の隅窓・P5）。
+View は素の python 実行だと既定 ConsoleView、`ENGAWA_UI=web` で WebView（pywebview の隅窓・P5）。
+ただし PyInstaller の exe(frozen) は --noconsole＝コンソールが無いので既定を web にする（_resolve_ui）。
 web モードは webview をメインスレッド、Scheduler を別スレッド+loop で回す（webview.start がブロックするため）。
 P3/P3.5 を発展させた現行の先端。基準点 engawa_p3_interactive.py は温存。
 """
@@ -178,11 +179,24 @@ def _debug_config():
     return debug, path
 
 
+def _resolve_ui(environ, frozen):
+    """UI モードを決める（純関数＝テスト可能）。ENGAWA_UI 明示が最優先。未指定なら
+    frozen(PyInstaller の exe)=web / 素の python 実行=console を既定に。
+    理由: exe は --noconsole でビルドする常駐GUI＝コンソール窓が無く、console UI の stdin/stdout が
+    死んでいる（run_console が print/sys.stdin.readline で即死＝『窓が出ない/一瞬で消える』）。
+    ので exe をダブルクリックした時は web 窓を出すのが正しい既定（env で明示上書きは可能）。"""
+    ui = environ.get("ENGAWA_UI")
+    if ui:
+        return ui.lower()
+    return "web" if frozen else "console"
+
+
 def main():
     on = debuglog.setup(*_debug_config())          # デバッグログ（既定オフ＝no-op・ENGAWA_DEBUG=1 で engawa.log へ）
+    ui = _resolve_ui(os.environ, getattr(sys, "frozen", False))
     if on:
-        debuglog.get("main").debug("起動 ui=%s", os.environ.get("ENGAWA_UI", "console"))
-    if os.environ.get("ENGAWA_UI") == "web":
+        debuglog.get("main").debug("起動 ui=%s (frozen=%s)", ui, getattr(sys, "frozen", False))
+    if ui == "web":
         return run_web()
     return asyncio.run(run_console())
 

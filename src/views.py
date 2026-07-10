@@ -17,7 +17,16 @@ import time
 import config   # アセット(皮)の差し替えパス解決（env(ENGAWA_*) > engawa.json[assets] > 既定・ADR-0010 の皮を背景にも拡張）
 import daynight  # 時刻→背景の昼夜レイヤ（tint 乗算＋glow 加算月光）の純関数（ADR-0028）
 
-_ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+def _base_dir():
+    """アセット(皮)の基準ディレクトリ。PyInstaller の exe(frozen) は展開先 sys._MEIPASS、
+    素の python 実行は src/ の親（リポジトリ直下）。onefile では __file__ が展開先を指さないため、
+    frozen 時は同梱アセット(assets/ を --add-data で束ねた場所)を sys._MEIPASS 基準で解決する。"""
+    if getattr(sys, "frozen", False):
+        return getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+_ASSETS_DIR = os.path.join(_base_dir(), "assets")
 
 
 def _asset_path(env, key, default_name):
