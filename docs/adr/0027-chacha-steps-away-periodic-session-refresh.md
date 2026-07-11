@@ -18,7 +18,7 @@
 - **シーケンス**: 茶々が短く断る（例「ちょっと手ぇ洗てくるわ」）→ 少し不在（つぶやき抑制・config 秒）→ 裏で `_restart_resident()`（新セッション）→ 戻る（例「ふぅ、すっきりした」）→ 以後まっさら。
 - **idle 限定**: 喋っている最中／人待ち／来訪(room)中／対局(game)中は行かない＝会話・場を切らない（トイレは間が空いた時に立つ）。busy なら「圧が満ちて」いても次の idle まで**遅延**。
 - **「たまに」を根治に効かせる＝ただのランダムにしない**: 前回リフレッシュからの経過（住人ターン数 or 分）で**中座確率が上がり、上限で必ず発火**。＝「たまに」の体裁のまま、一定周期でセッションが必ず若返る（劣化を追い越す）。ADR-0025 の減衰テンポの逆で“圧が溜まる”モデル。
-- **座組へのはめ方**: 中座は **EventSource** としてレジストリに挿す（`eligible`＝圧＋idle ゲート／`cooldown`＝中座の最短間隔・ADR-0013 の event-source/scheduler に素直）。scheduler は「この源が発火したら leave→(不在gap)→reset→return を回す」特別扱いを1点持つ（セッション lifecycle は scheduler の責務）。
+- **座組へのはめ方**: 中座の圧＋idle ゲートを持ち、発火したら leave→(不在gap)→reset→return を回す（セッション lifecycle は scheduler の責務）。〔※当初は「EventSource としてレジストリに挿す」計画だったが、実装は **Scheduler 直持ちのゲート**に落ち着いた＝下の影響節の注記参照。〕
 - **文脈は毎回まるっと忘れる**: idle 限定ゆえ*話の途中で忘れる*ことは無い＝トイレ枠で違和感なし。要約引き継ぎ（前の話を新セッションへ）は劣化テキスト再注入リスク＋複雑ゆえ**今は入れない**（将来オプション）。
 
 ## なぜ原則を壊さないか
@@ -34,7 +34,7 @@
 - **`/restart`（手動）のみ**: ユーザーが崩れに気づいて叩く前提＝根治でない。手動レバーとしては残す。
 
 ## 影響 / 帰結
-- **新 EventSource「中座」**（`sources.py` + registry）: `eligible`＝圧（前回 refresh からの経過）＋idle ゲート、`cooldown`＝最短間隔。
+- **中座ゲート**（圧＝前回 refresh からの経過 ＋ idle ゲート ＋ 最短間隔）。〔**2026-07-11 注記: 実装は EventSource/registry でなく `Scheduler` 埋め込みのゲートになった**＝`scheduler._maybe_step_away`／`_return_from_away`／`_roll_absence_target`（`_tick` から駆動）。`sources.py` の registry に absence source は無い（`BoxGardenArc`/`WeatherSource`/`GuestSource` のみ）。圧+idle 判定と若返りロジックの本旨は決定どおりで、置き場所だけ「源」でなく Scheduler 直持ちにした（セッション lifecycle は元々 Scheduler の責務ゆえ素直）。〕
 - **`prompts.py`**: 中座の leave/return ローカル定型（数バリアント・LLM 非経由）。
 - **`scheduler.py`**: 中座源の発火で leave→不在gap→`_restart_resident()`→return を回す。refresh 起点（ターン数/時刻）を保持。
 - **config**: 圧の閾値（soft/hard）・cooldown・不在秒・`0`で無効（`ENGAWA_ABSENCE_*` 等）。ADR-0002 の枠内（認証・課金に無関係）。

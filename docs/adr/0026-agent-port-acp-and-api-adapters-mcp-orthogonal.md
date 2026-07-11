@@ -1,6 +1,6 @@
 # ADR-0026: LLM 接続は Agent ポートで中立化（ACP と API の2アダプタ・MCP は直交レイヤ）
 
-- ステータス: Accepted（**Agent ポート＋2アダプタ実装済み 2026-07-04**・`src/agent.py`＝`Agent` Protocol＋`AgentTimeoutError`／`AcpAgent`（ACP・Claude Code）＋`OpenAIAgent`（`agent_openai.py`・OpenAI 互換 API＝LM Studio/Ollama）／`Scheduler` は `acp` を import せず中立例外だけ捕捉／住人 backend は `ENGAWA_RESIDENT_BACKEND=acp|openai` で選択。**客人は ACP のまま**。ADR-0001 の refine）
+- ステータス: Accepted（**Agent ポート＋2アダプタ実装済み 2026-07-04**・`src/agent.py`＝`Agent` Protocol＋`AgentTimeoutError`／`AcpAgent`（ACP・Claude Code）＋`OpenAIAgent`（`agent_openai.py`・OpenAI 互換 API＝LM Studio/Ollama）／`Scheduler` は `acp` を import せず中立例外だけ捕捉／住人 backend は `ENGAWA_RESIDENT_BACKEND=acp|openai` で選択。**客人 backend も選択可**（`ENGAWA_GUEST_BACKEND=acp|openai`・`OpenAIAgent.spawn_guest`・既定は acp＝codex／openai は住人と同じ endpoint 共有・下の影響節参照）。ADR-0001 の refine）
 - 日付: 2026-07-03（ポート抽出＋OpenAIAgent 2026-07-04）
 - 関連: ADR-0001（ローカル駆動は MCP でなく ACP）, ADR-0002（サブスク認証・APIキー不使用）, ADR-0006（cancel 優先）, ADR-0008（客人＝ツールを持たせない）, ADR-0020（モデルは config で選ぶ）, ADR-0021（ACP timeout/段階回復）
 - 影響: ADR-0001 を **refine（追補）**。Supersede しない——「ローカル駆動の既定は ACP」は不変。その口を中立ポートの背後に置き、非ACPバックエンド（ローカル API）を将来許容する余地を、境界と用語ごと明文化する。

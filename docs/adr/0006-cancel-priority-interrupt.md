@@ -20,7 +20,7 @@
 ## 影響 / 帰結
 - P3で実装。
 - 安全弁: 環境つぶやきは元々短いので、仮に cancel が効かなくてもターンがすぐ終わり、ハングしない。
-- 安全弁の上限化（2026-06-29・codexレビュー S1 残）: adapter が cancelled 応答を握り潰す/遅らせる場合に in-flight prompt が `PROMPT_TIMEOUT`(既定240s)まで待つのを避け、`AcpAgent.cancel()` が `CANCEL_GRACE`(既定10s)で in-flight prompt を合成 `stopReason=cancelled` として畳む（`ACPClient.abort_pending`）。**timeout でなく cancelled** にするのは、ユーザー起因の意図的中断で住人の段階再起動カウンタ（ADR-0005 系）を進めないため。本当の adapter ハングは続く新ターンが通常 timeout で検出する。
+- 安全弁の上限化（2026-06-29・codexレビュー S1 **実装済み**）: adapter が cancelled 応答を握り潰す/遅らせる場合に in-flight prompt が `PROMPT_TIMEOUT`(既定240s)まで待つのを避け、`AcpAgent.cancel()` が `CANCEL_GRACE`(既定10s)で in-flight prompt を合成 `stopReason=cancelled` として畳む（`ACPClient.abort_pending`／`_expedite_cancel`）。**timeout でなく cancelled** にするのは、ユーザー起因の意図的中断で住人の段階再起動カウンタ（ADR-0005 系）を進めないため。本当の adapter ハングは続く新ターンが通常 timeout で検出する。
 
 ## 備考
-- 実機 claude-code-acp での cancel 挙動は要実機確認。
+- 実機での cancel 挙動は **P3 で検証済み**（cancelled で正常終了・エラーにならない・2026-06-27）。cancel 後の bounded wait も実機確認済み（6/29）。

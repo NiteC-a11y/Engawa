@@ -1,6 +1,6 @@
 # ADR-0019: presentation は「意味 state ＋ config 駆動の差し替えアセット」で統一する（sprite/sound/scene 共通）
 
-- ステータス: Accepted（方針確定・実装はこれから／sprite は先行事例として整合）
+- ステータス: Accepted（**scene/背景チャネルは実装済み**＝config 駆動の差し替え `ENGAWA_SCENE_BG`＋昼夜 tint〔ADR-0028〕・sprite も整合／**sound チャネルのみ未実装**〔`sound.json` 無し〕）
 - 日付: 2026-06-29
 - 関連: ADR-0010（スプライト=差し替え皮）, ADR-0013（イベント源/スケジューラ＝View ポート）, ADR-0014（取得先は config・コードに埋めない）, ADR-0009（不透明な隅窓）, ADR-0017（本物の seam はポートで受ける）
 

@@ -32,4 +32,4 @@
 ## 備考
 
 - 「**GUI 目視はユーザー／ロジックは自動テスト**」の分担（ADR-0018/0019）は不変。フックはロジック側だけを守る。
-- 配布・チーム化時は CI（GitHub Actions 等）へ昇格を検討（新 ADR で）。
+- ~~配布・チーム化時は CI（GitHub Actions 等）へ昇格を検討（新 ADR で）~~ → **CI 昇格済み（2026-07-04・別 ADR は立てず本 ADR に追記で整合）**: `.github/workflows/ci.yml` で push/PR に tests(Python 3.10–3.13)＋ruff（`ruff.toml`＝`select=F,E9` 実バグ級）を自動実行（後に mermaid 図検証・browser 挙動テストも追加）。**Stop フック（手元・即時）と CI（push/PR・多バージョン）は二段構え**＝フックはターン内の回帰即検知、CI は環境差・他バージョンの担保。判断の規模が「新 ADR」を要するほどでなかったため本 ADR に吸収（Windows exe のリリース CI は `release.yml`・tag 発火・別系統）。

@@ -23,3 +23,4 @@
 
 ## 備考
 - UI配線は P3（双方向）の後。先に皮を被せると「話しかけられない一方通行の見世物」になるため（順序は spec Phase Gate）。
+- **絵柄の方針転換（2026-07-11 注記）**: 本 ADR は当初「Aseprite 製ドット絵・`imageSmoothing 無効（pixelated）`必須」を前提にしたが、実際に採用した皮は **Gemini 生成の三毛猫（非ドット絵・スムーズ縮小）** で、表示は `imageRendering:'auto'`（`views.py` で CSS の pixelated を上書き）＋ `sprite.json[display_px]` で縮尺。**「骨（コード）と皮（アセット）を分離し config で丸ごと差し替える」という決定本体は不変**で、変わったのは皮の画風（ドット絵 → スムーズ絵）と表示のスムージング指定だけ。ドット絵の皮に戻す場合は `imageRendering:pixelated` の sprite.json を差せばよい（皮の差し替えで完結）。背景 `scene.png` も同じアセット層に拡張済み（ADR-0028 の昼夜 tint が乗る）。
