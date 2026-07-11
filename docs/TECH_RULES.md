@@ -48,8 +48,9 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 ## 3. 認証・課金（事故防止）
 
 **絶対ルール:**
-- 子プロセスの env から **`ANTHROPIC_API_KEY` を必ず除去**してから spawn する。
-  - 理由: 認証情報の優先順位で API キーが OAuth より優先される。残ると意図せず API 従量課金（`claude -p` がキーを継いで $1,800 請求の実例）。adr/0002
+- 子プロセスの env は **allowlist で組む**（`acp._child_env`／default-deny・case-insensitive）。OS/ランタイム/node/npm/proxy/CA の素性だけ通し、**課金/外部送信に効く env は常に遮断**（`ANTHROPIC_*`・`OPENAI_*`・`AWS_*`・`GOOGLE_*`・`AZURE_*`・`CLAUDE_CODE_USE_BEDROCK`/`_VERTEX`＝`_is_billing_env`のハード拒否・`ENGAWA_ENV_PASSTHROUGH` でも貫通不可）。
+  - 理由: 認証情報の優先順位で API キーが OAuth より優先される。残ると意図せず API 従量課金（`claude -p` がキーを継いで $1,800 請求の実例）。旧 denylist（`drop_keys` で `ANTHROPIC_API_KEY` 等だけ除去）は Bedrock/Vertex/`ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_BASE_URL` を素通りさせる穴があり、allowlist で「明示以外入れない」に転換（adr/0002・追加点検 🔴）。
+  - 注意: 絞りすぎると node/npx（→adapter）が起動しない。**env 名は case-insensitive**（実 Windows は `SYSTEMROOT` 等の大文字で来る＝混在ケースで持つと取りこぼす・実機で判明）。allowlist に無い素性が要る特殊環境は `ENGAWA_ENV_PASSTHROUGH`（`engawa.json[auth].env_passthrough`・カンマ区切り）で足す。
 - サブスク認証（OAuth）で動かす。**個人利用限定。** 配布する場合は各ユーザ BYO か API キー（claude.ai ログイン同梱は ToS 違反）。
 - アカウント取り違え防止に、`CLAUDE_CONFIG_DIR` を**住人(Claude)の子 env に渡してプロファイルを固定できる**（会社org に吸われるのを防ぐ）。**config 主導・opt-in で実装済み**＝`ENGAWA_CLAUDE_CONFIG_DIR` か `engawa.json[auth].claude_config_dir` を設定した時だけ注入。既定は空＝親の `~/.claude` を継承（現状維持・ハードコード固定は逆に壊すため）。実装は `acp._resident_extra_env` / `_config_dir_env`（`RESIDENT_CLAUDE_CONFIG_DIR`）。客人(codex)は別 CLI＝対象外。adr/0002
 - **モデル選択は子 env で渡す**（config 主導・`ENGAWA_MODEL`/`ENGAWA_CODEX_MODEL` → 既定はアダプタ任せで現状維持）。住人(Claude)は `ANTHROPIC_MODEL`（Claude Code が尊重・`opus`/`claude-opus-4-8`/`opus[1m]` 等）、客人(codex)は `CODEX_CONFIG` の `{"model": …}`（codex-acp が Codex 設定へマージ）。サブスク認証でも有効。API キーと違い課金事故とは無関係だが、注入経路は同じ子 env（`acp.py` `_child_env`）。

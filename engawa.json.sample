@@ -7,8 +7,9 @@
     "guest": ""
   },
   "auth": {
-    "_comment": "住人(茶々=Claude)の認証プロファイル固定(adr/0002)。claude_config_dir=子 env に渡す CLAUDE_CONFIG_DIR の場所。既定は空＝渡さない＝親の ~/.claude を継承(現状維持)。組織/個人アカウントが同一メールに紐づくと Claude Code が組織側を掴む落とし穴(VPN/SSO 状態依存)の対策として、個人プロファイルの場所(例 ~/.claude-main)を明示した時だけ固定する＝opt-in。既定location に認証があるユーザで固定をハードコードすると逆に壊すので、必ず明示時のみ注入。ここは場所の指定だけ＝APIキーは入れない(キー除去は _child_env)。客人(codex)は別 CLI＝無関係で対象外。env ENGAWA_CLAUDE_CONFIG_DIR。",
-    "claude_config_dir": ""
+    "_comment": "住人(茶々=Claude)の認証プロファイル固定(adr/0002)。claude_config_dir=子 env に渡す CLAUDE_CONFIG_DIR の場所。既定は空＝渡さない＝親の ~/.claude を継承(現状維持)。組織/個人アカウントが同一メールに紐づくと Claude Code が組織側を掴む落とし穴(VPN/SSO 状態依存)の対策として、個人プロファイルの場所(例 ~/.claude-main)を明示した時だけ固定する＝opt-in。既定location に認証があるユーザで固定をハードコードすると逆に壊すので、必ず明示時のみ注入。ここは場所の指定だけ＝APIキーは入れない(キー除去は _child_env)。客人(codex)は別 CLI＝無関係で対象外。env ENGAWA_CLAUDE_CONFIG_DIR。 / env_passthrough=子プロセスに通す env の allowlist(adr/0002・default-deny=OS/ランタイム/node/npm/proxy の素性だけ通し課金/外部送信 env を遮断)に、特殊環境で足りない変数名を足す逃げ道(カンマ区切り・例 'MY_TOOL_HOME,FOO_DIR')。既定は空。課金/外部送信系(ANTHROPIC_*/OPENAI_*/AWS_*/GOOGLE_*/AZURE_*/CLAUDE_CODE_USE_BEDROCK|VERTEX)はここに書いても貫通不可(ハード拒否)。アダプタ(茶々)が起動しない時に、足りない env 名を足す用。env ENGAWA_ENV_PASSTHROUGH。",
+    "claude_config_dir": "",
+    "env_passthrough": ""
   },
   "backend": {
     "_comment": "住人(茶々)/客人(codex)をどの backend で動かすか(ADR-0026)。resident/guest=acp(既定・Claude Code / codex-acp) / openai(ローカル OpenAI 互換 API＝LM Studio/Ollama 等・下の openai 節を使う)。guest=openai なら ChatGPT アカウント不要だが住人と同じロード済みモデルを共有(8GB は1モデル)＝素の口調は似る(役は召喚時 prompt 注入なので変わる)。中座の再spawnも同 backend。env ENGAWA_RESIDENT_BACKEND / ENGAWA_GUEST_BACKEND。",

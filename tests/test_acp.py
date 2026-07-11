@@ -179,29 +179,86 @@ class TestSessionModel(unittest.TestCase):
 
 class TestChildEnv(unittest.TestCase):
     def test_drops_api_key(self):
-        env = acp._child_env({"ANTHROPIC_API_KEY": "sk", "PATH": "/x"},
-                             ("ANTHROPIC_API_KEY",))
-        self.assertNotIn("ANTHROPIC_API_KEY", env)   # 課金事故防止（adr/0002）
-        self.assertEqual(env["PATH"], "/x")
+        env = acp._child_env({"ANTHROPIC_API_KEY": "sk", "PATH": "/x"})
+        self.assertNotIn("ANTHROPIC_API_KEY", env)   # 課金事故防止（adr/0002・allowlist の billing deny）
+        self.assertEqual(env["PATH"], "/x")          # OS 素性は通る
 
     def test_injects_extra_env(self):
-        env = acp._child_env({"PATH": "/x"}, (), {"ANTHROPIC_MODEL": "opus"})
-        self.assertEqual(env["ANTHROPIC_MODEL"], "opus")
+        env = acp._child_env({"PATH": "/x"}, {"ANTHROPIC_MODEL": "opus"})
+        self.assertEqual(env["ANTHROPIC_MODEL"], "opus")   # 我々の制御下の注入は allowlist を経ない
 
     def test_skips_none_values(self):
-        env = acp._child_env({"PATH": "/x"}, (), None)
+        env = acp._child_env({"PATH": "/x"}, None)
         self.assertNotIn("ANTHROPIC_MODEL", env)
-        env2 = acp._child_env({"PATH": "/x"}, (), {"X": None})
+        env2 = acp._child_env({"PATH": "/x"}, {"X": None})
         self.assertNotIn("X", env2)
 
-    def test_drop_then_inject_independent(self):
-        # API キーは除去しつつモデルは載る
-        env = acp._child_env({"ANTHROPIC_API_KEY": "sk", "OPENAI_API_KEY": "sk2"},
-                             ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
+    def test_drops_keys_but_injects_model(self):
+        # ベンダーキーは default-deny で落ちつつ、我々の注入(CODEX_CONFIG)は載る
+        env = acp._child_env({"ANTHROPIC_API_KEY": "sk", "OPENAI_API_KEY": "sk2", "PATH": "/x"},
                              {"CODEX_CONFIG": '{"model": "gpt-5-codex"}'})
         self.assertNotIn("ANTHROPIC_API_KEY", env)
         self.assertNotIn("OPENAI_API_KEY", env)
         self.assertEqual(env["CODEX_CONFIG"], '{"model": "gpt-5-codex"}')
+
+
+class TestChildEnvAllowlist(unittest.TestCase):
+    """子 env の allowlist（default-deny・adr/0002 の 🔴 課金安全ギャップを塞ぐ）。"""
+    def test_allows_os_and_runtime_essentials(self):
+        base = {"PATH": "/x", "HOME": "/home/me", "SystemRoot": r"C:\Windows",
+                "APPDATA": r"C:\a", "USERPROFILE": r"C:\u", "LC_CTYPE": "UTF-8",
+                "NODE_OPTIONS": "--x", "NPM_CONFIG_REGISTRY": "https://r", "HTTPS_PROXY": "http://p"}
+        env = acp._child_env(base)
+        for k in base:
+            self.assertIn(k, env, f"{k} は adapter 起動に要る＝通すべき")
+
+    def test_drops_unlisted_app_vars(self):
+        env = acp._child_env({"PATH": "/x", "SOME_RANDOM_APP_TOKEN": "secret"})
+        self.assertIn("PATH", env)
+        self.assertNotIn("SOME_RANDOM_APP_TOKEN", env)   # 未知は default-deny
+
+    def test_hard_denies_billing_and_redirect_routes(self):
+        # 🔴 旧 denylist で素通りだった従量/外部送信の別ルートを構造的に遮断
+        base = {"PATH": "/x",
+                "ANTHROPIC_API_KEY": "sk", "ANTHROPIC_AUTH_TOKEN": "t", "ANTHROPIC_BASE_URL": "http://x",
+                "CLAUDE_CODE_USE_BEDROCK": "1", "CLAUDE_CODE_USE_VERTEX": "1",
+                "AWS_ACCESS_KEY_ID": "a", "AWS_BEARER_TOKEN_BEDROCK": "b",
+                "GOOGLE_APPLICATION_CREDENTIALS": "/g", "OPENAI_API_KEY": "o", "OPENAI_BASE_URL": "http://o",
+                "AZURE_OPENAI_API_KEY": "z"}
+        env = acp._child_env(base)
+        self.assertEqual(env, {"PATH": "/x"})   # PATH だけ残り、課金/外部送信 env は全滅
+
+    def test_passthrough_admits_extra_but_not_billing(self):
+        base = {"PATH": "/x", "MY_TOOL_HOME": "/t", "ANTHROPIC_API_KEY": "sk"}
+        # 逃げ道で MY_TOOL_HOME は通せるが、billing 系は passthrough でも貫通不可（ハード下限）
+        env = acp._child_env(base, passthrough=("MY_TOOL_HOME", "ANTHROPIC_API_KEY"))
+        self.assertIn("MY_TOOL_HOME", env)
+        self.assertNotIn("ANTHROPIC_API_KEY", env)
+
+    def test_passthrough_default_empty_drops_extra(self):
+        env = acp._child_env({"PATH": "/x", "MY_TOOL_HOME": "/t"})   # passthrough 未指定＝落ちる
+        self.assertNotIn("MY_TOOL_HOME", env)
+
+    def test_case_insensitive_keeps_uppercase_windows_vars(self):
+        # 実 Windows の os.environ は大文字キー(SYSTEMROOT 等)で来る＝case-insensitive で通さないと
+        # node 必須のシステム変数を取りこぼし adapter が起動しない（実機で判明・回帰防止）。
+        base = {"SYSTEMROOT": r"C:\Windows", "COMSPEC": r"C:\Windows\cmd.exe", "WINDIR": r"C:\Windows",
+                "PROGRAMFILES": r"C:\Program Files", "COMMONPROGRAMFILES": r"C:\PF\Common",
+                "APPDATA": r"C:\a", "PATH": "/x"}
+        env = acp._child_env(base)
+        for k in base:
+            self.assertIn(k, env, f"{k}（大文字 Windows 名）は case-insensitive で通すべき")
+        # 大文字の billing 変数はやはり落ちる
+        self.assertNotIn("ANTHROPIC_API_KEY",
+                         acp._child_env({"ANTHROPIC_API_KEY": "sk", "PATH": "/x"}))
+
+    def test_is_billing_env(self):
+        for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "AWS_ACCESS_KEY_ID",
+                     "GOOGLE_X", "GCLOUD_Y", "GCP_Z", "OPENAI_API_KEY", "AZURE_X",
+                     "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"):
+            self.assertTrue(acp._is_billing_env(name), name)
+        for name in ("PATH", "HOME", "CLAUDE_CONFIG_DIR", "ANTHROPICS", "NODE_OPTIONS"):
+            self.assertFalse(acp._is_billing_env(name), name)
 
 
 class TestConfigDirEnv(unittest.TestCase):
@@ -251,18 +308,16 @@ class TestResidentExtraEnv(unittest.TestCase):
                          {"ANTHROPIC_MODEL": "opus", "CLAUDE_CONFIG_DIR": "/home/me/.claude-main"})
 
     def test_resident_child_env_keeps_key_drop(self):
-        # 認証プロファイル注入と課金対策(キー除去)は独立＝退行しない（adr/0002）
+        # 認証プロファイル注入と課金対策(allowlist の billing deny)は独立＝退行しない（adr/0002）
         env = acp._child_env({"ANTHROPIC_API_KEY": "sk", "PATH": "/x"},
-                             ("ANTHROPIC_API_KEY",),
                              acp._resident_extra_env("opus", "/home/me/.claude-main"))
-        self.assertNotIn("ANTHROPIC_API_KEY", env)
-        self.assertEqual(env["CLAUDE_CONFIG_DIR"], "/home/me/.claude-main")
+        self.assertNotIn("ANTHROPIC_API_KEY", env)                       # billing deny で落ちる
+        self.assertEqual(env["CLAUDE_CONFIG_DIR"], "/home/me/.claude-main")   # 我々の注入は載る
         self.assertEqual(env["ANTHROPIC_MODEL"], "opus")
 
     def test_guest_path_does_not_inject_config_dir(self):
         # 客人(codex)は別 CLI＝CLAUDE_CONFIG_DIR 無関係。guest の extra_env は _model_env のみで注入しない。
         env = acp._child_env({"OPENAI_API_KEY": "sk", "PATH": "/x"},
-                             ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
                              acp._model_env("CODEX_CONFIG", "gpt-5-codex", json_key="model"))
         self.assertNotIn("CLAUDE_CONFIG_DIR", env)
         self.assertNotIn("OPENAI_API_KEY", env)

@@ -4,7 +4,8 @@
 - ACPClient: JSON-RPC 2.0 over stdio。チャンクは on_chunk コールバックへ（stdout 直書きしない＝View へ流す）。
 - AcpAgent: process＋ACPClient＋sessionId＋capabilities を束ねる Facade。spawn() が Factory。
             capability は initialize 応答から読む（TECH_RULES §2）。
-- 課金事故防止: 子 env から ANTHROPIC_API_KEY を必ず除去（adr/0002）。
+- 課金事故防止: 子 env を allowlist で組む＝OS/ランタイム系だけ通し、課金/外部送信 env（ANTHROPIC_*・
+  AWS_*・CLAUDE_CODE_USE_BEDROCK 等）を default-deny で遮断（adr/0002・`_child_env`/`_env_allowed`）。
 - Windows: .cmd は cmd /c 経由で起動、終了は taskkill /T /F でツリーごと（TECH_RULES §4）。
 """
 import asyncio
@@ -83,11 +84,68 @@ def _model_env(var, model, *, json_key=None):
     return {var: model}
 
 
-def _child_env(base, drop_keys, extra_env=None):
-    """子プロセス env を組む: base から drop_keys を除去（課金事故防止）し、extra_env を上書き（None 値は無視）。"""
-    env = dict(base)
-    for k in drop_keys:
-        env.pop(k, None)
+# 子プロセスに通す env の allowlist（default-deny・adr/0002 の課金事故防止を airtight に）。
+# ここに載る素性だけ子(npx→node→adapter)へ渡す＝未知の課金/外部送信 env（CLAUDE_CODE_USE_BEDROCK・
+# ANTHROPIC_AUTH_TOKEN・ANTHROPIC_BASE_URL 等）を「明示以外入れない」で構造的に遮断する（旧 denylist は
+# 既知キー1〜2本しか塞げず素通りだった＝ADR-0002 追加点検の 🔴）。OS/ランタイム/node/npm/proxy/CA が
+# 動くのに要るものは広めに許可（絞りすぎると adapter が起動せず茶々が黙る）。足りなければ
+# ENGAWA_ENV_PASSTHROUGH で足せる（ただし下の billing 系は passthrough でも貫通不可）。
+# ※マッチは大文字正規化で case-insensitive（Windows の env 名は大小無視＝実 os.environ は SYSTEMROOT 等の
+#   大文字で来る。混在ケースで持つと node 必須のシステム変数を取りこぼし adapter が起動しない＝実機で判明）。
+_ENV_ALLOW_NAMES = frozenset(n.upper() for n in {
+    # POSIX / 共通
+    "PATH", "HOME", "SHELL", "USER", "LOGNAME", "TERM", "TZ", "PWD", "LANG", "LANGUAGE", "LC_ALL",
+    "TMPDIR", "TMP", "TEMP", "DISPLAY",
+    "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS",   # 社内 CA で npx 取得に要る
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",                       # proxy（社内で npx 取得に要る）
+    # Windows システム
+    "SystemRoot", "SystemDrive", "windir", "ComSpec", "PATHEXT", "OS", "DriverData",
+    "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "ALLUSERSPROFILE", "PUBLIC", "ONEDRIVE",
+    "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432",
+    "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432",
+    "USERPROFILE", "USERNAME", "USERDOMAIN", "USERDOMAIN_ROAMINGPROFILE",
+    "HOMEDRIVE", "HOMEPATH", "COMPUTERNAME", "SESSIONNAME", "LOGONSERVER",
+    "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "PROCESSOR_ARCHITEW6432",
+    "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION",
+    # Claude Code の認証プロファイル位置（billing でなく auth の場所＝shell 設定を尊重・opt-in 注入とは別口）
+    "CLAUDE_CONFIG_DIR",
+})
+_ENV_ALLOW_PREFIXES = ("LC_", "NODE_", "NPM_")   # ロケール・node・npm 設定(registry/proxy・npm_ も NPM_ で拾う)
+
+# 課金/外部送信に効く env は allowlist にも passthrough にも絶対載せない（hard deny）。
+# サブスク認証は ~/.claude(プロファイル)に在り env 不要＝これらを落としても住人/客人は動く（adr/0002）。
+_ENV_BILLING_DENY_PREFIXES = ("ANTHROPIC_", "OPENAI_", "AWS_", "GOOGLE_", "GCLOUD_", "GCP_", "AZURE_")
+_ENV_BILLING_DENY_NAMES = frozenset({"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"})
+
+# 特殊環境で allowlist に無い env を足す逃げ道（カンマ区切り・env>engawa.json>既定空）。billing 系は貫通不可。
+ENV_PASSTHROUGH = tuple(
+    n.strip() for n in config.get_str("ENGAWA_ENV_PASSTHROUGH", "auth", "env_passthrough", "").split(",")
+    if n.strip())
+
+
+def _is_billing_env(name):
+    """課金/外部送信に効く env か（ベンダー名前空間＋Bedrock/Vertex 切替）。常に子へ渡さない（adr/0002）。"""
+    u = name.upper()
+    return u in _ENV_BILLING_DENY_NAMES or u.startswith(_ENV_BILLING_DENY_PREFIXES)
+
+
+def _env_allowed(name, passthrough=()):
+    """子に通す env か（case-insensitive）。billing 系は常に拒否（passthrough でも貫通不可）＝ハード下限。
+    以外は allowlist（名前 or プレフィックス）か passthrough に在れば許可（default-deny）。"""
+    if _is_billing_env(name):
+        return False
+    u = name.upper()
+    if u in _ENV_ALLOW_NAMES or u.startswith(_ENV_ALLOW_PREFIXES):
+        return True
+    return u in {p.upper() for p in passthrough}
+
+
+def _child_env(base, extra_env=None, passthrough=ENV_PASSTHROUGH):
+    """子プロセス env を allowlist で組む（adr/0002・default-deny）。課金/外部送信 env は落とし、
+    OS/ランタイム/node/npm/proxy/CA と ENGAWA_ENV_PASSTHROUGH の素性だけ通す。extra_env は最後に無条件で
+    上書き（None 値は無視）＝モデル/CLAUDE_CONFIG_DIR/CODEX_CONFIG は我々の制御下の注入なので allowlist を経ない。"""
+    env = {k: v for k, v in base.items() if _env_allowed(k, passthrough)}
     if extra_env:
         env.update({k: v for k, v in extra_env.items() if v is not None})
     return env
@@ -312,9 +370,8 @@ class AcpAgent:
 
     @classmethod
     async def spawn(cls, cmd, *, cwd, client_name="engawa", client_version="0.4.0",
-                    drop_keys=("ANTHROPIC_API_KEY",), persona_dir=None,
-                    extra_env=None, model=None):
-        env = _child_env(os.environ, drop_keys, extra_env)   # 課金事故防止(adr/0002)＋モデル等の注入
+                    persona_dir=None, extra_env=None, model=None):
+        env = _child_env(os.environ, extra_env)   # allowlist で組む（課金/外部送信 env を遮断・adr/0002）＋注入
         proc = await asyncio.create_subprocess_exec(
             *resolve_command(cmd),
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
@@ -372,13 +429,12 @@ class AcpAgent:
     @classmethod
     async def spawn_guest(cls, model=None):
         """客人（codex）= codex-acp。人格は CLAUDE.md でなく召喚時に prompt へ動的注入（adr/0008）。
-        OPENAI_API_KEY も除去し ChatGPT ログイン認証で動かす（事故防止）。cwd に CLAUDE.md は置かない。
+        OPENAI_API_KEY も allowlist の default-deny で子に渡らず ChatGPT ログイン認証で動かす（事故防止）。cwd に CLAUDE.md は置かない。
         model 指定（無指定は config の ENGAWA_CODEX_MODEL/既定）を CODEX_CONFIG の {"model":…} で子に渡す。"""
         guest_dir = pathlib.Path(tempfile.mkdtemp(prefix="engawa_guest_"))
         model = model or GUEST_MODEL
         try:
             return await cls.spawn(ADAPTER_GUEST, cwd=guest_dir, client_name="engawa-guest",
-                                   drop_keys=("ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
                                    persona_dir=guest_dir,
                                    extra_env=_model_env("CODEX_CONFIG", model, json_key="model"),
                                    model=model)
