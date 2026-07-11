@@ -42,6 +42,8 @@ Chacha (the veranda's resident — first person, Kansai-ish, long-lived session)
 
 Download `engawa.exe` from the [latest release](https://github.com/NiteC-a11y/Engawa/releases/latest) and double-click it. **No Python install required** — it's a single executable that bundles the runtime, UI, and assets.
 
+> Release note: `v0.1.1` is **functionally identical** to `v0.1.0` — it only refreshes this README; the exe behaves the same. When in doubt, grab the latest `v0.1.1`.
+
 That said, the exe is **only the app itself** — it does *not* bundle the LLM that gives Chacha her voice. You still need the following (without them **the window opens but Chacha stays silent**):
 
 - **Logged in to [Claude Code](https://claude.com/claude-code) with a subscription (Pro/Max)** — the resident's (Chacha's) brain.
