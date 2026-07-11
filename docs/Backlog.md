@@ -201,6 +201,11 @@
   - 現状: つまみは env(`ENGAWA_*` 20本超)＋`engawa.json` 12節(model/backend/openai/guest/timing/topic/weather/acp/absence/debug/ui/assets)まで増えた。説明は `engawa.json.sample` の `_comment` と CLAUDE.md の env 一覧に**散在＝一望できない**。優先順位(env>json>既定)・「消せばコード既定」・**連動する値**(天気の座標×地名×tz／font と /font save 等)・範囲クランプなど、正しく使うのに要る前提が点在。
   - 候補（どれか/組合せ・スコープは別途判断）: (a) アプリ内 `/config`（節ごとに**実効値＋出所**=env/json/既定を表示＝`/model`・`/font` の延長）や `/help <section>`。(b) `docs/SETTINGS.md` 一枚に節ごとの表(キー/既定/範囲/連動/env名)を集約し README・CLAUDE から張る。(c) `engawa.json.sample` を「読めるドキュメント」として正本化（既にコメント厚め＝これを軸に）。
   - 罠: **二重管理を増やさない**（sample コメントと別に表を作ると乖離＝原則7）。実効値表示にはキーの単一列挙が要る＝`config` に「登録済みキー表」を持たせれば `/config` と docs 生成の単一ソースにできる（将来）。i18n(voice)・culture.json(Inc3) とも地続き。既定を消せば現行維持、が全キーで崩れない保証も要点。
+- [ ] **ADR-0002 の追加点検で出た課金安全の穴／陳腐化**（点検 2026-07-11・CLAUDE_CONFIG_DIR 対応の派生。全 spawn 経路＝`acp.py:318` adapter spawn/`:162` taskkill と env 構築を洗った結果）
+  - 🔴 **キー除去の網羅性（実質ギャップ）**: `_child_env` の除去は `ANTHROPIC_API_KEY`(+客人 `OPENAI_API_KEY`)のみ。子 env は `dict(os.environ)` 継承なので、親 env に `CLAUDE_CODE_USE_BEDROCK=1`/`CLAUDE_CODE_USE_VERTEX=1`(＋`AWS_*`/`GOOGLE_*`)・`ANTHROPIC_AUTH_TOKEN`・`ANTHROPIC_BASE_URL` があると**キー除去を迂回して従量/外部送信に行き得る**（`src/` に BEDROCK/VERTEX/AUTH_TOKEN 考慮ゼロ＝grep 確認）。ADR 本文が言及していない＝「決定違反」でなく「billing-safety 意図が airtight でない」型。個人利用ではまず踏まないが、**exe 配布を始めた今は穴**。対処案: (a) `drop_keys` に上記を追加、(b) より堅牢に「最小 env から組む allowlist 方式」（CLAUDE_CONFIG_DIR と同じ『明示以外入れない』精神）。やるなら方式を相談＝設計判断込み。
+  - 🟡 **ADR-0002 備考の陳腐化（docs のみ・低リスク）**: 「GPT側(OpenAI)のコストはこの決定では解決しない」は P4 客人導入前(6/26)の記述で、今は客人 codex が `OPENAI_API_KEY` 除去で ChatGPT ログインに倒す（`acp.py:375,381`）＋ADR-0026 でローカル OpenAI backend＋非ローカル既定ブロック。ADR-0002 が ADR-0026/客人キー除去を相互参照していない＝Superseded にせず「→後日 ADR-0026 等で対応」の追記で解消。
+  - 🔵 **「個人利用限定」の文言（判断待ち）**: 公開 exe/リリース CI と微妙に緊張。ただし README/実装は BYO サブスク要求＝ADR の逃げ道「配布するなら各ユーザ BYO」に沿い違反ではない。「個人利用〜BYO 配布」へ文言更新の余地。
+  - 🟢 非問題（記録）: `taskkill`(`acp.py:162`)は env 未指定でキー入り env を継承するが API を叩かない＝無害。`agent_openai` は subprocess でなく HTTP＋remote 既定ブロック（ADR-0026 管掌）。
 
 ## 発信ネタ（おまけ）
 - [ ] 「AIに住人を作る」過程の記事（ACP＋人格注入、環境反応の設計）
