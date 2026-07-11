@@ -197,6 +197,10 @@
   - 直し: `sources.WEATHER_LAT/_LON/_TZ` と `PLACE_LABEL` を config 解決（`ENGAWA_WEATHER_LAT/_LON/_WEATHER_TZ` / `ENGAWA_PLACE_LABEL`・`engawa.json[weather]`・env>json>既定）。既定は大阪＝**未指定なら現行のまま**。URL 組みは純関数 `sources._weather_url(lat,lon,tz)`（tz は URL エンコード）へ切り出しネット非依存でユニット化。地名ラベルも `ambient_narration` で `PLACE_LABEL` 連動（「地名だけ大阪」事故を回避）。lat/lon は範囲クランプ。
   - 検証: `TestWeatherLocation` 5件（既定URL=大阪/no-arg整形/京都・別TZ override＋エンコード/地名既定=大阪/地名可変）＝全384 PASS・ruff clean。
   - 注: culture.json(Inc3) 構想へ畳まず**単独 config 節**で実装（YAGNI・既存 config 主導の枠に収まる）。会話・昼夜tint の時刻はマシンのローカル時刻依存で、この weather tz とは別問題（残）。
+- [ ] **設定ヘルプ／設定の発見性**（考慮点が多く「何を触ると何が起きるか」を利用者が掴みづらい・ユーザー提起 2026-07-11）
+  - 現状: つまみは env(`ENGAWA_*` 20本超)＋`engawa.json` 12節(model/backend/openai/guest/timing/topic/weather/acp/absence/debug/ui/assets)まで増えた。説明は `engawa.json.sample` の `_comment` と CLAUDE.md の env 一覧に**散在＝一望できない**。優先順位(env>json>既定)・「消せばコード既定」・**連動する値**(天気の座標×地名×tz／font と /font save 等)・範囲クランプなど、正しく使うのに要る前提が点在。
+  - 候補（どれか/組合せ・スコープは別途判断）: (a) アプリ内 `/config`（節ごとに**実効値＋出所**=env/json/既定を表示＝`/model`・`/font` の延長）や `/help <section>`。(b) `docs/SETTINGS.md` 一枚に節ごとの表(キー/既定/範囲/連動/env名)を集約し README・CLAUDE から張る。(c) `engawa.json.sample` を「読めるドキュメント」として正本化（既にコメント厚め＝これを軸に）。
+  - 罠: **二重管理を増やさない**（sample コメントと別に表を作ると乖離＝原則7）。実効値表示にはキーの単一列挙が要る＝`config` に「登録済みキー表」を持たせれば `/config` と docs 生成の単一ソースにできる（将来）。i18n(voice)・culture.json(Inc3) とも地続き。既定を消せば現行維持、が全キーで崩れない保証も要点。
 
 ## 発信ネタ（おまけ）
 - [ ] 「AIに住人を作る」過程の記事（ACP＋人格注入、環境反応の設計）
