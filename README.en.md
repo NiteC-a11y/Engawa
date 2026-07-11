@@ -9,7 +9,7 @@
 
 *Engawa* (縁側) is the wooden veranda that wraps around a traditional Japanese house — the in-between place where you sit and watch the weather go by. Chacha is **not a chat assistant**. She simply *lives* on that veranda: she murmurs at the time of day and the weather, and answers lightly when you talk to her. Now and then a guest (Codex) drops by wearing a role, and chats with Chacha for a while — then leaves.
 
-This is a personal experiment aiming for "**a single environment-reactive resident + two-way interaction + occasional guest visits**." It runs on **your own machine's Claude / ChatGPT subscription auth** (personal use — no metered API billing by design).
+This is a personal experiment aiming for "**a single environment-reactive resident + two-way interaction + occasional guest visits**." It runs on **your own machine's Claude / ChatGPT subscription auth** (BYO — each user signs in with their own account; no metered API billing by design). Distributing the source/exe is fine as long as it's BYO; running one subscription as a shared service for others, or bundling claude.ai login, is not allowed under the providers' ToS.
 
 <p align="center">
   <img src="docs/images/engawa.png" width="300" alt="The corner veranda window at dusk: Chacha the calico cat sitting on the engawa, with the chat log and input box"><br>
