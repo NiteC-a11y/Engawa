@@ -3,6 +3,7 @@
 **日本語** | [English](README.en.md)
 
 [![CI](https://github.com/NiteC-a11y/Engawa/actions/workflows/ci.yml/badge.svg)](https://github.com/NiteC-a11y/Engawa/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/NiteC-a11y/Engawa)](https://github.com/NiteC-a11y/Engawa/releases/latest)
 
 > デスクトップの隅に住む AI の住人「茶々（ちゃちゃ）」と過ごす常駐アプリ。育てるでも働かせるでもなく、ただ"居る"。
 
@@ -35,7 +36,38 @@
 
 ---
 
+## 入手・インストール
+
+### A. 配布 exe を使う（Windows・お手軽）
+
+[最新リリース](https://github.com/NiteC-a11y/Engawa/releases/latest) から `engawa.exe` をダウンロードしてダブルクリックするだけ。**Python のインストールは不要**です（ランタイム・UI・アセットを同梱した単一実行ファイル）。
+
+ただし exe は **アプリ本体だけ**で、茶々を喋らせる LLM は同梱していません。次は別途用意してください（無いと **窓は出るが茶々は黙ったまま**）:
+
+- **[Claude Code](https://claude.com/claude-code) にサブスク（Pro/Max）でログイン済み** — 住人（茶々）の頭脳。
+- **Node.js**（`npx` が通ること） — 茶々を駆動する ACP アダプタの起動に使う。
+- （任意）**Codex / ChatGPT にログイン** — 客人（`/codex`・夕方の自発来訪）に必要。
+- **WebView2 ランタイム** — 縁側窓の描画。Windows 11 は標準搭載。Win10 等で**白窓**になる場合は [Evergreen ランタイム](https://developer.microsoft.com/microsoft-edge/webview2/)を入れる。
+
+> API キーは使いません（サブスク認証のみ）。exe も子プロセスから `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` を除去します。
+
+ダウンロードの完全性は、併記の `engawa.exe.sha256` と照合できます:
+
+```powershell
+(Get-FileHash engawa.exe -Algorithm SHA256).Hash    # sha256 ファイル内の値と一致すれば OK
+```
+
+exe の設定は環境変数（`ENGAWA_*`）で行えます。`engawa.json` を使いたい場合は `ENGAWA_CONFIG` にそのパスを渡してください（exe 版は実行ファイルの隣を自動では読みません）。
+
+### B. ソースから動かす（開発者・非 Windows）
+
+下の「[必要なもの](#必要なもの)」「[セットアップ & 起動](#セットアップ--起動)」を参照。Python があればどの OS でも動きます（隅の縁側窓は `pywebview`、console 起動はそれも不要）。
+
+---
+
 ## 必要なもの
+
+> 配布 exe（上記 A）を使う場合は **Python 不要**（同梱）。ただし **Node.js と Claude ログインはどちらの入手方法でも共通で必要**です。
 
 | 種類 | 内容 |
 |---|---|
@@ -130,7 +162,7 @@ ENGAWA_DEBUG=1             engawa.log に主要ライフサイクルを記録
 ```
 src/           アプリ本体（engawa_main / acp / sources / scheduler / views / prompts / conversation / game …）
 assets/        茶々スプライト（sprite.json + chacha.png）
-docs/adr/      設計判断と却下理由（ADR 0001〜0028）
+docs/adr/      設計判断と却下理由（ADR 0001〜0029）
 docs/          TECH_RULES.md（技術仕様・境界）/ Backlog.md（タスク在庫）/ class-diagram.md
 poc/           各フェーズの検証済み基準点（温存）
 CLAUDE.md      現行全体像の正本（開発者向けの「住人の心得」）

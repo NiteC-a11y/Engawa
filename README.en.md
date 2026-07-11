@@ -3,6 +3,7 @@
 [日本語](README.md) | **English**
 
 [![CI](https://github.com/NiteC-a11y/Engawa/actions/workflows/ci.yml/badge.svg)](https://github.com/NiteC-a11y/Engawa/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/NiteC-a11y/Engawa)](https://github.com/NiteC-a11y/Engawa/releases/latest)
 
 > A desktop companion app: you share your day with "Chacha," an AI resident who lives in the corner of your screen. You don't raise it or put it to work — it simply *lives there*.
 
@@ -35,11 +36,42 @@ Chacha (the veranda's resident — first person, Kansai-ish, long-lived session)
 
 ---
 
+## Get it / install
+
+### A. Use the prebuilt exe (Windows — easiest)
+
+Download `engawa.exe` from the [latest release](https://github.com/NiteC-a11y/Engawa/releases/latest) and double-click it. **No Python install required** — it's a single executable that bundles the runtime, UI, and assets.
+
+That said, the exe is **only the app itself** — it does *not* bundle the LLM that gives Chacha her voice. You still need the following (without them **the window opens but Chacha stays silent**):
+
+- **Logged in to [Claude Code](https://claude.com/claude-code) with a subscription (Pro/Max)** — the resident's (Chacha's) brain.
+- **Node.js** (`npx` must work) — used to launch the ACP adapter that drives Chacha.
+- (Optional) **Logged in to Codex / ChatGPT** — needed for the guest (`/codex`, evening drop-ins).
+- **WebView2 runtime** — renders the veranda window. Built into Windows 11. If you get a **blank white window** on Win10 etc., install the [Evergreen runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+
+> No API keys are used (subscription auth only). The exe also strips `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` from child processes.
+
+You can verify the download against the accompanying `engawa.exe.sha256`:
+
+```powershell
+(Get-FileHash engawa.exe -Algorithm SHA256).Hash    # matches the value in the sha256 file → OK
+```
+
+Configure the exe via environment variables (`ENGAWA_*`). To use an `engawa.json`, point `ENGAWA_CONFIG` at its path (the exe does not auto-read a file next to itself).
+
+### B. Run from source (developers / non-Windows)
+
+See "[Requirements](#requirements)" and "[Setup & run](#setup--run)" below. With Python it runs on any OS (the corner veranda window needs `pywebview`; console mode needs not even that).
+
+---
+
 ## Requirements
+
+> If you use the prebuilt exe (A above), **Python is not required** (bundled). But **Node.js and a Claude login are required either way**.
 
 | Type | Detail |
 |---|---|
-| Python | 3.10+ (developed/verified on 3.13) |
+| Python | 3.10+ (developed/verified on 3.13) — source install only; the exe bundles it |
 | Node.js | ACP adapters are launched via `npx` (`@agentclientprotocol/claude-agent-acp` / `codex-acp`) |
 | Auth (resident) | Logged in to [Claude Code](https://claude.com/claude-code) with a subscription (Pro/Max) |
 | Auth (guest) | Logged in to Codex / ChatGPT with a subscription |
@@ -130,7 +162,7 @@ ENGAWA_DEBUG=1              record key lifecycle events to engawa.log
 ```
 src/           the app itself (engawa_main / acp / sources / scheduler / views / prompts / conversation / game …)
 assets/        Chacha's sprite (sprite.json + chacha.png)
-docs/adr/      design decisions and why alternatives were rejected (ADRs 0001–0028)
+docs/adr/      design decisions and why alternatives were rejected (ADRs 0001–0029)
 docs/          TECH_RULES.md (tech spec & boundaries) / Backlog.md (task inventory) / class-diagram.md
 poc/           verified reference points for each phase (preserved)
 CLAUDE.md      the canonical picture of the current whole (a developer-facing guide)
