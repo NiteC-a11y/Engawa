@@ -37,7 +37,13 @@ TOPIC_MAX_PER_SOURCE = int(os.environ.get("ENGAWA_TOPIC_MAX_PER_SOURCE", "5"))
 TOPIC_MAX_BYTES = 512 * 1024                                                  # rss 取得サイズ上限
 TOPIC_CONFIG = os.environ.get("ENGAWA_TOPIC_CONFIG", "")                     # 外部JSON で源を差し替え（配布時）
 
-OSAKA_LAT, OSAKA_LON = 34.6937, 135.5023   # TODO(Backlog): 利用者が変更できる仕様へ（地名ラベルも連動）
+# 天気の観測地点（config 主導・env > engawa.json > 既定。未設定は大阪＝現行挙動を保つ）。
+# lat/lon は範囲クランプ（壊れた値で世界の裏側の天気を拾わない）。place は茶々の発話ラベル、
+# tz は Open-Meteo の timezone（当地の時刻で current を返す）。緯度経度・地名・TZ の3点が連動。
+WEATHER_LAT = config.get_float("ENGAWA_WEATHER_LAT", "weather", "lat", 34.6937, lo=-90, hi=90)
+WEATHER_LON = config.get_float("ENGAWA_WEATHER_LON", "weather", "lon", 135.5023, lo=-180, hi=180)
+WEATHER_TZ = config.get_str("ENGAWA_WEATHER_TZ", "weather", "tz", "Asia/Tokyo")
+PLACE_LABEL = config.get_str("ENGAWA_PLACE_LABEL", "weather", "place", "大阪")   # 茶々が「〜は晴れ」と言う地名
 
 WEATHER_CODE = {
     0: "快晴", 1: "おおむね晴れ", 2: "ところどころ曇り", 3: "曇り", 45: "霧", 48: "霧氷の霧",
@@ -47,12 +53,21 @@ WEATHER_CODE = {
 }
 
 
+def _weather_url(lat=None, lon=None, tz=None):
+    """Open-Meteo の現在天気 URL を組む（純関数＝ネット非依存でテスト可）。
+    引数省略時は config 解決済みのモジュール値（既定=大阪/Asia/Tokyo）。tz は URL エンコード。"""
+    lat = WEATHER_LAT if lat is None else lat
+    lon = WEATHER_LON if lon is None else lon
+    tz = WEATHER_TZ if tz is None else tz
+    return ("https://api.open-meteo.com/v1/forecast"
+            f"?latitude={lat}&longitude={lon}"
+            "&current=temperature_2m,weather_code,wind_speed_10m"
+            f"&timezone={urllib.parse.quote(tz, safe='')}")
+
+
 def fetch_weather():
-    url = ("https://api.open-meteo.com/v1/forecast"
-           f"?latitude={OSAKA_LAT}&longitude={OSAKA_LON}"
-           "&current=temperature_2m,weather_code,wind_speed_10m&timezone=Asia%2FTokyo")
     try:
-        with urllib.request.urlopen(url, timeout=8) as r:
+        with urllib.request.urlopen(_weather_url(), timeout=8) as r:
             cur = json.loads(r.read().decode("utf-8")).get("current", {})
         return {"temp": cur.get("temperature_2m"), "wind": cur.get("wind_speed_10m"),
                 "desc": WEATHER_CODE.get(cur.get("weather_code"), "よくわからない空")}
@@ -372,7 +387,7 @@ def ambient_narration(ctx):
     now = ctx["now"]; w = ctx["weather"]
     parts = [f"時刻: {now.strftime('%H:%M')}（{ctx['tod']}）"]
     if w:
-        s = f"大阪は{ctx['desc']}"
+        s = f"{PLACE_LABEL}は{ctx['desc']}"
         if w.get("temp") is not None:
             s += f"、{w['temp']}℃"
         if isinstance(w.get("wind"), (int, float)) and w["wind"] >= 20:

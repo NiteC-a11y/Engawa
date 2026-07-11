@@ -148,8 +148,12 @@ ENGAWA_RESIDENT_BACKEND=openai       run Chacha on a local LLM (LM Studio / Olla
 ENGAWA_GUEST_BACKEND=openai          run the guest on a local LLM too (default: Codex, needs a ChatGPT login)
 ENGAWA_OPENAI_BASE_URL=http://localhost:1234/v1   the OpenAI-compatible endpoint for the above (default = LM Studio)
 ENGAWA_GUEST_PROB=0.1       probability of a spontaneous visit
+ENGAWA_PLACE_LABEL=Kyoto    the place whose real weather Chacha watches (default = Osaka); pair with:
+ENGAWA_WEATHER_LAT=35.0116 / ENGAWA_WEATHER_LON=135.7681 (label, coords, tz move together)
 ENGAWA_DEBUG=1              record key lifecycle events to engawa.log
 ```
+
+> The weather location defaults to Osaka. To use a different place, set `place` (label), `lat`/`lon` (coordinates), and `tz` (e.g. `Asia/Tokyo`) together (also settable via `engawa.json[weather]`). Left unset, it stays Osaka.
 
 ---
 

@@ -146,7 +146,7 @@
   - 英語 voice は `meta.base="en"`＋`llm_lang="en"`（`prompts.py` が任意で参照）＋`strings.json`（訳）。
 - [ ] **Inc3（YAGNI・最初の外国語ロケールが来たら）: culture.json**
   - 季節モデル（二十四節気/旬→相応）・天気語彙・客人ペルソナを voice/base 継承で差し替え。下記の天気負債を吸収。
-- 関連負債の合流先: 「茶々用 CLAUDE.md を persona/ 別ディレクトリ運用」＝`voices/<id>/persona.md` に化ける ／ 「天気座標の大阪固定→設定化」＝`culture.json`(Inc3)。
+- 関連負債の合流先: 「茶々用 CLAUDE.md を persona/ 別ディレクトリ運用」＝`voices/<id>/persona.md` に化ける ／ ~~「天気座標の大阪固定→設定化」＝`culture.json`(Inc3)~~＝**単独 config 節 `[weather]` で先行実装済み（2026-07-11・上記 [x]）。culture.json が来たら地名/語彙ごと吸収する余地は残る**。
 - スプライト（三毛猫）は言語中立＝不変（P5 と独立・ADR-0010/0019）。
 
 ## Open Questions（spec §15）
@@ -193,8 +193,10 @@
 - [x] 天気が文脈に入るのが遅い／ユーザーターンに無い（起動直後に話しかけると天気を捏造＝とんちんかん）（6/27 修正・案A+保持）
   - 直し: `Scheduler.weather` に保持。`run()` 起動時に1回 `fetch_weather`（入力受付前）、`_tick_loop` で毎tick更新、`on_user_input` が `build_context(self.weather)` を `user_narration(line, ctx)` へ。`user_narration` は天気を持たせるが「聞かれてないのに言い立てない」抑制付き。天気 None なら天気行を出さない（捏造材料を与えない）
   - 検証: fake 8件 PASS＋実 resident E2E（実天気「ところどころ曇り24.6℃」→茶々「ちょい曇って涼しい」で整合・tick未発火の起動直後状況で確認）
-- [ ] 天気の座標が大阪固定（`OSAKA_LAT/LON`）→ 利用者が変更できる仕様へ（env / 設定ファイル等）
-  - 備考: ナレーションの「大阪は…」という地名ラベル（`build_ambient_narration`）もハードコード。座標と連動して地名も差し替える（地名だけ大阪のまま残る事故を防ぐ）
+- [x] 天気の座標が大阪固定（`OSAKA_LAT/LON`）→ 利用者が変更できる仕様へ（env / 設定ファイル等）**＝実装済み（2026-07-11）**
+  - 直し: `sources.WEATHER_LAT/_LON/_TZ` と `PLACE_LABEL` を config 解決（`ENGAWA_WEATHER_LAT/_LON/_WEATHER_TZ` / `ENGAWA_PLACE_LABEL`・`engawa.json[weather]`・env>json>既定）。既定は大阪＝**未指定なら現行のまま**。URL 組みは純関数 `sources._weather_url(lat,lon,tz)`（tz は URL エンコード）へ切り出しネット非依存でユニット化。地名ラベルも `ambient_narration` で `PLACE_LABEL` 連動（「地名だけ大阪」事故を回避）。lat/lon は範囲クランプ。
+  - 検証: `TestWeatherLocation` 5件（既定URL=大阪/no-arg整形/京都・別TZ override＋エンコード/地名既定=大阪/地名可変）＝全384 PASS・ruff clean。
+  - 注: culture.json(Inc3) 構想へ畳まず**単独 config 節**で実装（YAGNI・既存 config 主導の枠に収まる）。会話・昼夜tint の時刻はマシンのローカル時刻依存で、この weather tz とは別問題（残）。
 
 ## 発信ネタ（おまけ）
 - [ ] 「AIに住人を作る」過程の記事（ACP＋人格注入、環境反応の設計）

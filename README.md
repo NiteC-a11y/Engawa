@@ -148,8 +148,12 @@ ENGAWA_RESIDENT_BACKEND=openai       茶々を Claude でなくローカル LLM(
 ENGAWA_GUEST_BACKEND=openai          客人もローカル LLM で（省略時は Codex＝要 ChatGPT ログイン）
 ENGAWA_OPENAI_BASE_URL=http://localhost:1234/v1   上の OpenAI 互換 endpoint（既定=LM Studio）
 ENGAWA_GUEST_PROB=0.1      自発来訪の確率
+ENGAWA_PLACE_LABEL=京都     茶々が眺める天気の土地（既定=大阪）。緯度経度も一緒に：
+ENGAWA_WEATHER_LAT=35.0116 / ENGAWA_WEATHER_LON=135.7681（地名・座標・tz は連動）
 ENGAWA_DEBUG=1             engawa.log に主要ライフサイクルを記録
 ```
+
+> 天気の観測地点は既定で大阪です。別の土地にするなら `place`（地名ラベル）・`lat`/`lon`（緯度経度）・`tz`（`Asia/Tokyo` 等）の3点をそろえて指定します（`engawa.json[weather]` でも可）。未指定なら大阪のまま。
 
 ---
 

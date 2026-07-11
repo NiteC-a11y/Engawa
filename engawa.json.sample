@@ -47,6 +47,13 @@
     "cooldown": 2,
     "refresh_min": 30
   },
+  "weather": {
+    "_comment": "茶々が眺める実天気の観測地点(Open-Meteo)。既定は大阪＝未指定なら現行のまま。lat/lon=緯度経度(範囲外はクランプ)。tz=Open-Meteo の timezone(当地時刻で current を返す・例 Asia/Tokyo)。place=茶々が『〜は晴れ』と言う地名ラベル。3つは連動＝住む土地を変えるなら緯度経度・地名・TZ をそろえる(例 京都: lat 35.0116 / lon 135.7681 / place 京都)。env ENGAWA_WEATHER_LAT/_LON/_WEATHER_TZ / ENGAWA_PLACE_LABEL。注: 昼夜tint(daynight)と会話の時刻はマシンのローカル時刻依存で、この tz とは別。",
+    "lat": 34.6937,
+    "lon": 135.5023,
+    "tz": "Asia/Tokyo",
+    "place": "大阪"
+  },
   "acp": {
     "_comment": "ACP 1往復の timeout(秒)。adapter 無応答での永久待ちを防ぐ(S1)。短すぎると初回 npx ダウンロードや遅い応答を誤って中断するので寛容め。init/session は起動・認証込み、prompt はモデル次第で長め。cancel_grace=割り込み(cancel)後に in-flight prompt の cancelled 応答をこの秒数だけ待つ(adapter が握り潰しても prompt_timeout まで待たせない)。resident_restart_at=住人 prompt がこの回数連続 timeout で再起動(未満はターン破棄のみ＝文脈温存)。resident_guard=茶々ソロ出力の染み出しガード(1=注入プロンプトの復唱＋地の思考を表示前に除去。長時間で起きる出力崩れ対策。ソロ本文は一括表示＝逐次stream無し。0で従来の逐次stream。染み出し時は /restart で住人セッションを張り直せる)。env ENGAWA_ACP_* / ENGAWA_RESIDENT_GUARD で個別上書き可。",
     "init_timeout": 120,

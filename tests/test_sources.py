@@ -208,6 +208,46 @@ class TestAmbientLine(unittest.TestCase):
         self.assertEqual(prompts.ambient_line(None), "")
 
 
+class TestWeatherLocation(unittest.TestCase):
+    """天気の観測地点の config 化（大阪固定 → env/engawa.json で可変・未設定は大阪のまま）。"""
+    _CTX = {"now": datetime.datetime(2026, 7, 1, 12), "tod": "昼",
+            "weather": {"temp": 24}, "desc": "晴れ"}
+
+    def test_url_with_explicit_osaka_args(self):
+        # 既定値（大阪/Asia Tokyo）が URL に正しく載る＝現行挙動の形を固定
+        u = sources._weather_url(lat=34.6937, lon=135.5023, tz="Asia/Tokyo")
+        self.assertIn("latitude=34.6937", u)
+        self.assertIn("longitude=135.5023", u)
+        self.assertIn("timezone=Asia%2FTokyo", u)          # スラッシュは URL エンコード
+
+    def test_url_no_args_is_wellformed(self):
+        u = sources._weather_url()
+        self.assertTrue(u.startswith("https://api.open-meteo.com/v1/forecast?"))
+        self.assertIn("latitude=", u)
+        self.assertIn("timezone=", u)
+
+    def test_url_override_reflected_and_tz_encoded(self):
+        # 京都に振り替え・別 TZ もスラッシュがエンコードされる
+        u = sources._weather_url(lat=35.0116, lon=135.7681, tz="America/New_York")
+        self.assertIn("latitude=35.0116", u)
+        self.assertIn("longitude=135.7681", u)
+        self.assertIn("timezone=America%2FNew_York", u)
+
+    def test_default_place_label_is_osaka(self):
+        # 未設定＝「大阪は…」で現行のまま
+        self.assertIn("大阪は晴れ", sources.ambient_narration(self._CTX))
+
+    def test_place_label_is_configurable(self):
+        orig = sources.PLACE_LABEL
+        sources.PLACE_LABEL = "京都"
+        try:
+            line = sources.ambient_narration(self._CTX)
+            self.assertIn("京都は晴れ", line)
+            self.assertNotIn("大阪", line)
+        finally:
+            sources.PLACE_LABEL = orig
+
+
 class TestGuestAir(unittest.TestCase):
     """世間の種ブロック（tidbit のみ・時刻/天気は ambient_line に集約）。announce させない枠付き。"""
     def test_tidbit_rendered(self):
