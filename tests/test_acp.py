@@ -204,6 +204,70 @@ class TestChildEnv(unittest.TestCase):
         self.assertEqual(env["CODEX_CONFIG"], '{"model": "gpt-5-codex"}')
 
 
+class TestConfigDirEnv(unittest.TestCase):
+    def test_set_injects_claude_config_dir(self):
+        self.assertEqual(acp._config_dir_env("/home/me/.claude-main"),
+                         {"CLAUDE_CONFIG_DIR": "/home/me/.claude-main"})
+
+    def test_empty_or_blank_is_none(self):
+        # 未設定（空/空白のみ）は注入なし＝親の ~/.claude を継承（現状維持・adr/0002）
+        self.assertIsNone(acp._config_dir_env(""))
+        self.assertIsNone(acp._config_dir_env("   "))
+        self.assertIsNone(acp._config_dir_env(None))
+
+    def test_strips_surrounding_whitespace(self):
+        self.assertEqual(acp._config_dir_env("  /x/.claude  "),
+                         {"CLAUDE_CONFIG_DIR": "/x/.claude"})
+
+
+class TestMergeEnv(unittest.TestCase):
+    def test_merges_non_none(self):
+        self.assertEqual(acp._merge_env({"A": "1"}, {"B": "2"}), {"A": "1", "B": "2"})
+
+    def test_skips_none_parts(self):
+        self.assertEqual(acp._merge_env(None, {"A": "1"}, None), {"A": "1"})
+
+    def test_all_empty_is_none(self):
+        # 全部 None なら注入なし（現状維持）
+        self.assertIsNone(acp._merge_env(None, None))
+        self.assertIsNone(acp._merge_env())
+
+
+class TestResidentExtraEnv(unittest.TestCase):
+    def test_none_when_both_empty(self):
+        # モデルも認証プロファイルも未指定＝注入なし（既定挙動を変えない）
+        self.assertIsNone(acp._resident_extra_env("", ""))
+
+    def test_model_only(self):
+        self.assertEqual(acp._resident_extra_env("opus", ""),
+                         {"ANTHROPIC_MODEL": "opus"})
+
+    def test_config_dir_only(self):
+        self.assertEqual(acp._resident_extra_env("", "/home/me/.claude-main"),
+                         {"CLAUDE_CONFIG_DIR": "/home/me/.claude-main"})
+
+    def test_both(self):
+        self.assertEqual(acp._resident_extra_env("opus", "/home/me/.claude-main"),
+                         {"ANTHROPIC_MODEL": "opus", "CLAUDE_CONFIG_DIR": "/home/me/.claude-main"})
+
+    def test_resident_child_env_keeps_key_drop(self):
+        # 認証プロファイル注入と課金対策(キー除去)は独立＝退行しない（adr/0002）
+        env = acp._child_env({"ANTHROPIC_API_KEY": "sk", "PATH": "/x"},
+                             ("ANTHROPIC_API_KEY",),
+                             acp._resident_extra_env("opus", "/home/me/.claude-main"))
+        self.assertNotIn("ANTHROPIC_API_KEY", env)
+        self.assertEqual(env["CLAUDE_CONFIG_DIR"], "/home/me/.claude-main")
+        self.assertEqual(env["ANTHROPIC_MODEL"], "opus")
+
+    def test_guest_path_does_not_inject_config_dir(self):
+        # 客人(codex)は別 CLI＝CLAUDE_CONFIG_DIR 無関係。guest の extra_env は _model_env のみで注入しない。
+        env = acp._child_env({"OPENAI_API_KEY": "sk", "PATH": "/x"},
+                             ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
+                             acp._model_env("CODEX_CONFIG", "gpt-5-codex", json_key="model"))
+        self.assertNotIn("CLAUDE_CONFIG_DIR", env)
+        self.assertNotIn("OPENAI_API_KEY", env)
+
+
 class TestNoConsoleWindow(unittest.IsolatedAsyncioTestCase):
     """子プロセス（アダプタ起動の cmd/npx／後始末の taskkill）が窓を出さないよう
     creationflags=CREATE_NO_WINDOW を渡すことの回帰テスト。外すと『ぱっと開いて閉じる窓』が

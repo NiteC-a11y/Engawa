@@ -51,7 +51,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 - 子プロセスの env から **`ANTHROPIC_API_KEY` を必ず除去**してから spawn する。
   - 理由: 認証情報の優先順位で API キーが OAuth より優先される。残ると意図せず API 従量課金（`claude -p` がキーを継いで $1,800 請求の実例）。adr/0002
 - サブスク認証（OAuth）で動かす。**個人利用限定。** 配布する場合は各ユーザ BYO か API キー（claude.ai ログイン同梱は ToS 違反）。
-- アカウント取り違え防止に、必要なら子 env に `CLAUDE_CONFIG_DIR` を明示で渡す（例 `~/.claude-main`）。会社org に吸われるのを防ぐ。
+- アカウント取り違え防止に、`CLAUDE_CONFIG_DIR` を**住人(Claude)の子 env に渡してプロファイルを固定できる**（会社org に吸われるのを防ぐ）。**config 主導・opt-in で実装済み**＝`ENGAWA_CLAUDE_CONFIG_DIR` か `engawa.json[auth].claude_config_dir` を設定した時だけ注入。既定は空＝親の `~/.claude` を継承（現状維持・ハードコード固定は逆に壊すため）。実装は `acp._resident_extra_env` / `_config_dir_env`（`RESIDENT_CLAUDE_CONFIG_DIR`）。客人(codex)は別 CLI＝対象外。adr/0002
 - **モデル選択は子 env で渡す**（config 主導・`ENGAWA_MODEL`/`ENGAWA_CODEX_MODEL` → 既定はアダプタ任せで現状維持）。住人(Claude)は `ANTHROPIC_MODEL`（Claude Code が尊重・`opus`/`claude-opus-4-8`/`opus[1m]` 等）、客人(codex)は `CODEX_CONFIG` の `{"model": …}`（codex-acp が Codex 設定へマージ）。サブスク認証でも有効。API キーと違い課金事故とは無関係だが、注入経路は同じ子 env（`acp.py` `_child_env`）。
 
 ---

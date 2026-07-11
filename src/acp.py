@@ -35,6 +35,13 @@ CREATE_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 RESIDENT_MODEL = config.get_str("ENGAWA_MODEL", "model", "resident", "")
 GUEST_MODEL = config.get_str("ENGAWA_CODEX_MODEL", "model", "guest", "")
 
+# 住人(茶々=Claude)の認証プロファイル固定（adr/0002 の決定を opt-in で実装）。
+#   既定は空＝注入しない＝子は親の ~/.claude を継承（現状維持）。値が入った時だけ CLAUDE_CONFIG_DIR として
+#   住人の子 env に渡し、組織/個人アカウントが同一メールに紐づくと Claude Code が組織側を掴む落とし穴
+#   （VPN/SSO 状態依存）を避ける。ハードコード固定は逆に認証を壊すので必ず「明示時のみ」。
+#   ※客人(codex)は別 CLI＝無関係なので住人側のみ（spawn_guest には渡さない）。
+RESIDENT_CLAUDE_CONFIG_DIR = config.get_str("ENGAWA_CLAUDE_CONFIG_DIR", "auth", "claude_config_dir", "")
+
 # ACP 1往復の用途別 timeout（秒・config 可変）。adapter が生きたまま無応答でも永久待ちにしない（S1）。
 #   init/session は初回 npx ダウンロード＋認証を見込んで寛容に。prompt はモデル次第で長め。
 #   short すぎると初回起動や遅い応答を誤って中断するので、既定は寛容＋engawa.json/env で調整可。
@@ -84,6 +91,30 @@ def _child_env(base, drop_keys, extra_env=None):
     if extra_env:
         env.update({k: v for k, v in extra_env.items() if v is not None})
     return env
+
+
+def _config_dir_env(path):
+    """住人(Claude)の認証プロファイルを固定する CLAUDE_CONFIG_DIR エントリ（adr/0002）。
+    空/未設定は None＝注入しない＝親の ~/.claude を継承（現状維持）。明示時のみ組織アカウント誤選択を防ぐ。"""
+    path = (path or "").strip()
+    if not path:
+        return None
+    return {"CLAUDE_CONFIG_DIR": path}
+
+
+def _merge_env(*parts):
+    """複数の子 env エントリ(dict or None)を1つに畳む。None は無視。全部空なら None（＝注入なし・現状維持）。"""
+    out = {}
+    for p in parts:
+        if p:
+            out.update(p)
+    return out or None
+
+
+def _resident_extra_env(model, config_dir):
+    """住人(茶々=Claude)の子 env 追加分を組む純関数＝モデル(ANTHROPIC_MODEL)＋認証プロファイル(CLAUDE_CONFIG_DIR)。
+    どちらも空なら None＝現状維持。spawn から切り出してテストで検証できるようにする。"""
+    return _merge_env(_model_env("ANTHROPIC_MODEL", model), _config_dir_env(config_dir))
 
 
 def _session_model(result):
@@ -332,7 +363,8 @@ class AcpAgent:
         try:
             return await cls.spawn(ADAPTER_RESIDENT, cwd=persona_dir,
                                    client_name="engawa-resident", persona_dir=persona_dir,
-                                   extra_env=_model_env("ANTHROPIC_MODEL", model), model=model)
+                                   extra_env=_resident_extra_env(model, RESIDENT_CLAUDE_CONFIG_DIR),
+                                   model=model)
         except BaseException:
             shutil.rmtree(persona_dir, ignore_errors=True)   # 起動失敗時の temp dir 刈り（S2）
             raise
