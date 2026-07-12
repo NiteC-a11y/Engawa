@@ -74,7 +74,7 @@ See "[Requirements](#requirements)" and "[Setup & run](#setup--run)" below. With
 | Type | Detail |
 |---|---|
 | Python | 3.10+ (developed/verified on 3.13) — source install only; the exe bundles it |
-| Node.js | ACP adapters are launched via `npx` (`@agentclientprotocol/claude-agent-acp` / `codex-acp`) |
+| Node.js | ACP adapters are launched via `npx` (`@agentclientprotocol/claude-agent-acp` / `@agentclientprotocol/codex-acp`) |
 | Auth (resident) | Logged in to [Claude Code](https://claude.com/claude-code) with a subscription (Pro/Max) |
 | Auth (guest) | Logged in to Codex / ChatGPT with a subscription |
 | Optional | `pywebview` (the corner veranda window UI), `rlcard` (opponent AI for `/game`) |
