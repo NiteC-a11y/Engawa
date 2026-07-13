@@ -364,13 +364,14 @@ class Scheduler:
                     self.last_user_ts = time.time()
                     return
             # 部屋が閉じていた（沈黙で辞去等）→ 通常の話しかけに落とす
-        if self.speaking:                                # 進行中の注入だけを畳む（ambient・cancel優先）
+        interrupted = self.speaking                      # 振り向いた事実は注入にも語る（UI 演出と茶々の文脈を一致）
+        if interrupted:                                  # 進行中の注入だけを畳む（ambient・cancel優先）
             log.debug("cancel: user barge-in（speaking 中）")
             await self.resident.cancel()                 # session/cancel → stopReason=cancelled
             self.view.system("[茶々がこちらを向いた]")
         # active(source) は触らない → QUIET 明けに背景継続
         ctx = sources.build_context(self.weather, self.topics)   # 保持した天気を渡す（捏造防止）
-        await self._inject(sources.Narration(prompts.user_narration(line, ctx), "user"))
+        await self._inject(sources.Narration(prompts.user_narration(line, ctx, interrupted=interrupted), "user"))
         self.last_user_ts = time.time()
 
     async def _command(self, line):

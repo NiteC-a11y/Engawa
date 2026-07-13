@@ -131,6 +131,13 @@ class TestUserInput(unittest.IsolatedAsyncioTestCase):
         s.speaking = True                 # つぶやき進行中を擬似
         await s.on_user_input("おーい")
         self.assertEqual(r.cancels, 1)    # cancel 優先（ADR-0006）
+        self.assertIn("こちらを向いた", r.prompts[0])   # 振り向いた事実が注入にも入る（UI演出との一致）
+
+    async def test_no_turned_around_fact_when_idle(self):
+        s, r, v = _make()
+        await s.on_user_input("おーい")   # 喋ってない時の話しかけ＝振り向きの事実は語らない
+        self.assertEqual(r.cancels, 0)
+        self.assertNotIn("こちらを向いた", r.prompts[0])
 
     async def test_quit_sets_stop(self):
         s, r, v = _make()

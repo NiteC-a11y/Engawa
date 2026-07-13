@@ -94,6 +94,25 @@ class TestStripResidentLeak(unittest.TestCase):
         self.assertEqual(out, "ほな、ぼちぼちいこか。")
 
 
+class TestUserNarrationInterrupted(unittest.TestCase):
+    """barge-in（喋りかけ cancel）の事実を注入に語る（UI の「[茶々がこちらを向いた]」演出と文脈の一致）。"""
+    def test_interrupted_adds_turned_around_fact(self):
+        n = prompts.user_narration("おーい", ctx=None, interrupted=True)
+        self.assertIn("こちらを向いたところ", n)
+        # 事実の行は「話しかけられた」枠より前＝振り向いてから聞く、の順
+        self.assertLess(n.index("こちらを向いたところ"), n.index("話しかけられた"))
+
+    def test_default_has_no_turned_around_fact(self):
+        n = prompts.user_narration("おーい", ctx=None)
+        self.assertNotIn("こちらを向いた", n)
+
+    def test_echoed_interrupted_narration_is_stripped(self):
+        # 注入した事実の行を復唱されても、既存の echo-strip（injected marker）で消える
+        injected = prompts.user_narration("おーい", ctx=None, interrupted=True)
+        out = prompts.strip_resident_leak(injected + "なんや、おったんかいな。", injected)
+        self.assertEqual(out, "なんや、おったんかいな。")
+
+
 class TestSanitizePersona(unittest.TestCase):
     """/codex 自由入力 persona の最小サニタイズ（制御文字/改行/長さ・公開前の最低線）。"""
 
