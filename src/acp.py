@@ -18,7 +18,10 @@ import tempfile
 
 import agent    # 中立ポート（AgentTimeoutError／Agent Protocol・ADR-0026）。ACPTimeoutError はこれを継承
 import config   # モデル選択つまみ（env > engawa.json > 既定）
+import debuglog
 import persona  # 住人の人格（backend 中立・cwd の CLAUDE.md に書き出す）
+
+log = debuglog.get("acp")
 
 ADAPTER_RESIDENT = os.environ.get(
     "ENGAWA_ACP_CMD", "npx -y @agentclientprotocol/claude-agent-acp").split()
@@ -54,6 +57,17 @@ CANCEL_TIMEOUT = config.get_float("ENGAWA_ACP_CANCEL_TIMEOUT", "acp", "cancel_ti
 # cancel 通知後、in-flight prompt の cancelled 応答をこの秒数だけ待つ（adapter が握り潰しても backstop の
 #   prompt_timeout=240 まで待たせない・ADR-0006 安全弁の上限化）。短すぎると正規の cancelled 応答前に打ち切る。
 CANCEL_GRACE = config.get_float("ENGAWA_ACP_CANCEL_GRACE", "acp", "cancel_grace", 10, lo=1)
+PROMPT_RETRY_WAIT = 1.0   # cancel 直後の内部エラー(-32603)を1回だけ再送するまでの間（実機 7/13 で 1s 回復を確認）
+
+
+def _retryable_prompt_error(resp):
+    """再送で通る見込みのある prompt 応答か＝JSON-RPC 内部エラー(-32603)。
+    first token 前に cancel が刺さると履歴が user 止まりの宙ぶらりんになり、次の prompt が
+    claude-code-acp の内部エラー『[ede_diagnostic] result_type=user … stop_reason=null』で
+    弾かれる（実機 7/13 確認）。Scheduler はエラー応答を表示しない＝放置すると barge-in への
+    返答が無言で消えるため、adapter 内で少し置いて同文を再送して吸収する（1回だけ・有界）。
+    認証エラー等の別コードは対象外＝素通しで従来どおり。"""
+    return isinstance(resp, dict) and (resp.get("error") or {}).get("code") == -32603
 
 
 class ACPTimeoutError(agent.AgentTimeoutError):
@@ -444,7 +458,8 @@ class AcpAgent:
 
     async def prompt(self, text, on_chunk=None, timeout=None):
         """1ターン注入。応答の本文テキストを返す。stopReason は last_stop_reason に保持（cancel 時 'cancelled'）。
-        timeout(既定 PROMPT_TIMEOUT) 超過は ACPTimeoutError を投げ last_stop_reason='timeout'（呼び出し側が回復）。"""
+        timeout(既定 PROMPT_TIMEOUT) 超過は ACPTimeoutError を投げ last_stop_reason='timeout'（呼び出し側が回復）。
+        adapter 内部エラー(-32603)は1回だけ再送して吸収（_retryable_prompt_error 参照・実機 7/13）。"""
         buf = []
         def sink(t):
             buf.append(t)
@@ -452,10 +467,18 @@ class AcpAgent:
                 on_chunk(t)
         self.client.on_chunk = sink
         try:
-            resp = await self.client.request("session/prompt",
-                {"sessionId": self.sessionId, "prompt": [{"type": "text", "text": text}]},
-                timeout=PROMPT_TIMEOUT if timeout is None else timeout,
-                on_start=lambda rid: setattr(self, "_prompt_rid", rid))
+            for attempt in (1, 2):
+                resp = await self.client.request("session/prompt",
+                    {"sessionId": self.sessionId, "prompt": [{"type": "text", "text": text}]},
+                    timeout=PROMPT_TIMEOUT if timeout is None else timeout,
+                    on_start=lambda rid: setattr(self, "_prompt_rid", rid))
+                # buf が空の時だけ再送＝途中まで喋った本物の失敗を二重発話させない
+                if attempt == 1 and not buf and _retryable_prompt_error(resp):
+                    log.debug("prompt 内部エラー → %.1fs 置いて1回だけ再送 (%s)", PROMPT_RETRY_WAIT,
+                              str((resp.get("error") or {}).get("message", ""))[:80])
+                    await asyncio.sleep(PROMPT_RETRY_WAIT)
+                    continue
+                break
         except ACPTimeoutError:
             self.last_stop_reason = "timeout"
             raise

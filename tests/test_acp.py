@@ -134,6 +134,71 @@ class TestCancelBoundedWait(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(agent._expedite_task)
 
 
+class _ScriptedClient:
+    """prompt 再送テスト用: request が台本どおりの応答を順に返す（実プロセス不使用）。"""
+    def __init__(self, resps):
+        self.resps = list(resps)
+        self.calls = 0
+        self.on_chunk = None
+
+    async def request(self, method, params, timeout=None, on_start=None):
+        self.calls += 1
+        if on_start:
+            on_start(self.calls)
+        return self.resps.pop(0)
+
+
+def _ede_error():
+    return {"error": {"code": -32603,
+                      "message": "Internal error: [ede_diagnostic] result_type=user stop_reason=null"}}
+
+
+class TestPromptRetryOnInternalError(unittest.IsolatedAsyncioTestCase):
+    """first token 前の cancel 直後、次 prompt が adapter 内部エラー(-32603)で弾かれ茶々が無言になる
+    （実機 7/13）＝1回だけ再送して吸収する。他コードのエラーと部分発話後は再送しない。"""
+
+    def setUp(self):
+        self._wait0 = acp.PROMPT_RETRY_WAIT
+        acp.PROMPT_RETRY_WAIT = 0                       # テストは待たない
+
+    def tearDown(self):
+        acp.PROMPT_RETRY_WAIT = self._wait0
+
+    async def test_internal_error_retried_once_and_recovers(self):
+        client = _ScriptedClient([_ede_error(), {"result": {"stopReason": "end_turn"}}])
+        agent = acp.AcpAgent(_DeadProc(), client, "sid", {}, [])
+        await agent.prompt("こっち向いた？")
+        self.assertEqual(client.calls, 2)               # 再送1回で回復
+        self.assertEqual(agent.last_stop_reason, "end_turn")
+
+    async def test_internal_error_retried_only_once(self):
+        client = _ScriptedClient([_ede_error(), _ede_error()])
+        agent = acp.AcpAgent(_DeadProc(), client, "sid", {}, [])
+        await agent.prompt("やあ")
+        self.assertEqual(client.calls, 2)               # 2回で打ち止め（無限再送しない・有界）
+        self.assertEqual(agent.last_stop_reason, "error")
+
+    async def test_other_error_code_not_retried(self):
+        client = _ScriptedClient([{"error": {"code": -32000, "message": "auth failed"}}])
+        agent = acp.AcpAgent(_DeadProc(), client, "sid", {}, [])
+        await agent.prompt("やあ")
+        self.assertEqual(client.calls, 1)               # 認証エラー等は素通し（従来どおり）
+        self.assertEqual(agent.last_stop_reason, "error")
+
+    async def test_no_retry_after_partial_output(self):
+        class _ChunkThenError(_ScriptedClient):
+            async def request(self, method, params, timeout=None, on_start=None):
+                self.calls += 1
+                self.on_chunk("言いかけ……")             # 途中まで喋ってから死ぬ
+                return _ede_error()
+        client = _ChunkThenError([])
+        agent = acp.AcpAgent(_DeadProc(), client, "sid", {}, [])
+        out = await agent.prompt("やあ")
+        self.assertEqual(client.calls, 1)               # 二重発話防止＝再送しない
+        self.assertEqual(out, "言いかけ……")
+        self.assertEqual(agent.last_stop_reason, "error")
+
+
 class TestCloseRemovesPersonaDir(unittest.IsolatedAsyncioTestCase):
     async def test_close_rmtrees_persona_dir(self):
         import pathlib
