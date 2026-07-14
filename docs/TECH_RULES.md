@@ -1,6 +1,7 @@
 # TECH_RULES.md — Engawa 技術仕様・規約
 
-> 実装が逐一参照する据え置きルール。**判断の経緯**は docs/adr/、**全体像（正本）**は CLAUDE.md（adr/0016）。ここには「どう作るか」の確定事項だけ書く。
+> 実装が逐一参照する**固有の実装契約**だけを書く: ワイヤ契約・OS 固有の落とし穴・越えてはならない境界・テストの回し方。
+> **決定そのものはここに書かない**＝1行＋ADR ポインタ（言い換えの写しは同期ずれで腐る・adr/0030）。**判断の経緯**は docs/adr/、**全体像（正本）・env つまみ一覧**は CLAUDE.md（adr/0016）。
 > ルールを変える時は、対応する ADR を起こしてから。
 
 ---
@@ -9,16 +10,16 @@
 
 | 層 | 採用 | 備考 |
 |---|---|---|
-| 言語 | Python 3.13 | asyncio ベース |
-| Agent駆動 | **ACP**（Agent Client Protocol, JSON-RPC 2.0 over stdio） | MCPではない。adr/0001 |
+| 言語 | Python 3.10+（開発は 3.13） | asyncio ベース。CI は 3.10–3.13 マトリクス（§9） |
+| LLM 接続 | **Agent ポート**（`agent.py`）＋2アダプタ | ACP（`acp.py`・JSON-RPC 2.0 over stdio・MCPではない・adr/0001）／OpenAI 互換 API（`agent_openai.py`・LM Studio/Ollama・stdlib urllib・adr/0026） |
 | 住人アダプタ | `npx -y @agentclientprotocol/claude-agent-acp` | Claude Code を ACP化 |
-| 客人アダプタ | `npx -y @agentclientprotocol/codex-acp` | Codex を ACP化（P4） |
-| 天気 | Open-Meteo（APIキー不要、`urllib` のみ） | 大阪 lat 34.6937 / lon 135.5023 |
-| UI（P5） | pywebview + HTML/JS canvas | frameless + on_top。adr/0009 |
-| 永続化（**予定・未実装**） | SQLite | spec §11。residents/guests/events/messages/sessions。**現状はメモリのみ**（Backlog 技術的負債） |
-| ゲーム（任意） | RLCard（`game_rlcard.py` に隔離・**任意依存**） | AI が既存ゲームに参加。Game ポート＋アダプタ（ADR-0017）。無くてもコア app は動く（遊ぶ時だけ `pip install rlcard`） |
+| 客人アダプタ | `npx -y @agentclientprotocol/codex-acp` | Codex を ACP化 |
+| 天気 | Open-Meteo（APIキー不要、`urllib` のみ） | 座標/tz は config（`ENGAWA_WEATHER_*`・既定は大阪・`sources._weather_url`） |
+| UI | pywebview + HTML/JS canvas | frameless + on_top。adr/0009 |
+| 永続化（**予定・未実装**） | SQLite | **現状はメモリのみ**（Backlog 技術的負債） |
+| ゲーム（任意） | RLCard（`game_rlcard.py` に隔離・**任意依存**） | Game ポート＋アダプタ（adr/0017）。無くてもコア app は動く |
 
-外部依存は最小に。天気は標準ライブラリのみで取る（requests等を足さない）。**例外＝ゲームの rlcard（任意・遊ぶ時だけ・アダプタに隔離・ADR-0017）。**
+外部依存は最小に（requests 等を足さない）。例外＝rlcard（任意・遊ぶ時だけ・アダプタに隔離・adr/0017）。
 
 ---
 
@@ -35,25 +36,25 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 ```
 
 ### 規約
-- **capability は initialize 応答を読んで分岐する。** agentごとに違う（fork/resume/list/promptQueueing 等）。固定で仮定しない。
-  - 現状: `agentCapabilities` を保存するだけ（`acp.py`）。実際の **capability 分岐は未配線**＝必要になった時に足す。
-- **session/cancel は通知**（jsonrpc/method/params のみ、id を付けない）。受領後 in-flight の session/prompt は **stopReason=cancelled で正常終了**する（エラーではない）。エラー扱いしないこと。
-- **住人セッションは長命**：session/new は起動時1回。以後 prompt を同一 sessionId に積む。adr/0005
-- **客人セッションは使い捨て**：来訪ごとに session/new → 数往復 → 破棄。滞在は往復数で上限を切る。adr/0008
+- **capability は initialize 応答を読んで分岐する。** agent ごとに違う。固定で仮定しない。現状: `agentCapabilities` を保存するだけ（`acp.py`）＝**分岐は未配線**（必要になった時に足す）。
+- **session/cancel は通知**（jsonrpc/method/params のみ、id を付けない）。in-flight の session/prompt は **stopReason=cancelled で正常終了**する（エラー扱いしない）。cancel 後は **bounded wait**＝CANCEL_GRACE 秒で cancelled に畳み、永久待ちしない（adr/0006 安全弁の上限化）。first-token 前 cancel 直後の内部エラー **-32603 は1回だけ再送**して吸収（`acp.py`・実機 7/13）。
+- **住人セッションは長命が基本**（起動時に session/new・同一 sessionId に prompt を積む・adr/0005）。ただし**張り直す経路が3つ**ある: timeout 段階回復（adr/0021）／`/restart`／中座＝定期リフレッシュ（adr/0027）。
+- **客人セッションは使い捨て**：来訪ごとに session/new → 数往復 → 破棄。滞在は有界（adr/0008）。
+- timeout は中立例外 `agent.AgentTimeoutError` に正規化して投げる（呼び側は ACP/API の実体を知らない・adr/0026）。
 - agent→client の `fs/*` `terminal/*` は **無効**（clientCapabilities で false 申告し、要求が来たらエラー応答）。住人はツールを使わない。
-- `session/request_permission` が来たら **cancelled で返す**（住人に許可作業をさせない）。実応答 JSON は `{"outcome": {"outcome": "cancelled"}}`（ACP `RequestPermissionResponse`：外側 `outcome`＝応答フィールド／内側＝判断の種別。実装は `acp.py`）。
+- `session/request_permission` が来たら **cancelled で返す**（住人に許可作業をさせない）。実応答 JSON は `{"outcome": {"outcome": "cancelled"}}`（外側 `outcome`＝応答フィールド／内側＝判断の種別。実装は `acp.py`）。
 
 ---
 
 ## 3. 認証・課金（事故防止）
 
-**絶対ルール:**
-- 子プロセスの env は **allowlist で組む**（`acp._child_env`／default-deny・case-insensitive）。OS/ランタイム/node/npm/proxy/CA の素性だけ通し、**課金/外部送信に効く env は常に遮断**（`ANTHROPIC_*`・`OPENAI_*`・`AWS_*`・`GOOGLE_*`・`AZURE_*`・`CLAUDE_CODE_USE_BEDROCK`/`_VERTEX`＝`_is_billing_env`のハード拒否・`ENGAWA_ENV_PASSTHROUGH` でも貫通不可）。
-  - 理由: 認証情報の優先順位で API キーが OAuth より優先される。残ると意図せず API 従量課金（`claude -p` がキーを継いで $1,800 請求の実例）。旧 denylist（`drop_keys` で `ANTHROPIC_API_KEY` 等だけ除去）は Bedrock/Vertex/`ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_BASE_URL` を素通りさせる穴があり、allowlist で「明示以外入れない」に転換（adr/0002・追加点検 🔴）。
-  - 注意: 絞りすぎると node/npx（→adapter）が起動しない。**env 名は case-insensitive**（実 Windows は `SYSTEMROOT` 等の大文字で来る＝混在ケースで持つと取りこぼす・実機で判明）。allowlist に無い素性が要る特殊環境は `ENGAWA_ENV_PASSTHROUGH`（`engawa.json[auth].env_passthrough`・カンマ区切り）で足す。
-- サブスク認証（OAuth）で動かす。**各自の BYO サブスク**（各ユーザが自分の Claude/ChatGPT ログインで動かす）＝ソース/exe の配布は BYO 前提で可。ただし**単一サブスクの共有サービス化・claude.ai ログイン同梱は ToS 違反**（＝「個人利用限定」の実体は配布禁止でなく認証モデルの制約・adr/0002 文言メモ）。
-- アカウント取り違え防止に、`CLAUDE_CONFIG_DIR` を**住人(Claude)の子 env に渡してプロファイルを固定できる**（会社org に吸われるのを防ぐ）。**config 主導・opt-in で実装済み**＝`ENGAWA_CLAUDE_CONFIG_DIR` か `engawa.json[auth].claude_config_dir` を設定した時だけ注入。既定は空＝親の `~/.claude` を継承（現状維持・ハードコード固定は逆に壊すため）。実装は `acp._resident_extra_env` / `_config_dir_env`（`RESIDENT_CLAUDE_CONFIG_DIR`）。客人(codex)は別 CLI＝対象外。adr/0002
-- **モデル選択は子 env で渡す**（config 主導・`ENGAWA_MODEL`/`ENGAWA_CODEX_MODEL` → 既定はアダプタ任せで現状維持）。住人(Claude)は `ANTHROPIC_MODEL`（Claude Code が尊重・`opus`/`claude-opus-4-8`/`opus[1m]` 等）、客人(codex)は `CODEX_CONFIG` の `{"model": …}`（codex-acp が Codex 設定へマージ）。サブスク認証でも有効。API キーと違い課金事故とは無関係だが、注入経路は同じ子 env（`acp.py` `_child_env`）。
+経緯・却下案・実例（$1,800 請求）は adr/0002。ここは絶対ルールだけ:
+
+- **子プロセスの env は allowlist で組む**（`acp._child_env`・default-deny・**case-insensitive**＝実 Windows は `SYSTEMROOT` 等大文字で来る）。課金/外部送信に効く env（`ANTHROPIC_*`/`OPENAI_*`/`AWS_*`/`GOOGLE_*`/`AZURE_*`/Bedrock/Vertex）は**ハード拒否＝`ENGAWA_ENV_PASSTHROUGH` でも貫通不可**。特殊環境で足りない素性は passthrough で足す（貫通不可は維持）。
+- **サブスク認証（OAuth・各自 BYO）で動かす。** 単一サブスクの共有サービス化・claude.ai ログイン同梱は ToS 不可（adr/0002）。
+- `CLAUDE_CONFIG_DIR` は **opt-in で住人の子 env に固定可**（既定は空＝親の `~/.claude` を継承・`acp._resident_extra_env`・adr/0002）。
+- **モデル選択は子 env で渡す**（住人=`ANTHROPIC_MODEL`／客人=`CODEX_CONFIG`・未指定はアダプタ既定・adr/0020）。
+- **openai backend は非ローカル endpoint を既定ブロック**（`ENGAWA_OPENAI_ALLOW_REMOTE=1` の明示 opt-in でのみ解除・`agent_openai.py`・adr/0026）＝ローカル LLM のつもりでクラウド API へ課金/外部送信する事故を防ぐ。
 
 ---
 
@@ -73,34 +74,32 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 
 - **セッションに同時1ターン**。`turn_lock`（asyncio.Lock）で直列化する。
 - **ユーザー割り込みは cancel 優先**：ユーザー入力が来たら、進行中が ambient なら session/cancel を送って畳んでから、ユーザー発話を投入。adr/0006
-- **promptQueueing** は環境イベント同士の整列に使う想定。ユーザー割り込みには使わない（待たせない）。
-  - 現状: **promptQueueing は未配線**。同時1ターンの直列化は §5 の `turn_lock`＋Scheduler 制御で実現している（promptQueueing 経路は存在しない＝二重キューを足さないこと）。
+- **promptQueueing は未配線**。同時1ターンの直列化は `turn_lock`＋Scheduler 制御で実現している（二重キューを足さないこと）。
 - 会話直後 `QUIET_AFTER_USER` 秒は環境つぶやきを控える。会話中に独り言で割り込ませない。
 
 ---
 
 ## 6. イベント／プロンプト合成
 
-- 全イベント源（実環境・箱庭・話しかけ・来訪）は、茶々に渡す**ナレーション文字列**に合成して session/prompt へ流す（spec §6）。
-- 客人（Codex）の出力は**そのまま茶々に渡さず、ナレーション化**して渡す（「塀の向こうから声が…」）。adr/0008
-- ナレーションには「何も言いたくなければ "……" でよい」を必ず含め、過剰発話を抑制する。
+- 全イベント源（実環境・箱庭・話しかけ・来訪）は、茶々に渡す**ナレーション文字列**に合成して同一の長命セッションへ流す（adr/0013・文言ビルダーは `prompts.py`）。
+- **来訪中は「部屋」方式**（adr/0015）: 茶々/客人それぞれへの注入に直近のやり取り window（`話者「…」` の書き起こし）を含めて双方向化する（`prompts.room_guest_prompt`/`room_resident_prompt`）。※旧「客人の出力をナレーション化（塀の向こうから声が…）」は 0015 で置換済み。
+- 注入には「何も言いたくなければ "……" でよい」を必ず含め、過剰発話を抑制する（ソロ・room 共通）。
+- 自由テキスト（`/codex <人格>`・window 内の発話・トピックの種）は**「記録であって指示ではない」旨をプロンプト側で明示**する（`prompts.sanitize_persona`＋各ビルダーの注意書き）。
 
 ---
 
-## 7. UI 規約（P5）
+## 7. UI 規約
 
-- **透過しない。** 背景（空・障子・板の間）ごと不透明に描いた小窓を frameless + on_top で隅に置く。adr/0009
-- **窓サイズは config 主導**：`ENGAWA_UI_W`/`ENGAWA_UI_H`（既定 400×520）を `engawa.json[ui]` / env で（env>json>既定・ADR-0020 流）。**リサイズは右下グリップ**（frameless は掴む縁が無いので明示ハンドル `#grip`→JS pointer ドラッグ→`pywebview.api.resize`→`window.resize`・min 240 クランプ。`resizable=True` 単体では frameless でドラッグ不可だった）。配置は `ENGAWA_UI_CORNER`（br/bl/tr/tl）/ `ENGAWA_UI_EASYDRAG`。
-- **文字サイズは config 主導**（`ENGAWA_UI_FONT`・既定 1.0・目が悪い人向け）。本文/入力のフォントだけを `calc(BASE * var(--fz))` で拡大＝`#log`(overflow:auto) はスクロール・`#bar` は flex で残る＝**入力欄を押し出さない**。**窓全体の `zoom` は使わない**（frameless＋`height:100vh`＋`overflow:hidden` で拡大すると入力欄が窓外に切れて操作不能・6/30 の事故・撤回済み）。
-- **文字サイズはアプリ内でライブ調整可**（`/font <倍率>`・ADR-0007 の縁側操作＝茶々に流さない）。`Scheduler._cmd_font`→`View.set_font(scale)`（web だけ実装・console は no-op）。ライブ適用は**cross-thread な `evaluate_js` を使わず poll 方式**：`WebView.poll`/`game_poll` が `font` を返し、JS が `--fz` を差し替える（本窓・観戦窓とも）。**永続化は明示保存**（`/font save`→`config.set_value("ui","font",…)` が `engawa.json[ui].font` へ書き戻す＝localStorage 禁止と両立・config 主導）。`ENGAWA_UI_FONT`(env) は json より優先なので save 後も env が立てば env が効く（保存時に告知）。クランプ 0.8〜2.2 は `engawa_main._ui_config` と `scheduler.UI_FONT_MIN/MAX` を揃える。
-- **観戦窓(GAME_HTML)も同じ `ENGAWA_UI_FONT` で拡大**（本窓だけ拡大の不整合を避ける）。盤は文字＋カード箱(`.card`)＋行を `calc(BASE * var(--fz))` で揃え、**窓サイズも font 倍**に（`build_game_html(font)`／`set_layout(...,font)`／`game_open`）＝盤がはみ出さない。
-- **ドット絵は差し替え可能なアセット層**。state機構・ループはコード、スプライトは別（Aseprite製シートに後で差し替え）。adr/0010
-- **背景の昼夜は「画像差し替え」でなく「1枚の色膜＋補間」**（adr/0028・2Dゲーの世界標準解＝Godot CanvasModulate 等）。時刻→色は **backend の純関数** `daynight.layers(now)`（大阪時刻＝単一情報源・`{tint:"rgb(...)", glow:0..1, lamp:0..1}`）＝unittest 可（原則6）。`WebView.poll` が `font`/`absent` と同じ**持続フラグ方式**で毎回 `day` を載せ、JS `applyDay` が #scene の膜3枚へ適用: `#tint`＝`mix-blend-mode:multiply`（昼=白で無変化/夕=桃/夜=青灰）・`#lamp`＝`mix-blend-mode:screen`＋上端からの暖色 radial-gradient（障子ごしに漏れる室内灯・夜だけ点灯・強さ=opacity=lamp）・`#glow`＝`mix-blend-mode:screen`＋隅の寒色 radial-gradient（月明かり・強さ=opacity=glow）。lamp/glow は tint(乗算=暗く)の**上**に足す＝夜の闇に灯りがにじむ。膜は **`#scene{isolation:isolate}`** で窓外（暗い地）に漏らさない・z は UI（×/grip/nya）より後ろ＝UIは染めない・`pointer-events:none` でドラッグを塞がない。config on/off は `ENGAWA_DAYNIGHT`（既定1・`engawa.json[ui].daynight`）＝機能そのものの有効無効（0 なら poll が `day=None`＝背景固定）。時間帯別 `scene.png`（旧 B案）は捨てず「特別な一枚」用途に格下げ（`ENGAWA_SCENE_BG`）。**`/daynight` コマンド**（`/arc` と同筋・縁側操作なので茶々に流さない）は機能 on/off の**永続トグル**とプレビューを兼ねる: `on`/`off`＝機能を有効無効にして `engawa.json[ui].daynight` へ**保存**（ライブ反映・`/font save` と同じ流儀・env が立てば次回 env 優先を告知）／`HH:MM`＝時刻固定・`demo [from to secs]`＝夕→夜を早送り（既定 16:00→22:00 を40秒→終了で実時間へ自動復帰）＝プレビュー（一時・保存しない）／`auto`(=now/real)＝プレビュー解除して実時間へ。**プレビュー系(pin/demo)だけが override を作り、on/off トグルはプレビューを実時間へリセット**（前の固定を残さない）。無効中のプレビューは見えないので「/daynight on で有効化」を促す。**仮想時刻の解決は clock を持たない純関数**（`daynight.parse_override`/`override_minute`/`effective_layers`）＝「real now ＋ demo 開始からの経過秒(monotonic)」だけで判断＝unittest 可（View は spec と `_t0` だけ持ち、poll が `expired` 合図で override を外す）。
-- 拡大時は **`imageSmoothingEnabled = false` / `image-rendering: pixelated`** 必須（ドット絵を滲ませない）。
-- アニメ=コマ送り（パラパラ）、移動=座標/transform、のハイブリッド。state（天気/時刻/気分）→アニメ選択。
-- 既存IP（たまごっち / Clawd 等）に寄せない。オリジナルで描く。
-- ブラウザストレージ（localStorage 等）は使わない。状態はメモリ／SQLite。
-- **デバッグ出力は縁側の窓/console 本文に混ぜない**＝別ファイル `engawa.log`（gitignore）へ。`ENGAWA_DEBUG=1`（config・既定オフ）で `debuglog`（stdlib logging の薄いラッパ）が主要ライフサイクル（種の注入/来訪/room/cancel/timeout ＋ inject/user input/say/next beat）を **日付＋ミリ秒**（`YYYY-MM-DD HH:MM:SS.mmm`）で吐く＝会話タイミングを定量観測できる。off は NullHandler＝`log.debug` は no-op（本番の負荷ゼロ）。各モジュールは `debuglog.get("<name>")` の子ロガー、`setup` は composition root が1度だけ。個々の debug 出力は `assertLogs("engawa.<name>")` でユニット検証できる。
+- **透過しない。** 背景ごと不透明に描いた小窓を frameless + on_top で隅に置く。adr/0009
+- **見た目は config 主導**（env > `engawa.json` > 既定）。つまみ一覧は CLAUDE.md。**スプライト/背景は差し替え可能なアセット層**（adr/0010, 0019）。
+- **拡大時は `imageSmoothingEnabled = false` / `image-rendering: pixelated` 必須**（ドット絵を滲ませない）。アニメ=コマ送り、移動=座標/transform のハイブリッド。state（天気/時刻/気分）→アニメ選択。
+- **既存IP（たまごっち / Clawd 等）に寄せない。** オリジナルで描く。
+- **ブラウザストレージ（localStorage 等）は使わない。** 状態はメモリ／SQLite。永続化は `engawa.json` へ明示保存（`/font save` 流儀・`config.set_value`）。
+- **cross-thread の `evaluate_js` は使わない＝ライブ反映は poll 方式**（`WebView.poll` が font/absent/day 等の持続フラグを配り、JS 側が適用する）。
+- **窓全体の `zoom` は使わない**（frameless＋`height:100vh`＋`overflow:hidden` で入力欄が窓外に切れて操作不能・6/30 の事故・撤回済み）。文字拡大は本文/入力だけ `calc(BASE * var(--fz))`。
+- **frameless のリサイズは明示ハンドル**（右下 `#grip`→JS pointer ドラッグ→`pywebview.api.resize`。`resizable=True` 単体では frameless でドラッグ不可だった）。
+- 昼夜表現は**画像差し替えでなく tint 膜＋補間**。時刻→色は clock を持たない**純関数**（`daynight.py`）＝unittest 可（§9）。膜3枚・blend・`/daynight` の実装詳細は adr/0028。
+- **デバッグ出力は縁側の窓/console 本文に混ぜない**＝`ENGAWA_DEBUG=1` で別ファイル `engawa.log`（gitignore）へ（`debuglog`・stdlib logging の薄いラッパ・既定オフは NullHandler＝no-op・`assertLogs("engawa.<name>")` でユニット検証可）。
 
 ---
 
@@ -118,16 +117,16 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 
 ## 9. テスト（必須・adr/0023）
 
-- **ソース修正にはテストを同梱**し、`python -m unittest discover -s tests -t .`（stdlib unittest・GUI/ネット不要）で**全 PASS を確認してから完了**とする。テスト無しの修正は回帰検知が効かず、後の変更で壊しても気づけない。
-- **テスト困難な GUI/外部依存は判断ロジックを純関数に切り出してユニット化**する（例: `engawa_main._web_window_kwargs`/`_ui_config`、`views.build_web_html`）。GUI の見た目自体はユーザー目視（§7 / adr/0018,0019）。
-- **JS の"振る舞い"は opt-in のブラウザテストで回帰止め**（`tests/test_web_behavior.py`）。純関数に切り出せない DOM 適用ロジック（`applyDay`/`render` 等）は、実 `WEB_HTML` を headless chromium(playwright) で開き `pywebview.api.poll` を mock して DOM を assert する。**既定スキップ**（unit suite / CI の速度・依存を汚さない）＝`ENGAWA_BROWSER_TESTS=1 python -m unittest tests.test_web_behavior` で実行。string-presence ＋ `node --check`(構文) ＋ 目視では拾えない振る舞いバグ（例: `/daynight off` で夜色の膜を残し暗いまま固まる＝PR #7）を捕まえる。**JS(views.py の WEB_HTML)を触ったら走らせる**。
-- **harness で強制**：`.claude/settings.json`（project・committed）の **Stop フック**が src/tests 変更時にテストを走らせ、赤なら完了をブロック（`/hooks` で確認・無効化可）。**開発者向け設定＝Bash 必須**（`grep`/`tail` を使う。Windows は Git Bash 前提）。アプリの利用者には無関係だが、この repo を Claude Code で開く開発者が Windows で Bash 不在だとフックが動かない点に注意。
-- **CI（GitHub Actions・`.github/workflows/ci.yml`）**：push / PR で **tests**（Python 3.10–3.13 マトリクス・stdlib unittest・依存インストール不要＝`import webview`/`rlcard` は遅延）＋ **ruff**（`ruff.toml`＝`select=F,E9` の実バグ級のみ・低ノイズ）＋ **mermaid**（docs の `​```mermaid` 図を `@mermaid-js/mermaid-cli`＝mmdc で parse/render 検証＝図の破損を止める・`tests`/`ruff` では拾えないため追加）を自動実行。ローカルの Stop フックと二段で回帰を止める（フックは開発者ローカル・CI は共有の門番）。ローカルで合わせるなら `python -m ruff check src tests`。
+- **ソース修正にはテストを同梱**し、`python -m unittest discover -s tests -t .`（stdlib unittest・GUI/ネット不要）で**全 PASS を確認してから完了**とする。テスト無しの修正は回帰検知が効かず、後の変更で壊しても気づけない。※pytest への段階移行は宿題（Backlog・7/13）＝当面 unittest 形式のまま。
+- **テスト困難な GUI/外部依存は判断ロジックを純関数に切り出してユニット化**する（例: `engawa_main._web_window_kwargs`/`_ui_config`、`views.build_web_html`、`daynight.layers`）。GUI の見た目自体はユーザー目視（§7 / adr/0018, 0019）。
+- **JS の"振る舞い"は opt-in のブラウザテストで回帰止め**（`tests/test_web_behavior.py`）。純関数に切り出せない DOM 適用ロジック（`applyDay`/`render` 等）は、実 `WEB_HTML` を headless chromium(playwright) で開き `pywebview.api.poll` を mock して DOM を assert する。**既定スキップ**＝`ENGAWA_BROWSER_TESTS=1 python -m unittest tests.test_web_behavior` で実行。**JS(views.py の WEB_HTML)を触ったら走らせる**。
+- **harness で強制**：`.claude/settings.json`（project・committed）の **Stop フック**が src/tests 変更時にテストを走らせ、赤なら完了をブロック（`/hooks` で確認・無効化可）。**開発者向け設定＝Bash 必須**（Windows は Git Bash 前提。アプリ利用者には無関係）。
+- **CI（GitHub Actions・`.github/workflows/ci.yml`）**：push / PR で **tests**（Python 3.10–3.13 マトリクス・依存インストール不要＝`import webview`/`rlcard` は遅延）＋ **ruff**（`ruff.toml`＝`select=F,E9` の実バグ級のみ）＋ **mermaid**（docs の図を mmdc で parse/render 検証）を自動実行。ローカルで合わせるなら `python -m ruff check src tests`。
 
 ---
 
 ## 参照
-- テスト → リポジトリ直下で `python -m unittest discover -s tests -t .`（stdlib unittest のみ・GUI/ネット不要・`tests/`・§9 必須・adr/0023）
+- テスト → リポジトリ直下で `python -m unittest discover -s tests -t .`（§9 必須・adr/0023）
 - 判断の経緯 → `docs/adr/`（README に一覧）
-- 全体像（正本） → `CLAUDE.md`（adr/0016）／旧構想は `docs/engawa-acp-spec.md`（歴史的参照）
-- 住人の心得 → `CLAUDE.md`
+- 全体像（正本）・env つまみ一覧 → `CLAUDE.md`（adr/0016）／旧構想は `docs/engawa-acp-spec.md`（歴史的参照）
+- 本ファイルの担当範囲（固有の実装契約のみ・決定はポインタ） → adr/0030
