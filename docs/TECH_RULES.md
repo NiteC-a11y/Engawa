@@ -74,7 +74,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 
 - **セッションに同時1ターン**。`turn_lock`（asyncio.Lock）で直列化する。
 - **ユーザー割り込みは cancel 優先**：ユーザー入力が来たら、進行中が ambient なら session/cancel を送って畳んでから、ユーザー発話を投入。adr/0006
-- **来訪中（部屋）も同じ**：入力到着で `_room_rev`（単調増加）を進めて進行中ドライブを失効させ、生成中の手（茶々=`speaking`/客人=`cancel_inflight`）を best-effort cancel。表示/transcript への commit は `Room._utter` の gate 一箇所（現行 generation のみ）。対象は tick 駆動チェーン（挨拶/代打/辞去）＝入力起点チェーンへの連打はスコープL（未実装）。adr/0031。**cancel の port 契約は `agent.py` の `Agent` Protocol docstring が正本**（例外を漏らさない・in-flight prompt は正常復帰・結果は呼び手が破棄・決着時間は adapter 依存）。
+- **来訪中（部屋）も同じ**：入力到着で `_room_rev`（単調増加）を進めて進行中ドライブを失効させ、生成中の手（茶々=`speaking`/客人=`cancel_inflight`）を best-effort cancel。表示/transcript への commit は `Room._utter` の gate 一箇所（現行 generation のみ）。対象は tick 駆動チェーン（挨拶/代打/辞去）＝入力起点チェーンへの連打はスコープL（未実装）。adr/0031。**例外＝中断不可の手（ARRIVE/LEAVE/LEAVE_REACT）の生成中は cancel を送らない**（`Room.utter_preemptible` を見て rev+1 のみ。preemptible=False は gate を素通りするため、cancel の部分文がそのまま commit される＝「tick 駆動は全部 cancel 対象」と誤実装しないこと）。**cancel の port 契約は `agent.py` の `Agent` Protocol docstring が正本**（例外を漏らさない・in-flight prompt は正常復帰・結果は呼び手が破棄・決着時間は adapter 依存）。
 - **promptQueueing は未配線**。同時1ターンの直列化は `turn_lock`＋Scheduler 制御で実現している（二重キューを足さないこと）。
 - 会話直後 `QUIET_AFTER_USER` 秒は環境つぶやきを控える。会話中に独り言で割り込ませない。
 

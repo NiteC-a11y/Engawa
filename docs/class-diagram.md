@@ -19,7 +19,7 @@ classDiagram
     }
 
     class Scheduler {
-        +resident: AcpAgent
+        +resident: Agent
         +sources: EventSource[]
         +idle: WeatherSource
         +view: View
@@ -62,10 +62,10 @@ classDiagram
     }
 
     engawa_main ..> Scheduler : 組み立て
-    engawa_main ..> AcpAgent : spawn_resident
+    engawa_main ..> Agent : spawn_resident（実体= AcpAgent / OpenAIAgent を backend で選択・ADR-0026）
     engawa_main ..> View : ConsoleView / WebView
 
-    Scheduler --> AcpAgent : 住人注入
+    Scheduler --> Agent : 住人注入（中立ポート・acp を import しない）
     Scheduler o-- EventSource : 複数
     Scheduler --> WeatherSource : idle/fallback
     Scheduler --> View : 出力・入力
@@ -74,7 +74,8 @@ classDiagram
     Scheduler ..> CommandRouter : slash 委譲（/font /daynight・未登録は if/elif）
     GameController --> GameSession : 対局中のみ
     GameController ..> Scheduler : preempt/bump_beat/resident（callback で結ぶ）
-    Scheduler ..> RoomSpeakerFactory : room の Speaker 生成（種/timeout 凝集・resident_speak seam）
+    Scheduler ..> RoomSpeakerFactory : room の Speaker 生成（種/timeout 凝集・resident_speak seam）＋guest cancel（cancel_inflight・ADR-0031）
+    Scheduler ..> Room : barge-in 前に utter_preemptible を参照（中断不可の手は畳まない・ADR-0031）
     RoomSpeakerFactory ..> Room : Speaker を供給
 ```
 
@@ -209,8 +210,9 @@ classDiagram
     AcpAgent *-- ACPClient
     AcpAgent ..> ACPTimeoutError : prompt timeout
     Scheduler ..> Agent : resident / guest（中立ポート・acp を import しない）
-    engawa_main ..> AcpAgent : spawn（実体を注入）
-    GuestSource ..> AcpAgent : 使い捨て客人
+    engawa_main ..> AcpAgent : spawn（backend=acp 既定）
+    engawa_main ..> OpenAIAgent : spawn（backend=openai）
+    GuestSource ..> Agent : 使い捨て客人（実体は backend で選択）
 ```
 
 ---
@@ -244,7 +246,7 @@ classDiagram
 
     class GuestSource {
         +persona: str
-        +agent: AcpAgent
+        +agent: Agent
         +eligible(ctx) 夕方×確率
         +ensure_agent() codex spawn
     }
@@ -359,9 +361,11 @@ classDiagram
         +on_human(text, to, should_stop)
         +on_tick(should_stop)
         +preempted: bool
+        +utter_preemptible: bool
         -_state: RoomState
         -_fill_left: int
         -_stop: callable
+        -_live_preemptible: bool
     }
 
     class RoomState {
@@ -418,7 +422,7 @@ classDiagram
     Room *-- Transcript
     Transcript o-- Utterance
 
-    Scheduler ..> Speaker : fn注入 AcpAgent.prompt
+    Scheduler ..> Speaker : fn注入（RoomSpeakerFactory 経由・Agent.prompt）
     Scheduler --> Room
 ```
 
@@ -441,6 +445,7 @@ flowchart TB
         GameAdapter
         EventSource
         Speaker
+        AgentP["Agent\n(LLM 接続・ADR-0026)"]
     end
 
     subgraph Adapters["Adapter（差し替え可能な実装）"]
@@ -450,6 +455,7 @@ flowchart TB
         BoxGardenArc
         GuestSource
         AcpAgent["AcpAgent\n(claude/codex ACP)"]
+        OpenAIAgent["OpenAIAgent\n(ローカル OpenAI 互換 API)"]
     end
 
     engawa_main --> Scheduler
@@ -457,7 +463,7 @@ flowchart TB
     Scheduler --> EventSource
     Scheduler --> GameAdapter
     Scheduler --> Room
-    Scheduler --> AcpAgent
+    Scheduler --> AgentP
     Scheduler --> prompts
     prompts -.-> sources
 
@@ -467,7 +473,9 @@ flowchart TB
     BoxGardenArc -.-> EventSource
     GuestSource -.-> EventSource
     Room --> Speaker
-    Speaker -.-> AcpAgent
+    Speaker -.-> AgentP
+    AcpAgent -.-> AgentP
+    OpenAIAgent -.-> AgentP
 ```
 
 ---
@@ -477,10 +485,10 @@ flowchart TB
 | 境界 | ポート | 主なアダプタ |
 |------|--------|--------------|
 | 出力・入力 | `View` | `ConsoleView`, `WebView`, `CaptureView` |
-| LLM 接続 | （明示 Port なし） | `AcpAgent` + 外部 ACP アダプタ |
+| LLM 接続 | `Agent`（adr/0026・cancel 契約は `agent.py` docstring が正本） | `AcpAgent`（外部 ACP＝claude/codex）, `OpenAIAgent`（ローカル OpenAI 互換 API） |
 | 環境イベント | `EventSource` | `BoxGardenArc`, `WeatherSource`, `GuestSource` |
 | ゲーム | `GameAdapter` | `RLCardAdapter`（+ `BlackjackRender`） |
-| 3人会話の発話 | `Speaker`（DI） | Scheduler が `AcpAgent.prompt` を fn として注入 |
+| 3人会話の発話 | `Speaker`（DI） | `RoomSpeakerFactory` が茶々=`_room_resident_speak` seam／客人=`Agent.prompt` を fn として注入（barge-in の `cancel_inflight` もここ・adr/0029 P4a/0031） |
 | LLM 文言生成 | （Port なし・関数群） | `prompts.py`（注入プロンプト工場・`sources` から分離・`prompts→sources` 一方向） |
 | スラッシュコマンド | `Command`／`CommandRouter`（登録制） | `commands.py`（`FontCommand`/`DayNightCommand`＋薄い `CommandContext`・`Scheduler._command` が委譲・adr/0029 Phase 1。残コマンドは controller 抽出に合わせ移行） |
 | 背景の昼夜 tint | （Port なし・純関数） | `daynight.py`（時刻→`{tint,glow,lamp}`・`WebView.poll` が大阪時刻で配信→JS が #scene の膜3枚［乗算tint＋月明かりglow＋室内灯lamp］へ・adr/0028。`/daynight` プレビューの仮想時刻解決＝`parse_override`/`override_minute`/`effective_layers` も純関数） |

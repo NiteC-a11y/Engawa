@@ -32,7 +32,7 @@
 | 0026 | LLM 接続は Agent ポートで中立化（ACP と API の2アダプタ・MCP は直交レイヤ・0001 の refine） | Accepted（Agent ポート＋2アダプタ実装: ACP/OpenAI互換API・住人/客人とも backend 選択可） |
 | 0027 | 茶々の「中座」で長命セッションを定期リフレッシュ（世界観に溶かした劣化根治・0005 の refine） | Accepted（実装済み） |
 | 0028 | 背景の昼夜は tint 層＋補間で表す（時間帯別 scene.png 差し替えは特別な一枚だけ・0010/0019 に乗る） | Accepted（実装済み） |
-| 0029 | Scheduler を薄い Orchestrator に戻す（責務を controller 群へ段階抽出・トップレベル分岐は Chain of Responsibility・0013 の refine） | Accepted（P1〜4a＋speak一本化 実装済み・839→584行／残 P4b/P5full/P6 は費用対効果で保留） |
+| 0029 | Scheduler を薄い Orchestrator に戻す（責務を controller 群へ段階抽出・トップレベル分岐は Chain of Responsibility・0013 の refine） | Accepted（P1〜4a＋speak一本化 実装済み・839→584行=P5時点の実測／残 P4b/P5full/P6 は費用対効果で保留） |
 | 0030 | TECH_RULES は固有の実装契約に限定する（決定の言い換えは1行＋ADRポインタ・0016 の refine） | Accepted（実施済み） |
 | 0031 | 部屋内 barge-in＝最新入力が古い generation を無効化・commit は現行 generation のみ（0006 の room 拡張・0015 Inc3） | Accepted（スコープM 実装済み＝tick 駆動チェーンへの被せ／スコープL=入力 worker 化は設計記録のみ・保留） |
 
