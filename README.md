@@ -16,7 +16,7 @@
   <sub>デスクトップの隅にそっと出る縁側窓（夕暮れ）。背景は実時刻で朝昼夕夜と移ろい、夜は障子から灯りが漏れる。時刻・天気にぽつり反応し、話しかければ応える。客人がくれば、客人と話しをし始める。</sub>
 </p>
 
-> ※ 茶々は日本語（関西弁）で喋り、コードコメントや設計ドキュメント（ADR・`CLAUDE.md`）も主に日本語です（英語は [README.en.md](README.en.md)）。
+> ※ 茶々は既定では日本語（関西弁）で喋ります。**英語の茶々＋英語UIも同梱**（`engawa-en.bat` でダブルクリック起動、または `ENGAWA_VOICE=en`／`engawa.json` の `"voice": {"id": "en"}`・adr/0022）。コードコメントや設計ドキュメント（ADR・`CLAUDE.md`）は主に日本語です（英語は [README.en.md](README.en.md)）。
 
 ---
 
@@ -142,6 +142,7 @@ Windows ではランチャの `.bat` も同梱しています:
 
 ```
 ENGAWA_UI=web              隅の縁側窓で起動
+ENGAWA_VOICE=en            茶々の「声」＝英語の茶々＋英語UI（既定 ja-osaka=大阪弁・engawa-en.bat でも可）
 ENGAWA_MODEL=opus          住人（茶々=Claude）のモデル
 ENGAWA_CODEX_MODEL=...     客人（codex）のモデル
 ENGAWA_RESIDENT_BACKEND=openai       茶々を Claude でなくローカル LLM(LM Studio/Ollama)で動かす（ADR-0026）

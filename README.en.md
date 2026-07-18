@@ -16,7 +16,7 @@ This is a personal experiment aiming for "**a single environment-reactive reside
   <sub>A little veranda window tucked in the corner of your desktop (at dusk). The background shifts through morning/day/dusk/night in real time, and at night light spills through the shoji screens. Chacha murmurs at the time and weather, and answers when you talk to her. And when a guest drops by, she strikes up a conversation with them.</sub>
 </p>
 
-> **Note for non-Japanese readers:** Chacha speaks Japanese (Kansai/Osaka dialect), and the code comments and design docs (ADRs, `CLAUDE.md`) are mostly in Japanese — this English README is the main entry point.
+> **Note for non-Japanese readers:** Chacha speaks Japanese (Kansai/Osaka dialect) **by default, but an English voice ships with the app** — double-click `engawa-en.bat`, or set `ENGAWA_VOICE=en` (or `"voice": {"id": "en"}` in `engawa.json`). The UI shell switches to English too; seasonal topics and guest personas are still Japanese-flavored for now (ADR-0022). Code comments and design docs (ADRs, `CLAUDE.md`) are mostly in Japanese — this English README is the main entry point.
 
 ---
 
@@ -142,6 +142,7 @@ Common environment variables:
 
 ```
 ENGAWA_UI=web              launch in the corner veranda window
+ENGAWA_VOICE=en            Chacha's "voice": English persona + English UI (default ja-osaka; engawa-en.bat does this)
 ENGAWA_MODEL=opus          model for the resident (Chacha = Claude)
 ENGAWA_CODEX_MODEL=...      model for the guest (codex)
 ENGAWA_RESIDENT_BACKEND=openai       run Chacha on a local LLM (LM Studio / Ollama) instead of Claude (ADR-0026)

@@ -147,15 +147,15 @@
   - 候補と論点（**まだ決め打ちしない＝もっと良い設計の余地あり**）: ①内部仕分け（move-first・else 雑談／打ち損じが雑談化する軽微な弊害）②明示 `/say <text>`（堅いが口を覚える必要）③web の宛先チップで茶々宛を雑談へ（web 限定）。客人は席埋めゲームでしか居ないのでまず茶々だけが現実的。並行性の直列化はどの案でも共通で要る。
 ## 多言語・多方言（voice バンドル・ADR-0022）
 
-茶々の「声」を **voice 単位**（`ja-osaka`/`ja-kyoto`/`ja-kagoshima`/`en`…）で差し替え。**base 言語 ⟂ voice を分離**し継承（`<voice>→<base>→既定`）。中身（各地域の声）は現地が書き起こす＝transcreation（機械翻訳しない・原則#2）。設計は ADR-0022。**まず方言ユースケースで継ぎ目を安く検証**してから言語へ（YAGNI・ADR-0013）。
+茶々の「声」を **voice 単位**（`ja-osaka`/`ja-kyoto`/`ja-kagoshima`/`en`…）で差し替え。**base 言語 ⟂ voice を分離**し継承（`<voice>→<base>→既定`）。中身（各地域の声）は現地が書き起こす＝transcreation（機械翻訳しない・原則#2）。設計は ADR-0022。~~まず方言ユースケースで継ぎ目を安く検証してから言語へ~~＝**実際は英語（言語）の実需が先に来て Inc1/Inc2 を 7/18 実装**（方言バンドルは未同梱・persona 一枚差しの継ぎ目は `test_voice.test_persona_only_bundle` で検証済み＝京都弁等はファイルを足すだけ）。
 
 - [x] **Inc1: voice 選択＋persona オーバーレイ**＝**実装済み（7/18）**。`src/voice.py`（解決=env `ENGAWA_VOICE`>json>既定 `ja-osaka` 組み込み・`voices/<id>/` の meta/persona/strings・base 継承・欠損は組み込みへフォールバック＝消せば現状維持）。注入は `acp.setup_persona_dir`／`agent_openai` の system が `voice.persona_text()` を使う（両 backend 同文・ADR-0026）。起動行に `声=<label>`（既定時は非表示）。ユニット test_voice 6件。
 - [x] **Inc2: UI シェルの i18n（英語向け）**＝**実装済み（7/18）**。`voice.loc(key, 日本語既定)` で高頻度シェルを鍵化（/help・barge-in 演出・来訪・中座・timeout・起動行・web 固定ラベル=`views._localize_html`）＋`prompts._lang_note()`（llm_lang 時のみ言語指示1行・JP では不変）。**同梱 `voices/en`**（英語の茶々=transcreation＋strings 訳＋llm_lang=en）・spec datas 同梱・`engawa.json.sample[voice]`。配線テスト test_voice 7件（実 en バンドル検証込み）。
   - [ ] **未鍵化の後送り**（日本語フォールバックで動く・要望が出たら鍵化）: /model 詳細・/restart 経路・/arc /game の対話文言・commands.py（/font /daynight）・game_controller。`/arc` キー引数（雀|猫|風）の英別名と住人表示名「茶々→Chacha」切替は culture/voice の判断待ち（固有名として維持中）。
   - [ ] **実機E2E（ユーザー）**: `ENGAWA_VOICE=en` で起動→英語の茶々のトーン目視（persona.md の書き味レビュー）・UI 訳の見た目・時節トピック（日本語の種）に英語で反応する様子。
-- [ ] **Inc3（YAGNI・最初の外国語ロケールが来たら）: culture.json**
+- [ ] **Inc3: culture.json**（~~YAGNI・最初の外国語ロケールが来たら~~＝**en 到来で着手条件は成立（7/18）**。ただし英語運用でも時節 local トピックは回る＝「季節ネタ・客人ペルソナが日本語風のまま」が実際に痛くなってから着手＝もう一段の実需待ち）
   - 季節モデル（二十四節気/旬→相応）・天気語彙・客人ペルソナを voice/base 継承で差し替え。下記の天気負債を吸収。
-- 関連負債の合流先: 「茶々用 CLAUDE.md を persona/ 別ディレクトリ運用」＝`voices/<id>/persona.md` に化ける ／ ~~「天気座標の大阪固定→設定化」＝`culture.json`(Inc3)~~＝**単独 config 節 `[weather]` で先行実装済み（2026-07-11・上記 [x]）。culture.json が来たら地名/語彙ごと吸収する余地は残る**。
+- 関連負債の合流先: ~~「茶々用 CLAUDE.md を persona/ 別ディレクトリ運用」＝`voices/<id>/persona.md` に化ける~~＝**化けた（7/18・`voice.persona_text()` が両 backend へ注入・組み込み底は persona.py）** ／ ~~「天気座標の大阪固定→設定化」＝`culture.json`(Inc3)~~＝**単独 config 節 `[weather]` で先行実装済み（2026-07-11・上記 [x]）。culture.json が来たら地名/語彙ごと吸収する余地は残る**。
 - スプライト（三毛猫）は言語中立＝不変（P5 と独立・ADR-0010/0019）。
 
 ## Open Questions（spec §15）
