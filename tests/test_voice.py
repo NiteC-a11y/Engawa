@@ -156,6 +156,7 @@ class TestEnBundleAndWiring(unittest.IsolatedAsyncioTestCase):
         out = prompts.user_narration("hello")
         self.assertIn("Respond in English", out)                    # llm_lang=en → 言語ノブが乗る
         self.assertIn("Respond in English", prompts.room_resident_prompt((), "reply"))
+        self.assertIn("Respond in English", prompts.room_guest_prompt("traveler", (), "reply"))   # 客人も英語で応じる
 
     def test_prompts_lang_note_absent_by_default(self):
         self._use_default_voice()
