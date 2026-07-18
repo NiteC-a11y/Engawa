@@ -4,7 +4,7 @@
     {
       "id": "katori-senko",
       "image": "props/katori-senko.png",
-      "left_pct": 14,
+      "left_pct": 75,
       "bottom_pct": 7,
       "display_px": 46,
       "months": [6, 7, 8, 9],
