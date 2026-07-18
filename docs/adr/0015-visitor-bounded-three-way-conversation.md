@@ -45,4 +45,4 @@ Open Questions の主要点を確定し、**State パターン**で実装:
 - **進捗**:
   - **Inc1**: 会話エンジン `conversation.py`（State: Greeting→AwaitingHuman⇄Responding→Leaving→Closed。`AwaitingHuman` は tick で AI を動かさない＝自律往復が*起き得ない*構造。`Responding` は cap 手で必ず人間待ちへ）＋Speaker(Strategy/DI)＋ユニット。
   - **Inc2**: Scheduler/GuestSource 結線（`/codex`・自発来訪が部屋を開く・`view.say` で確定発話を一様表示・沈黙で辞去・codex 使い捨て維持＝ADR-0008 の核は不変）＋統合テスト。
-- **Inc3 に残す**: cancel優先(ADR-0006)の部屋内統合（現状は短いターンを直列化＝人間は待つ）／茶々の room ストリーミング（現状は確定行表示）／**実 codex の3人会話 E2E（実機・ユーザー）**／表示・スプライト演出の磨き。
+- **Inc3 に残す**: cancel優先(ADR-0006)の部屋内統合（現状は短いターンを直列化＝人間は待つ）／茶々の room ストリーミング（現状は確定行表示）／~~実 codex の3人会話 E2E（実機・ユーザー）~~＝**済（追記 2026-07-18・実機確認。room 実運用から生まれた修正が裏付け＝時間感覚ズレ fix・客人APIエラーの急用退場・ADR-0025 代打）**／表示・スプライト演出の磨き。

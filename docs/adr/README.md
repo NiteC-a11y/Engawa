@@ -18,7 +18,7 @@
 | 0012 | 天気は実天気が真実・箱庭は従属（状態は実天気/手触りは箱庭） | Accepted |
 | 0013 | イベント源/スケジューラのアーキテクチャ（ADR-0011 の実装構造） | Accepted（実装済み） |
 | 0014 | 客人の世間話に外部トピックを注入（取得先はホワイトリスト） | Accepted（実装） |
-| 0015 | 客人(visitor)に人間アンカーで有界な3人会話を解禁（環境イベントに相互作用モード） | Accepted（Inc1/Inc2 実装済み・Inc3/実 codex E2E は残） |
+| 0015 | 客人(visitor)に人間アンカーで有界な3人会話を解禁（環境イベントに相互作用モード） | Accepted（Inc1/Inc2 実装済み・実 codex 3人E2E 実機済み・残=部屋内cancel統合/roomストリーミング） |
 | 0016 | ドキュメントの正本を CLAUDE.md に定め、spec v1 を旧構想として降格 | Accepted |
 | 0017 | ゲームは Game ポート＋RLCard アダプタで受け、AI が既存ゲームに参加（初の任意外部依存 rlcard） | Accepted（Inc1〜4 実装済み・運用は GameController=0029 P3） |
 | 0018 | リポジトリを src/・assets/・poc/・docs/ に整理（設定と CLAUDE.md は root 維持） | Accepted（実施済み） |
