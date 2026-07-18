@@ -29,7 +29,7 @@ class FakeAgent:
         return self.reply
 
 
-def _factory(persona="ご隠居", *, resident_speak=None, agent=None, topics=None):
+def _factory(persona="ご隠居", *, resident_speak=None, agent=None, topics=None, preempted=None):
     async def default_resident_speak(text):
         return "ふむ"
     return room_speakers.RoomSpeakerFactory(
@@ -38,7 +38,8 @@ def _factory(persona="ご隠居", *, resident_speak=None, agent=None, topics=Non
         guest_agent_provider=lambda: agent,
         context_provider=lambda: {"tod": "昼", "now": None},
         topics_provider=lambda: (topics or []),
-        log=logging.getLogger("test.room_speakers"))
+        log=logging.getLogger("test.room_speakers"),
+        preempted=preempted)
 
 
 class TestRoomSpeakerFactory(unittest.IsolatedAsyncioTestCase):
@@ -86,6 +87,54 @@ class TestRoomSpeakerFactory(unittest.IsolatedAsyncioTestCase):
         out = await f._guest_say([], conversation.REPLY)
         self.assertEqual(out, "")                     # 生 JSON は縁側に出さない（transcript にも積まれない）
         self.assertTrue(f.guest_timed_out)            # 応答不能扱い＝呼び側(_check_room_timeout)が急用退場で畳む
+
+    async def test_cancel_inflight_noop_when_idle(self):
+        # 生成中の客人が居なければ畳む対象なし＝False（演出も出さない側の判定材料・ADR-0031）
+        f = _factory(agent=FakeAgent())
+        self.assertFalse(await f.cancel_inflight())
+
+    async def test_cancel_inflight_cancels_running_prompt(self):
+        # 生成中（prompt が未決着）の客人を best-effort で畳む＝agent.cancel が飛び True（ADR-0031）
+        import asyncio
+
+        class SlowAgent(FakeAgent):
+            def __init__(self):
+                super().__init__(reply="のんびりした返事")
+                self.started = asyncio.Event()
+                self.gate = asyncio.Event()
+                self.cancels = 0
+
+            async def prompt(self, text, on_chunk=None):
+                self.prompts.append(text)
+                self.started.set()
+                await self.gate.wait()               # barge-in が来るまで「生成中」
+                return self.reply
+
+            async def cancel(self):
+                self.cancels += 1
+                self.gate.set()                      # cancel で決着（bounded wait の代役）
+
+        a = SlowAgent()
+        f = _factory(agent=a)
+        task = asyncio.create_task(f._guest_say([], conversation.REPLY))
+        await a.started.wait()
+        self.assertTrue(await f.cancel_inflight())   # 畳む対象が居た
+        self.assertEqual(a.cancels, 1)
+        await task                                   # prompt は正常決着（言いかけの破棄は Room の commit gate 側）
+        self.assertIsNone(f._inflight)               # 登録は finally で必ず解除
+
+    async def test_guest_timeout_suppressed_when_preempted(self):
+        # barge-in と同時の timeout は退場に数えない（急用退場の誤発火防止・ADR-0031）
+        f = _factory(agent=FakeAgent(raise_timeout=True), preempted=lambda: True)
+        self.assertEqual(await f._guest_say([], conversation.REPLY), "")
+        self.assertFalse(f.guest_timed_out)
+
+    async def test_resident_timeout_suppressed_when_preempted(self):
+        async def rs(text):
+            raise AgentTimeoutError("hang")
+        f = _factory(resident_speak=rs, preempted=lambda: True)
+        self.assertEqual(await f._resident_say([], conversation.REPLY), "")
+        self.assertFalse(f.resident_timed_out)
 
     async def test_seed_cooldown_spaces_out(self):
         topics = [{"text": "夏至の話", "tone": "季節", "source": "時節"}]

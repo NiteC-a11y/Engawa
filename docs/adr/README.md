@@ -18,7 +18,7 @@
 | 0012 | 天気は実天気が真実・箱庭は従属（状態は実天気/手触りは箱庭） | Accepted |
 | 0013 | イベント源/スケジューラのアーキテクチャ（ADR-0011 の実装構造） | Accepted（実装済み） |
 | 0014 | 客人の世間話に外部トピックを注入（取得先はホワイトリスト） | Accepted（実装） |
-| 0015 | 客人(visitor)に人間アンカーで有界な3人会話を解禁（環境イベントに相互作用モード） | Accepted（Inc1/Inc2 実装済み・実 codex 3人E2E 実機済み・残=部屋内cancel統合/roomストリーミング） |
+| 0015 | 客人(visitor)に人間アンカーで有界な3人会話を解禁（環境イベントに相互作用モード） | Accepted（Inc1/Inc2 実装済み・実 codex 3人E2E 実機済み・部屋内cancel統合=0031 スコープM 済み・残=連打対応(0031 L・保留)/roomストリーミング） |
 | 0016 | ドキュメントの正本を CLAUDE.md に定め、spec v1 を旧構想として降格 | Accepted |
 | 0017 | ゲームは Game ポート＋RLCard アダプタで受け、AI が既存ゲームに参加（初の任意外部依存 rlcard） | Accepted（Inc1〜4 実装済み・運用は GameController=0029 P3） |
 | 0018 | リポジトリを src/・assets/・poc/・docs/ に整理（設定と CLAUDE.md は root 維持） | Accepted（実施済み） |
@@ -34,5 +34,6 @@
 | 0028 | 背景の昼夜は tint 層＋補間で表す（時間帯別 scene.png 差し替えは特別な一枚だけ・0010/0019 に乗る） | Accepted（実装済み） |
 | 0029 | Scheduler を薄い Orchestrator に戻す（責務を controller 群へ段階抽出・トップレベル分岐は Chain of Responsibility・0013 の refine） | Accepted（P1〜4a＋speak一本化 実装済み・839→584行／残 P4b/P5full/P6 は費用対効果で保留） |
 | 0030 | TECH_RULES は固有の実装契約に限定する（決定の言い換えは1行＋ADRポインタ・0016 の refine） | Accepted（実施済み） |
+| 0031 | 部屋内 barge-in＝最新入力が古い generation を無効化・commit は現行 generation のみ（0006 の room 拡張・0015 Inc3） | Accepted（スコープM 実装済み＝tick 駆動チェーンへの被せ／スコープL=入力 worker 化は設計記録のみ・保留） |
 
 形式は Michael Nygard 風（背景 / 決定 / 代替案 / 影響 / 備考）。

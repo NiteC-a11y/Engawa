@@ -127,6 +127,7 @@ class Room:
         self._fill_left = self.fill_cap                 # 残り代打回数（人間の発話でリセット＝また代打できる）
         self.transcript = Transcript()
         self._on_say = on_say or (lambda speaker, text, kind: None)   # 表示/記録フック（任意）
+        self._stop = lambda: False        # 現ドライブの失効判定（barge-in・ADR-0031）。各ドライブ入口で差し替え
         self._state = Greeting(self)
 
     # 観測用
@@ -138,19 +139,33 @@ class Room:
     def state_name(self):
         return type(self._state).__name__
 
-    # 外部イベント（Scheduler が駆動）。状態へ委譲＝State パターン
-    async def begin(self):
+    @property
+    def preempted(self):
+        """現在のドライブが barge-in で失効しているか（commit gate と同じ判定・ADR-0031）。"""
+        return self._stop()
+
+    # 外部イベント（Scheduler が駆動）。状態へ委譲＝State パターン。
+    # should_stop: 「このドライブはもう最新でない」判定（barge-in・ADR-0031）。省略時は従来挙動（止まらない）。
+    async def begin(self, should_stop=None):
+        self._stop = should_stop or (lambda: False)
         await self._state.enter()
 
-    async def on_human(self, text, to=None):
+    async def on_human(self, text, to=None, should_stop=None):
+        self._stop = should_stop or (lambda: False)
         await self._state.on_human((text or "").strip(), to)
 
-    async def on_tick(self):
+    async def on_tick(self, should_stop=None):
+        self._stop = should_stop or (lambda: False)
         await self._state.on_tick()
 
-    # 1人に喋らせて transcript/表示へ（無言は積まない）
-    async def _utter(self, speaker, kind):
+    # 1人に喋らせて transcript/表示へ（無言は積まない）。commit gate はここ一箇所（ADR-0031）＝
+    # 停止判定は「手の前」＋「復帰後・commit 前」の二段。失効ドライブの言いかけは表示にも transcript にも積まない。
+    async def _utter(self, speaker, kind, preemptible=True):
+        if preemptible and self._stop():
+            return ""
         text = _unquote((await speaker.say(self.transcript.window(), kind) or "").strip())
+        if preemptible and self._stop():
+            return ""
         if text:
             self.transcript.append(speaker.name, text)
             self._on_say(speaker.name, text, kind)
@@ -176,10 +191,11 @@ class RoomState:
 
 
 class Greeting(RoomState):
-    """来訪の入り＝客人が到着の挨拶、茶々が一言（有界・人間不要のアーク的瞬間）→ 人間待ちへ。"""
+    """来訪の入り＝客人が到着の挨拶、茶々が一言（有界・人間不要のアーク的瞬間）→ 人間待ちへ。
+    ARRIVE は中断不可＝「到着した」という世界状態を確定させてから人間に譲る（REACT のみ省略可・ADR-0031）。"""
     async def enter(self):
         r = self.room
-        await r._utter(r.guest, ARRIVE)
+        await r._utter(r.guest, ARRIVE, preemptible=False)
         await r._utter(r.resident, REACT)
         await r._goto(AwaitingHuman(r)).enter()
 
@@ -244,15 +260,18 @@ class ResidentFilling(RoomState):
         r = self.room
         if await r._utter(r.resident, MUSE):    # 茶々が代打で場に振る（無言なら客人も動かさない）
             await r._utter(r.guest, REPLY)       # 客人が茶々に短く応じる
+        elif r._stop():                          # barge-in で代打が不発（未 commit）＝予算を返す。
+            r._fill_left = min(r.fill_cap, r._fill_left + 1)   # 無言（LLM 判断）は従来どおり消費＝返すと辞去に着かない（ADR-0031）
         await r._goto(AwaitingHuman(r)).enter()  # 必ず人間待ちへ戻る（idle は 0 から数え直し）
 
 
 class Leaving(RoomState):
-    """辞去＝客人が暇を告げ、茶々が見送る（有界）→ 終端。codex の破棄は Scheduler 側（closed を見て）。"""
+    """辞去＝客人が暇を告げ、茶々が見送る（有界）→ 終端。codex の破棄は Scheduler 側（closed を見て）。
+    中断不可＝終端保証に触らない・挨拶なく消える不自然を避ける（ADR-0031）。"""
     async def enter(self):
         r = self.room
-        await r._utter(r.guest, LEAVE)
-        await r._utter(r.resident, LEAVE_REACT)
+        await r._utter(r.guest, LEAVE, preemptible=False)
+        await r._utter(r.resident, LEAVE_REACT, preemptible=False)
         r._goto(Closed(r))
 
 

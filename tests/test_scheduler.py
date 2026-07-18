@@ -416,6 +416,129 @@ class TestParseAddr(unittest.TestCase):
         self.assertEqual(sched._parse_addr("\x00\x00やあ"), (None, "やあ"))
 
 
+class TestRoomBargeIn(unittest.IsolatedAsyncioTestCase):
+    """部屋内 barge-in（ADR-0031 スコープM）: tick 駆動チェーン（代打）中の入力が生成中の手を畳み、
+    古い行を表示せず、新しい入力が場を取る。急用退場の誤発火もしない。"""
+
+    @staticmethod
+    def _says(v):
+        return [(sp, t) for (typ, sp, t) in v.events if typ == "say"]
+
+    @staticmethod
+    def _systems(v):
+        return [sp for (typ, sp, _t) in v.events if typ == "system"]
+
+    def _shrink_fill(self, room):
+        # config 値に依存せず1tickで代打が発火するよう部屋の間合いを直接刻む
+        room.fill_cap, room._fill_left, room.fill_after, room.fill_slowdown = 1, 1, 1, 0
+
+    async def _drive_tick(self, s):
+        # scheduler._tick の room 分岐相当（drive_lock 下で on_tick・ADR-0031 の token 配線込み）
+        async with s.drive_lock:
+            await s.room.on_tick(should_stop=s._room_stop_token())
+
+    async def test_input_during_guest_generation_cancels_and_discards(self):
+        created = []
+
+        class SlowCodex:
+            def __init__(self):
+                self.closed = False
+                self.reported_model = None
+                self.prompts = []
+                self.cancels = 0
+                self.calls = 0
+                self.started = asyncio.Event()
+                self.gate = asyncio.Event()
+
+            async def prompt(self, text, on_chunk=None):
+                self.calls += 1
+                self.prompts.append(text)
+                if self.calls == 2:                      # 1=到着挨拶(即答) 2=代打REPLY(生成中に被せられる)
+                    self.started.set()
+                    await self.gate.wait()
+                    return "古いビートへの返事"
+                return "ほいほい"
+
+            async def cancel(self):
+                self.cancels += 1
+                self.gate.set()                          # cancel で決着（bounded wait の代役）
+
+            async def close(self):
+                self.closed = True
+
+        async def spawn():
+            c = SlowCodex()
+            created.append(c)
+            return c
+
+        s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
+                            views.CaptureView(), spawn_codex=spawn)
+        await s._summon_guest("ご隠居")
+        self._shrink_fill(s.room)
+        task = asyncio.create_task(self._drive_tick(s))   # 代打: 茶々 MUSE → 客人 REPLY(生成中で停止)
+        await created[0].started.wait()
+        s.view.events.clear()
+        await s.on_user_input("あ、そうそう")             # ← 生成中に被せる
+        await task
+        self.assertEqual(created[0].cancels, 1)                        # 客人の生成を畳んだ
+        says = self._says(s.view)
+        self.assertNotIn("古いビートへの返事", [t for _sp, t in says])  # 言いかけは表示されない
+        self.assertEqual(says, [("茶々", "ええ天気やな"), ("ご隠居", "ほいほい")])   # 新しい入力が場を取る
+        self.assertTrue(any("こちらを向いた" in m for m in self._systems(s.view)))  # 演出は畳んだ時だけ
+        self.assertFalse(s._speakers.guest_timed_out)                  # 急用退場に誤カウントしない
+        self.assertIsNotNone(s.room)
+        self.assertFalse(s.room.closed)
+
+    async def test_input_during_resident_room_speech_cancels(self):
+        class SlowMuseResident(FakeResident):
+            def __init__(self):
+                super().__init__()
+                self.calls = 0
+                self.started = asyncio.Event()
+                self.gate = asyncio.Event()
+
+            async def prompt(self, text, on_chunk=None):
+                self.calls += 1
+                if self.calls == 2:                      # 1=挨拶REACT(即答) 2=代打MUSE(生成中に被せられる)
+                    self.started.set()
+                    await self.gate.wait()
+                    return "古いつぶやき"
+                return await super().prompt(text, on_chunk)
+
+            async def cancel(self):
+                await super().cancel()
+                self.gate.set()
+
+        created = []
+        r = SlowMuseResident()
+        s = sched.Scheduler(r, [], sources.WeatherSource(),
+                            views.CaptureView(), spawn_codex=_codex_factory(created))
+        await s._summon_guest("ご隠居")
+        self._shrink_fill(s.room)
+        task = asyncio.create_task(self._drive_tick(s))   # 代打: 茶々 MUSE(生成中で停止)
+        await r.started.wait()
+        s.view.events.clear()
+        await s.on_user_input("あ、そうそう")             # ← 茶々の生成中に被せる（speaking 経路）
+        await task
+        self.assertEqual(r.cancels, 1)                                  # ソロ barge-in と同型で畳んだ
+        says = self._says(s.view)
+        self.assertNotIn("古いつぶやき", [t for _sp, t in says])         # 言いかけは表示されない
+        self.assertEqual(says, [("茶々", "ええ天気やな"), ("ご隠居", "ごめんやす")])
+        self.assertTrue(any("こちらを向いた" in m for m in self._systems(s.view)))
+        self.assertFalse(s._speakers.resident_timed_out)
+        self.assertFalse(s.room.closed)
+
+    async def test_input_when_room_idle_no_effect_line(self):
+        # 生成中の手が無ければ何も畳まない＝演出も出ない（自然完了と紛れない・ADR-0031）
+        created = []
+        s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
+                            views.CaptureView(), spawn_codex=_codex_factory(created))
+        await s._summon_guest("ご隠居")
+        s.view.events.clear()
+        await s.on_user_input("ええ天気やね")
+        self.assertFalse(any("こちらを向いた" in m for m in self._systems(s.view)))
+
+
 class TestThreeWayRoom(unittest.IsolatedAsyncioTestCase):
     """3人会話の部屋（ADR-0015 Inc2）: Scheduler↔Room の統合。fake codex＋CaptureView で実 ACP 不要。"""
     def _scheduler(self, created):

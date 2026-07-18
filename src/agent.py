@@ -24,7 +24,16 @@ class Agent(Protocol):
     - `close()` … 破棄（プロセス/セッションの後始末）
     - `model` / `reported_model` … 要求モデル / 実装が報告した実モデル（/model 表示用・無ければ None）
     - `last_stop_reason` … 直近ターンの stopReason（cancel 時 'cancelled' / timeout 時 'timeout'）
-    生成は factory（例 `AcpAgent.spawn_resident`）で行い、composition root が Scheduler に注入する。"""
+    生成は factory（例 `AcpAgent.spawn_resident`）で行い、composition root が Scheduler に注入する。
+
+    cancel の契約（ソロ barge-in と room barge-in の2呼び手が依存・ADR-0006/0031）:
+    1. best-effort＝呼び手に例外を漏らさない。
+    2. cancel 時点で in-flight だった prompt は **例外でなく正常復帰**する（AgentTimeoutError を投げない・
+       戻り値は部分テキストでよい）。その結果を採用するかは呼び手の commit gate が決める＝採用してはならない。
+    3. 決着までの時間は adapter 依存（ACP=CANCEL_GRACE 上限の bounded wait／OpenAI=自前 timeout 上限で
+       HTTP 完走後に破棄）。呼び手はこの差に依存しない（cancel 後はロック解放を await するだけ）。
+    4. cancel の完了は、サーバ側生成の停止や次 prompt の受付可能性まで**保証しない**（ACP の synthetic
+       cancel 後の次 prompt は adapter 層の再送等で回復する・acp.py 参照）。"""
     model: Optional[str]
     reported_model: Optional[str]
     last_stop_reason: Optional[str]

@@ -276,5 +276,94 @@ class TestResidentFilling(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(room.state_name, "AwaitingHuman")
 
 
+class TestBargeIn(unittest.IsolatedAsyncioTestCase):
+    """部屋内 barge-in（ADR-0031）: should_stop（ドライブ失効判定）で残りの手を捨て、
+    commit gate（_utter 二段判定）が言いかけを表示/transcript に積まない。有界性は不変。"""
+
+    async def test_responding_stops_after_first_commit(self):
+        # 1手目の commit 直後に失効（人間が被せた想定）→ 2手目 CHIME は出ない・必ず人間待ちへ
+        log, says, stop = [], [], {"v": False}
+
+        def on_say(s, t, k):
+            says.append((s, k)); stop["v"] = True
+        room = conv.Room(PERSONA, _spk("茶々", log), _spk("ご隠居", log),
+                         fill_cap=0, on_say=on_say)
+        await room.begin()
+        says.clear(); stop["v"] = False
+        await room.on_human("ご隠居どう思う?", should_stop=lambda: stop["v"])
+        self.assertEqual(says, [("ご隠居", conv.REPLY)])          # 失効後の CHIME は不発
+        self.assertEqual(room.state_name, "AwaitingHuman")        # 歯止めの終着は不変
+        self.assertTrue(room.preempted)                           # 失効はプロパティでも観測できる
+
+    async def test_utterance_discarded_when_stopped_mid_say(self):
+        # 生成の最中に失効（復帰後・commit 前の gate）→ 言いかけは表示にも transcript にも積まない
+        stop, says = {"v": False}, []
+
+        async def fn(window, kind):
+            stop["v"] = True                                      # 生成中に barge-in が来た
+            return "言いかけの台詞"
+        room = conv.Room(PERSONA, conv.Speaker("茶々", fn), _spk("ご隠居", []),
+                         fill_cap=0, on_say=lambda s, t, k: says.append((s, t)))
+        await room.begin()
+        stop["v"] = False; says.clear()
+        n = len(room.transcript)
+        await room.on_human("ええ天気やね", should_stop=lambda: stop["v"])   # 宛先=茶々(fn)
+        self.assertEqual(says, [])                                # 何も表示されない
+        self.assertEqual(len(room.transcript), n + 1)             # 積まれたのは人間の行だけ
+        self.assertEqual(room.state_name, "AwaitingHuman")
+
+    async def test_greeting_arrive_commits_react_skipped(self):
+        # ARRIVE は中断不可（到着という世界状態を確定）・REACT のみ省略可
+        log, says = [], []
+        room = _room(log, says=says)
+        await room.begin(should_stop=lambda: True)                # 最初から失効扱い
+        self.assertEqual(_kinds(log), [("ご隠居", conv.ARRIVE)])  # REACT は呼ばれもしない
+        self.assertEqual(says, [("ご隠居", conv.ARRIVE)])
+        self.assertEqual(room.state_name, "AwaitingHuman")
+
+    async def test_leaving_completes_even_when_stopped(self):
+        # 辞去は中断不可＝終端保証（挨拶なく消えない）
+        log = []
+        room = _room(log, idle_leave_ticks=1)
+        await room.begin(); log.clear()
+        await room.on_tick(should_stop=lambda: True)              # 失効中でも辞去は完走
+        self.assertEqual(_kinds(log), [("ご隠居", conv.LEAVE), ("茶々", conv.LEAVE_REACT)])
+        self.assertTrue(room.closed)
+
+    async def test_fill_budget_refunded_on_preempt(self):
+        # 代打 MUSE が barge-in で不発（未 commit）→ 予算を返す（客人の退場を早めない）
+        stop, log = {"v": False}, []
+
+        async def muse_fn(window, kind):
+            if kind == conv.MUSE:
+                stop["v"] = True                                  # MUSE 生成中に人間が被せた
+            return "むにゃ"
+        room = conv.Room(PERSONA, conv.Speaker("茶々", muse_fn), _spk("ご隠居", log),
+                         fill_cap=2, fill_after=1, fill_slowdown=0, idle_leave_ticks=99)
+        await room.begin()
+        stop["v"] = False; log.clear()
+        await room.on_tick(should_stop=lambda: stop["v"])         # 代打発火 → MUSE は破棄
+        self.assertEqual(room._fill_left, 2)                      # 予算は返る
+        self.assertEqual(log, [])                                 # 客人 REPLY も出ない
+        self.assertEqual(room.state_name, "AwaitingHuman")
+
+    async def test_fill_budget_consumed_on_silence(self):
+        # 無言（LLM 判断）は従来どおり消費＝返すと辞去に着かない（ADR-0031 但し書き）
+        log = []
+        room = conv.Room(PERSONA, _spk("茶々", log, text=""), _spk("ご隠居", log),
+                         fill_cap=2, fill_after=1, fill_slowdown=0, idle_leave_ticks=99)
+        await room.begin()
+        await room.on_tick(should_stop=lambda: False)             # 失効なし・茶々が無言
+        self.assertEqual(room._fill_left, 1)                      # 予算は減ったまま
+
+    async def test_default_no_predicate_unchanged(self):
+        # should_stop 省略＝従来挙動（既存スイート全体も回帰網だが、明示の1本を置く）
+        log = []
+        room = _room(log)
+        await room.begin(); log.clear()
+        await room.on_human("ご隠居どう思う?")
+        self.assertEqual(_kinds(log), [("ご隠居", conv.REPLY), ("茶々", conv.CHIME)])
+
+
 if __name__ == "__main__":
     unittest.main()

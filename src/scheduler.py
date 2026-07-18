@@ -73,6 +73,7 @@ class Scheduler:
         self.active_source = None                        # 進行中の箱庭アーク source（next_phase で進む・割り込みで消えない）
         self.active_guest = None                         # 来訪中の客人 source（GuestSource＝persona/agent/cooldown/close の holder）
         self.room = None                                 # 3人会話の部屋（来訪中だけ・ADR-0015 Inc2）
+        self._room_rev = 0                               # 部屋入力の generation（単調増加・最新入力が古いドライブを失効させる・ADR-0031）
         # 対局の state/運用は GameController が所有（ADR-0029 Phase 3）。生成は drive_lock の後（下）。
         self.cooldowns = {s.key: 0 for s in source_list}
         self.turn_lock = asyncio.Lock()                  # resident 注入(_inject)の直列化＝割り込みの単位
@@ -264,7 +265,7 @@ class Scheduler:
             await self.games.on_tick()
             return
         if self.room is not None:                        # (0) 3人会話の部屋＝人間待ち/沈黙→辞去（State が判断）
-            await self.room.on_tick()
+            await self.room.on_tick(should_stop=self._room_stop_token())
             if await self._check_room_timeout():         # 部屋中に無応答→急用退場で畳んだら終わり
                 return
             if self.room.closed:
@@ -355,9 +356,10 @@ class Scheduler:
         if await self.games.on_user_input(line):         # 対局中＝入力は「手」（GameController が処理して True・ADR-0017）
             return
         if self.room is not None:                            # 3人会話の可能性（ADR-0015）
+            await self._room_barge_in()                      # 生成中の手を畳み、進行中ドライブを失効させる（ADR-0031）
             async with self.drive_lock:                      # tick と直列化。ロック内で部屋の有無を確定
                 if self.room is not None and not self.room.closed:   # 待機中に tick が辞去した場合に備え再確認
-                    await self.room.on_human(line, to)
+                    await self.room.on_human(line, to, should_stop=self._room_stop_token())
                     if not await self._check_room_timeout():     # 無応答なら急用退場で畳む（畳んだら下の通常入力へ落ちない）
                         if self.room is not None and self.room.closed:
                             await self._end_visit()
@@ -456,6 +458,28 @@ class Scheduler:
             await self._start_room(persona)              # 3人会話の部屋を開く（到着→人間待ち・ADR-0015）
 
     # ── 3人会話の部屋（ADR-0015 Inc2）────────────────────────
+    def _room_stop_token(self):
+        """現ドライブ用の失効判定を作る（開始時 rev を閉じ込める＝「自分はもう最新でない」・ADR-0031）。
+        bool フラグはクリア競合・カウンタは減算リークがあるため単調増加 rev で判定（codex レビュー採用）。"""
+        rev = self._room_rev
+        return lambda: self._room_rev != rev
+
+    async def _room_barge_in(self):
+        """部屋への入力到着＝進行中ドライブを失効させ（rev+1）、生成中の手を best-effort で畳む（ADR-0031）。
+        tick 駆動チェーン（挨拶/代打/辞去）中は入力ループが空いているのでここが即時に走る。
+        入力起点チェーン中の連打は run() の逐次入力ゆえ届かない＝スコープL（ADR-0031 備考）。"""
+        self._room_rev += 1
+        preempted = False
+        if self.speaking:                                # 茶々が room 発話の生成中（ソロ barge-in と同型）
+            log.debug("cancel: user barge-in（room・茶々生成中）")
+            await self.resident.cancel()
+            preempted = True
+        if self._speakers is not None and await self._speakers.cancel_inflight():
+            log.debug("cancel: user barge-in（room・客人生成中）")
+            preempted = True
+        if preempted:                                    # 実際に畳んだ時だけ演出（自然完了と紛れない）
+            self.view.system("[話の途中でこちらを向いた]")
+
     async def _start_room(self, persona):
         """codex を先に spawn（失敗なら来訪中止）、Speaker を結線して Room を開き、到着の挨拶を出す。
         以後は tick→on_tick / ユーザー入力→on_human で進む。drive_lock 内から呼ぶ前提。"""
@@ -471,7 +495,8 @@ class Scheduler:
             persona, resident_speak=self._room_resident_speak,
             guest_agent_provider=lambda: self.active_guest.agent if self.active_guest is not None else None,
             context_provider=lambda: sources.build_context(self.weather, self.topics),
-            topics_provider=lambda: self.topics, log=log)
+            topics_provider=lambda: self.topics, log=log,
+            preempted=lambda: self.room.preempted if self.room is not None else False)   # barge-in 時の timeout 誤発火防止（ADR-0031）
         resident_spk, guest_spk = self._speakers.speakers()
 
         def _on_say(who, text, kind):
@@ -482,7 +507,7 @@ class Scheduler:
             persona, resident_spk, guest_spk, idle_leave_ticks=GUEST_IDLE_LEAVE_TICKS,
             fill_cap=GUEST_FILL_CAP, fill_after=GUEST_FILL_AFTER,
             fill_slowdown=GUEST_FILL_SLOWDOWN, on_say=_on_say)
-        await self.room.begin()                          # 到着の挨拶＋茶々の反応 → 人間待ち
+        await self.room.begin(should_stop=self._room_stop_token())   # 到着の挨拶＋茶々の反応 → 人間待ち
         if await self._check_room_timeout():             # 到着の挨拶すら無応答なら即・急用退場で畳む
             return
         if self.room.closed:                             # 念のため（通常は AwaitingHuman）

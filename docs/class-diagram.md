@@ -56,6 +56,7 @@ classDiagram
     class RoomSpeakerFactory {
         <<SpeakerFactory · ADR-0029 P4a>>
         +speakers() Speakers
+        +cancel_inflight() bool
         +resident_timed_out: bool
         +guest_timed_out: bool
     }
@@ -354,11 +355,13 @@ classDiagram
         +fill_cap: int
         +fill_after: int
         +fill_slowdown: int
-        +begin()
-        +on_human(text, to)
-        +on_tick()
+        +begin(should_stop)
+        +on_human(text, to, should_stop)
+        +on_tick(should_stop)
+        +preempted: bool
         -_state: RoomState
         -_fill_left: int
+        -_stop: callable
     }
 
     class RoomState {
