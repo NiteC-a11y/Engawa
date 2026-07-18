@@ -42,8 +42,6 @@
 
 [最新リリース](https://github.com/NiteC-a11y/Engawa/releases/latest) から `engawa.exe` をダウンロードしてダブルクリックするだけ。**Python のインストールは不要**です（ランタイム・UI・アセットを同梱した単一実行ファイル）。
 
-> リリース差分: `v0.1.1` は `v0.1.0` と**機能は同一**（本 README を整えただけの版・exe の挙動は変わりません）。迷ったら最新の `v0.1.1` をどうぞ。
-
 ただし exe は **アプリ本体だけ**で、茶々を喋らせる LLM は同梱していません。次は別途用意してください（無いと **窓は出るが茶々は黙ったまま**）:
 
 - **[Claude Code](https://claude.com/claude-code) にサブスク（Pro/Max）でログイン済み** — 住人（茶々）の頭脳。
@@ -110,7 +108,8 @@ set "ENGAWA_UI=web" && python src/engawa_main.py
 
 Windows ではランチャの `.bat` も同梱しています:
 
-- `engawa.bat` — 隅の縁側窓で日常起動
+- `engawa.bat` — 隅の縁側窓で日常起動（起動後、cmd の黒窓は自動で閉じる）
+- `engawa-en.bat` — 英語の茶々で起動（`ENGAWA_VOICE=en` を立てて `engawa.bat` を呼ぶだけの薄いラッパ）
 - `engawa-debug.bat` — デバッグログ（`engawa.log`）つき＋ログ追尾窓を別で開く
 
 ---
@@ -128,6 +127,8 @@ Windows ではランチャの `.bat` も同梱しています:
 | `/arc [雀\|猫\|風]` | 箱庭イベント（アーク）を再生（デバッグ用） |
 | `/model` | 今のモデルを表示（住人 / 客人） |
 | `/font [倍率\|save]` | web の文字サイズをアプリ内でライブ調整（`/font save` で永続化） |
+| `/daynight [on\|off\|HH:MM\|demo\|auto]` | 背景の昼夜 tint の切替・時刻固定・早送りプレビュー（web のみ） |
+| `/restart` | 茶々のセッションを張り直す（出力が不調な時・文脈はリセット） |
 | `/help` / `/quit` | ヘルプ / 終了 |
 
 ---
@@ -168,8 +169,9 @@ ENGAWA_DEBUG=1             engawa.log に主要ライフサイクルを記録
 
 ```
 src/           アプリ本体（engawa_main / acp / sources / scheduler / views / prompts / conversation / game …）
-assets/        茶々スプライト（sprite.json + chacha.png）
-docs/adr/      設計判断と却下理由（ADR 0001〜0029）
+assets/        茶々スプライト（sprite.json + chacha.png）＋縁側背景（scene.png）
+voices/        茶々の「声」バンドル（en＝英語の茶々＋英語UI・adr/0022）
+docs/adr/      設計判断と却下理由（ADR 0001〜0031）
 docs/          TECH_RULES.md（技術仕様・境界）/ Backlog.md（タスク在庫）/ class-diagram.md
 poc/           各フェーズの検証済み基準点（温存）
 CLAUDE.md      現行全体像の正本（開発者向けの「住人の心得」）

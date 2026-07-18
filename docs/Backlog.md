@@ -151,7 +151,7 @@
 
 - [x] **Inc1: voice 選択＋persona オーバーレイ**＝**実装済み（7/18）**。`src/voice.py`（解決=env `ENGAWA_VOICE`>json>既定 `ja-osaka` 組み込み・`voices/<id>/` の meta/persona/strings・base 継承・欠損は組み込みへフォールバック＝消せば現状維持）。注入は `acp.setup_persona_dir`／`agent_openai` の system が `voice.persona_text()` を使う（両 backend 同文・ADR-0026）。起動行に `声=<label>`（既定時は非表示）。ユニット test_voice 6件。
 - [x] **Inc2: UI シェルの i18n（英語向け）**＝**実装済み（7/18）**。`voice.loc(key, 日本語既定)` で高頻度シェルを鍵化（/help・barge-in 演出・来訪・中座・timeout・起動行・web 固定ラベル=`views._localize_html`）＋`prompts._lang_note()`（llm_lang 時のみ言語指示1行・JP では不変）。**同梱 `voices/en`**（英語の茶々=transcreation＋strings 訳＋llm_lang=en）・spec datas 同梱・`engawa.json.sample[voice]`。配線テスト test_voice 7件（実 en バンドル検証込み）。
-  - [ ] **未鍵化の後送り**（日本語フォールバックで動く・要望が出たら鍵化）: /model 詳細・/restart 経路・/arc /game の対話文言・commands.py（/font /daynight）・game_controller。`/arc` キー引数（雀|猫|風）の英別名と住人表示名「茶々→Chacha」切替は culture/voice の判断待ち（固有名として維持中）。
+  - [ ] **未鍵化の後送り**（日本語フォールバックで動く・要望が出たら鍵化）: /model 詳細・/restart 経路・/arc /game の対話文言・commands.py（/font /daynight）・game_controller。`/arc` キー引数（雀|猫|風）の英別名と住人表示名「茶々→Chacha」切替は culture/voice の判断待ち（固有名として維持中）。**既知の穴（7/18 README 点検で発見）**: `resolve_addressee` の呼び名抽出は漢字/カタカナ連なり限定（`conversation._NAME_RUN`）＝**英語 persona の客人は本文の名前呼びで宛先解決できない**（「Guest, …」が茶々に行く）。web は宛先チップで回避可・console-en が痛くなったら英字トークン対応か culture 側で吸収。
   - [x] **実機E2E（ユーザー）**＝**済（7/18・「いい感じ」）**: `ENGAWA_VOICE=en`（engawa-en.bat）で英語の茶々のトーン・UI 訳を目視確認。
 - [ ] **Inc3: culture.json**（~~YAGNI・最初の外国語ロケールが来たら~~＝**en 到来で着手条件は成立（7/18）**。ただし英語運用でも時節 local トピックは回る＝「季節ネタ・客人ペルソナが日本語風のまま」が実際に痛くなってから着手＝もう一段の実需待ち）
   - 季節モデル（二十四節気/旬→相応）・天気語彙・客人ペルソナを voice/base 継承で差し替え。下記の天気負債を吸収。

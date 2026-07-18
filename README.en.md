@@ -42,8 +42,6 @@ Chacha (the veranda's resident — first person, Kansai-ish, long-lived session)
 
 Download `engawa.exe` from the [latest release](https://github.com/NiteC-a11y/Engawa/releases/latest) and double-click it. **No Python install required** — it's a single executable that bundles the runtime, UI, and assets.
 
-> Release note: `v0.1.1` is **functionally identical** to `v0.1.0` — it only refreshes this README; the exe behaves the same. When in doubt, grab the latest `v0.1.1`.
-
 That said, the exe is **only the app itself** — it does *not* bundle the LLM that gives Chacha her voice. You still need the following (without them **the window opens but Chacha stays silent**):
 
 - **Logged in to [Claude Code](https://claude.com/claude-code) with a subscription (Pro/Max)** — the resident's (Chacha's) brain.
@@ -110,7 +108,8 @@ set "ENGAWA_UI=web" && python src/engawa_main.py
 
 Windows launcher `.bat` files are also included:
 
-- `engawa.bat` — everyday launch in the corner veranda window
+- `engawa.bat` — everyday launch in the corner veranda window (the black cmd window closes itself after launch)
+- `engawa-en.bat` — launch with the English Chacha (a thin wrapper that sets `ENGAWA_VOICE=en` and calls `engawa.bat`)
 - `engawa-debug.bat` — with debug logging (`engawa.log`) plus a separate log-tailing window
 
 ---
@@ -123,11 +122,13 @@ Plain text is **talking to Chacha**; input starting with `/` is a **command to t
 
 | Command | Description |
 |---|---|
-| `/codex <persona>` | Summon a guest (Codex) wearing **any persona you type** (e.g. `/codex 近所のご隠居`) |
-| `/game <id> [見る]` | Mini-games (`blackjack` / `uno` / `leduc`). "見る" = spectate. Requires `pip install rlcard` |
-| `/arc [雀\|猫\|風]` | Replay a diorama event (arc) — for debugging |
+| `/codex <persona>` | Summon a guest (Codex) wearing **any persona you type** (e.g. `/codex the retired gardener next door`) — in the web UI, use the addressee chips (Chacha / Guest / Both) to direct your words |
+| `/game <id> [watch]` | Mini-games (`blackjack` / `uno` / `leduc`). Add `watch` (or `見る`) to spectate. Requires `pip install rlcard` |
+| `/arc [雀\|猫\|風]` | Replay a diorama event (arc: sparrow/cat/wind) — for debugging |
 | `/model` | Show the current models (resident / guest) |
 | `/font [scale\|save]` | Live-adjust the web font size in-app (`/font save` persists it) |
+| `/daynight [on\|off\|HH:MM\|demo\|auto]` | Toggle / pin / fast-forward the day-night background tint (web UI only) |
+| `/restart` | Restart Chacha's session (if her output gets glitchy; context resets) |
 | `/help` / `/quit` | Help / quit |
 
 ---
@@ -168,8 +169,9 @@ ENGAWA_DEBUG=1              record key lifecycle events to engawa.log
 
 ```
 src/           the app itself (engawa_main / acp / sources / scheduler / views / prompts / conversation / game …)
-assets/        Chacha's sprite (sprite.json + chacha.png)
-docs/adr/      design decisions and why alternatives were rejected (ADRs 0001–0029)
+assets/        Chacha's sprite (sprite.json + chacha.png) + the veranda background (scene.png)
+voices/        Chacha's "voice" bundles (en = English Chacha + English UI, ADR-0022)
+docs/adr/      design decisions and why alternatives were rejected (ADRs 0001–0031)
 docs/          TECH_RULES.md (tech spec & boundaries) / Backlog.md (task inventory) / class-diagram.md
 poc/           verified reference points for each phase (preserved)
 CLAUDE.md      the canonical picture of the current whole (a developer-facing guide)
