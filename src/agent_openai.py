@@ -4,7 +4,8 @@
 LM Studio / Ollama 等の OpenAI 互換 chat completions endpoint を `agent.Agent` ポートとして包む
 （Scheduler は無改造で差さる）。ACP と違い API は**ステートレス**＝会話履歴を自前で保持する。これが
 local 版の「長命セッション」（ADR-0005）で、中座 / `/restart` は `close()`→新インスタンスで履歴リセット
-（ADR-0027 と整合）。人格は `persona.RESIDENT_PERSONA` を system メッセージに載せる（backend 中立・ADR-0003）。
+（ADR-0027 と整合）。人格は `voice.persona_text()`（選択 voice・底は persona.RESIDENT_PERSONA）を system
+メッセージに載せる（backend 中立・ADR-0003/0022）。
 
 HTTP は stdlib `urllib`（依存ゼロ・`asyncio.to_thread` で非同期化）。非ストリーミング＝住人ガードが一括
 描画するので十分（茶々の発話は短い）。cancel は別タスクから flag を立て、進行中 await は呼び側が畳む＝
@@ -19,7 +20,7 @@ import urllib.parse
 import urllib.request
 
 import config
-import persona
+import voice     # 住人の人格＝選択 voice の persona（ADR-0022・ACP 側と同文）
 from agent import AgentTimeoutError
 
 DEFAULT_BASE_URL = "http://localhost:1234/v1"    # LM Studio の既定
@@ -102,7 +103,7 @@ class OpenAIAgent:
         self._timeout = timeout
         self._reasoning = reasoning                   # reasoning_effort（none=推論オフ・空=フィールド送らない）
         self._max_tokens = max_tokens
-        self._system = persona.RESIDENT_PERSONA if system is None else system
+        self._system = voice.persona_text() if system is None else system   # 声＝選択 voice（ADR-0022・ACP 側と同文）
         self._messages = [{"role": "system", "content": self._system}]
         self._cancelled = False
         self._lock = asyncio.Lock()                   # 同一 agent への同時 prompt を直列化（履歴の競合防止）

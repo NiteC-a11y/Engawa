@@ -91,6 +91,10 @@
     "enter": "send",
     "daynight": 1
   },
+  "voice": {
+    "_comment": "茶々の「声」バンドル（ADR-0022。方言/言語を voice 単位で差し替え）。id=voices/<id>/ のバンドル名（例 en=英語の茶々・UI も英訳に。同梱は en のみ・自作は voices/ にフォルダを足すだけ＝meta.json+persona.md+strings.json）。既定 ja-osaka=組み込みの大阪弁（ファイル不要・現状維持）。バンドルが無い/壊れている時も ja-osaka へフォールバック（起動は止めない）。voice は起動時に確定＝変更は再起動で反映（/model と同格・ライブ切替なし）。未訳の UI キーは日本語に落ちる（部分導入OK）。env ENGAWA_VOICE / ENGAWA_VOICES_DIR(置き場の差し替え・通常は不要)。",
+    "id": "ja-osaka"
+  },
   "assets": {
     "_comment": "見た目の差し替え口（皮＝ADR-0010。茶々スプライトも縁側背景も好みの絵に丸ごと替えられる）。sprite_config=茶々スプライト設定 sprite.json のパス(空=assets/sprite.json。シートPNGはその隣で解決＝設定ごと替えれば絵も替わる。frame_w/h・display_px・shadow_*・animations は sprite.json 側)。scene_bg=縁側の背景画像PNGのパス(空=assets/scene.png。無ければ CSS のグラデ＋障子/床プレースホルダにフォールバック。透かしは消す・下端中央に猫が座る前提で床は下側に)。env ENGAWA_SPRITE_CONFIG / ENGAWA_SCENE_BG でも指定可(env>engawa.json>既定)。差し替えたら再起動で反映。",
     "sprite_config": "",

@@ -1,0 +1,53 @@
+{
+  "_comment": "UI shell strings for the English voice (ADR-0022 Inc2). Missing keys fall back to the built-in Japanese.",
+
+  "boot_title": "[*] Opening Chacha's engawa (garden arcs / event-source build)",
+  "boot_starting_console": "[*] Starting up… (first run downloads npx)  Say hi. /help for commands\n",
+  "boot_starting": "[*] Starting up… (first run downloads npx)",
+  "boot_auth_hint": "    If it's an auth error, log in with `claude` first (or start LM Studio for the openai backend).",
+  "boot_auth_hint_web": "If it's an auth error, log in with `claude` first (or start LM Studio for the openai backend).",
+  "boot_ok_console": "[ok] The engawa is open ({tag})\n",
+  "boot_ok_web": "[ok] The engawa is open ({tag}) — say hi",
+  "boot_bye": "[*] Closing the engawa. Chacha will mind the house.",
+
+  "help_talk": "  just type and press Enter → talk to Chacha",
+  "help_arc": "  /arc [雀|猫|風]  → play a garden arc now (sparrow/cat/wind)",
+  "help_codex": "  /codex <persona>  → invite a guest (opens a three-way chat)",
+  "help_game": "  /game <id> [watch] → play a game (blackjack/uno/leduc; add `watch` to spectate; needs rlcard)",
+  "help_model": "  /model           → show current models (resident=Claude / guest=codex)",
+  "help_font": "  /font [scale|save] → text size (e.g. /font 1.4; bare /font shows current; /font save persists)",
+  "help_daynight": "  /daynight [on|off|HH:MM|demo|auto] → day/night tint (on/off saves; HH:MM pins; demo fast-forwards dusk→night; auto=real time)",
+  "help_restart": "  /restart         → restart Chacha's session (if her output gets weird; context resets)",
+  "help_quit": "  /quit            → close the engawa",
+  "unknown_cmd": "  Hmm, never heard of {cmd}. Try /help.",
+  "closing": "[*] Closing the engawa.",
+  "no_response": "  (No answer… it went quiet for a moment.)",
+
+  "turned_to_you": "[Chacha turns to you]",
+  "room_turned": "[they stop mid-sentence and turn to you]",
+
+  "busy_game": "  A game is on. After it's done, alright?",
+  "busy_guest": "  There's already a guest over. Hold on a bit.",
+  "visit_arrive": "  [guest] \"{persona}\" has come to visit…",
+  "visit_fail": "  (The guest couldn't make it. Check the codex connection / ChatGPT login.)",
+  "guest_timeout_leave": "The guest remembered something urgent and hurried off.",
+
+  "resident_hiccup": "  (Chacha went quiet for a moment… give her a beat)",
+  "resident_dead": "  (Chacha isn't answering. Closing the engawa.)",
+  "absence_away": "  (Chacha slipped away for a bit… calling her back)",
+  "absence_back": "  (Chacha is back)",
+  "absence_fail": "  (Couldn't bring Chacha back. Closing the engawa.)",
+  "absence_leave": "Gonna step away for a bit. Back soon.",
+  "absence_return": "Mm, back. Now where were we…",
+
+  "ui_chip_resident": "Chacha",
+  "ui_chip_guest": "Guest",
+  "ui_chip_both": "Both",
+  "ui_send": "Send",
+  "ui_placeholder": "Say something…",
+  "ui_placeholder_send": "Say something… (Enter to send · Shift+Enter for a newline)",
+  "ui_placeholder_newline": "Say something… (newlines OK · send with Ctrl+Enter or the Send button)",
+  "ui_close": "Close",
+  "ui_meow": "Meow",
+  "ui_you": "You"
+}

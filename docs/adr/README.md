@@ -25,7 +25,7 @@
 | 0019 | presentation は「意味 state ＋ config 駆動の差し替えアセット」で統一（sprite/sound/scene 共通） | Accepted（sprite/scene 実装済み〔0028 昼夜 tint〕・sound のみ未実装） |
 | 0020 | モデルは config で選ぶ（住人=ANTHROPIC_MODEL / 客人=CODEX_CONFIG・未指定はアダプタ既定） | Accepted（実装） |
 | 0021 | ACP は用途別 timeout ＋ 役割別の段階回復で守る（adapter 無応答で永久待ちしない） | Accepted（実装・S1/S2） |
-| 0022 | 茶々の「声」は voice バンドルで差し替える（方言/言語を base⟂voice 分離・config 主導・既定 ja-osaka） | Accepted（方針確定・実装これから） |
+| 0022 | 茶々の「声」は voice バンドルで差し替える（方言/言語を base⟂voice 分離・config 主導・既定 ja-osaka） | Accepted（Inc1/Inc2 実装済み 2026-07-18・`voices/en` 同梱＝英語の茶々＋英語UI／culture.json=Inc3 は未着手） |
 | 0023 | ソース修正はテスト同梱・走らせて緑が必須（Stop フックで強制） | Accepted（実装） |
 | 0024 | 客人複数化＝Mediator＋話す順 Strategy＋AIターン予算で N人会話へ（要 turn 管理再設計・Inc3 後） | Proposed（構想） |
 | 0025 | 人間待ちの間、茶々が“人間役の代打”で場をつなぐ（予算付き有界・0015 の歯止めを追補・fill_cap で終端保証） | Accepted（実装） |

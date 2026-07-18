@@ -19,6 +19,18 @@ import re
 
 import conversation     # 3人会話の kind 定数（ARRIVE/LEAVE/REPLY/CHIME/REACT/LEAVE_REACT）
 from sources import time_of_day   # 時刻帯ユーティリティ（源側に常駐・一方向 import）
+import voice            # 出力言語ノブ llm_lang（ADR-0022 決定3・JP 方言では None＝注入文は不変）
+
+
+_LANG_NAMES = {"en": "English", "ja": "Japanese", "fr": "French", "de": "German",
+               "es": "Spanish", "zh": "Chinese", "ko": "Korean"}   # コードは名前で指示（"Respond in en" を避ける）
+
+
+def _lang_note():
+    """voice.llm_lang が立つ時だけ、住人注入の末尾に出力言語の指示を1行足す（ADR-0022）。
+    JP 方言（llm_lang=None）では空文字＝既存プロンプトは1バイトも変わらない（persona と競合させない）。"""
+    lang = voice.llm_lang()
+    return f"\n(Respond in {_LANG_NAMES.get(lang, lang)}, staying in character.)" if lang else ""
 
 
 # 話しかけへの応答指示（毎ターン注入）と枠フレーズ。染み出しガードの marker にも使う（strip_resident_leak）。
@@ -46,7 +58,7 @@ def user_narration(text, ctx=None, interrupted=False):
         lines.append(_INTERRUPTED_FRAME)
     lines.append(f"{_TALKED_FRAME}:\n「{text}」")
     lines.append(_REPLY_INSTRUCTION)
-    return "\n".join(lines)
+    return "\n".join(lines) + _lang_note()
 
 
 # ── 3人会話の部屋（ADR-0015 Inc2）。codex/茶々の双方に直近のやり取り(window)を渡して双方向化 ──
@@ -239,7 +251,7 @@ def room_resident_prompt(window, kind, ctx=None):
     ctx は「いまの縁側」（時刻＋天気）＝茶々も夜に夕暮れ発言しないよう実時刻を渡す。"""
     scene = _RESIDENT_SCENE.get(kind, "茶々として、短くひとこと。")
     return ("[縁側]\n" + ambient_line(ctx) + _render_window(window) + scene
-            + "\nひと続きの短い独り言で。何も言いたくなければ「……」だけでよい。")
+            + "\nひと続きの短い独り言で。何も言いたくなければ「……」だけでよい。" + _lang_note())
 
 
 # ── ゲーム（ADR-0017）。AIプレイヤーへ「状態＋合法手」を見せ、手の語だけ返させる ──────

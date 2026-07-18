@@ -20,6 +20,7 @@ import debuglog
 import scheduler as sched
 import sources
 import views
+import voice
 
 
 def _resident_spawner():
@@ -45,9 +46,13 @@ def _guest_spawner():
 
 
 def _resident_tag(resident):
-    """起動行の住人表示。sessionId は ACP 固有なので getattr で任意扱い（OpenAIAgent は持たない）。"""
+    """起動行の住人表示。sessionId は ACP 固有なので getattr で任意扱い（OpenAIAgent は持たない）。
+    voice が既定以外なら `声=<label>` を添える（ADR-0022 Inc1・既定 ja-osaka では従来表示のまま）。"""
     sid = getattr(resident, "sessionId", None)
-    return (f"session={sid[:8]}… / " if sid else "") + f"茶々={resident.model or '既定'}"
+    tag = (f"session={sid[:8]}… / " if sid else "") + f"茶々={resident.model or '既定'}"
+    if voice.current()["id"] != voice.DEFAULT_ID:
+        tag += f" / 声={voice.label()}"
+    return tag
 
 
 def _build(resident, view):
@@ -67,29 +72,29 @@ def _build(resident, view):
 
 
 async def run_console():
-    print("[*] 茶々の縁側を開きます（箱庭アーク / event-source 構成）")
-    print("[*] 起動中…（初回は npx ダウンロード）  話しかけてみて。/help、/arc で試写\n")
+    print(voice.loc("boot_title", "[*] 茶々の縁側を開きます（箱庭アーク / event-source 構成）"))
+    print(voice.loc("boot_starting_console", "[*] 起動中…（初回は npx ダウンロード）  話しかけてみて。/help、/arc で試写\n"))
     try:
         resident = await _resident_spawner()()
     except RuntimeError as e:
         print("[x]", e)
-        print("    認証エラーなら、先に `claude` で本命サブスクにログインのこと（openai backend なら LM Studio を起動）。")
+        print(voice.loc("boot_auth_hint", "    認証エラーなら、先に `claude` で本命サブスクにログインのこと（openai backend なら LM Studio を起動）。"))
         return 1
-    print(f"[ok] 縁側が開きました（{_resident_tag(resident)}）\n")
+    print(voice.loc("boot_ok_console", "[ok] 縁側が開きました（{tag}）\n").format(tag=_resident_tag(resident)))
     await _build(resident, views.ConsoleView()).run()
-    print("[*] 縁側を閉じます。茶々はまた留守番。")
+    print(voice.loc("boot_bye", "[*] 縁側を閉じます。茶々はまた留守番。"))
     return 0
 
 
 async def _serve_web(view):
-    view.system("[*] 起動中…（初回は npx ダウンロード）")
+    view.system(voice.loc("boot_starting", "[*] 起動中…（初回は npx ダウンロード）"))
     try:
         resident = await _resident_spawner()()
     except RuntimeError as e:
         view.system(f"[x] {e}")
-        view.system("認証エラーなら、先に `claude` でログイン（openai backend なら LM Studio を起動）。")
+        view.system(voice.loc("boot_auth_hint_web", "認証エラーなら、先に `claude` でログイン（openai backend なら LM Studio を起動）。"))
         return
-    view.system(f"[ok] 縁側が開きました（{_resident_tag(resident)}）話しかけてみて")
+    view.system(voice.loc("boot_ok_web", "[ok] 縁側が開きました（{tag}）話しかけてみて").format(tag=_resident_tag(resident)))
     await _build(resident, view).run()
 
 

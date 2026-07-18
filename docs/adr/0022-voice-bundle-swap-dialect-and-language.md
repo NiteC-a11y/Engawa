@@ -1,7 +1,7 @@
 # ADR-0022: 茶々の「声」は voice バンドルで差し替える（方言/言語を base⟂voice 分離・config 主導）
 
-- ステータス: Accepted（方針確定・実装これから・未着手）
-- 日付: 2026-06-30
+- ステータス: Accepted（**Inc1/Inc2 実装済み 2026-07-18**・`voices/en` 同梱＝最初の外国語ロケール到来。culture.json=Inc3 は未着手のまま）
+- 日付: 2026-06-30（実装 2026-07-18）
 - 関連: ADR-0003（人格は cwd の CLAUDE.md で注入）, ADR-0004（環境反応型の単体住人）, ADR-0005（長命セッション）, ADR-0010（差し替え可能なアセット層）, ADR-0013（イベント源/Scheduler の Port&Adapter・YAGNI）, ADR-0019（presentation は意味 state ＋ config 駆動の差し替え）, ADR-0020（config 主導の選択・env > json > 既定）
 
 ## 背景 / 課題
@@ -57,6 +57,20 @@
   - `prompts.py`（ADR の A1 で分離済みの注入プロンプト工場）: `llm_lang` を**任意で**参照するのみ。JP 方言では不変。
   - `config.py`: `voice` 解決（env > json > 既定 `ja-osaka`）。起動行に `茶々=<voice.label>` 表示。
 - **YAGNI 線引き（ADR-0013）**: いま作るのは **voice 選択 ＋ persona オーバーレイ ＋ UI フォールバック** まで。`culture.json`（季節/天気の差し替え機構）は**最初の外国語ロケールが実際に来るまで作らない**。方言ユースケースで継ぎ目を**安く検証**してから言語へ投資する。
+
+## 実装メモ（追記 2026-07-18・Inc1/Inc2）
+
+- `src/voice.py` … バンドル解決（env `ENGAWA_VOICE` > `engawa.json[voice].id` > 既定 `ja-osaka`＝組み込み）。
+  `persona_text()`（底=persona.RESIDENT_PERSONA）／`llm_lang()`／`label()`／`loc(key, default)`（strings 継承
+  `<voice>→<base>→コード内日本語`）。置き場 `voices/`（frozen 時 `sys._MEIPASS/voices`・`ENGAWA_VOICES_DIR` で差し替え）。
+- 注入: `acp.setup_persona_dir`／`agent_openai` の system が `voice.persona_text()` を使う（両 backend 同文・ADR-0026）。
+- `prompts._lang_note()` … `llm_lang` が立つ時だけ住人注入の末尾に言語指示1行（JP 方言では 1 バイトも不変＝決定3どおり）。
+- UI 鍵化は**漸進**（高頻度シェルのみ）: /help・barge-in 演出・来訪・中座・timeout 系・起動行・web 固定ラベル
+  （`views._localize_html`）。未鍵化（日本語フォールバック）＝ /model 詳細・/restart 経路・/arc /game の対話文言・
+  commands.py（/font /daynight）・game_controller。`/arc` のキー引数（雀|猫|風）と住人表示名「茶々」は固有名として維持。
+- 同梱バンドルは `voices/en`（persona=英語の茶々の書き起こし・strings=UI 訳・llm_lang=en）。PyInstaller spec の
+  datas に `voices/en` を追加。設定雛形は `engawa.json.sample[voice]`。
+- 方言ユースケース（persona 一枚差し）は `test_voice.test_persona_only_bundle` で継ぎ目を検証（京都弁の実バンドルは未同梱）。
 
 ## 備考
 

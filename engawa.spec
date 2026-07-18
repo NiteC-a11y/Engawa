@@ -40,6 +40,7 @@ a = Analysis(
         (os.path.join(SPECPATH, 'assets', 'sprite.json'), 'assets'),   # 皮設定（sheet 参照は隣の chacha.png を相対解決）。
         (os.path.join(SPECPATH, 'assets', 'chacha.png'), 'assets'),    # 三毛猫 4表情シート（起動時 dataURI 化）。
         (os.path.join(SPECPATH, 'assets', 'scene.png'), 'assets'),     # 縁側背景（障子＋板の間）。
+        (os.path.join(SPECPATH, 'voices', 'en'), os.path.join('voices', 'en')),   # 英語 voice バンドル（ADR-0022。voice._voices_dir が frozen 時 sys._MEIPASS/voices を解決）。
     ],                                       # views._base_dir() が frozen 時 sys._MEIPASS/assets を指すので runtime で見つかる。
     hiddenimports=hiddenimports,
     hookspath=[],

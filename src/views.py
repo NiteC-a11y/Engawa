@@ -16,6 +16,7 @@ import time
 
 import config   # アセット(皮)の差し替えパス解決（env(ENGAWA_*) > engawa.json[assets] > 既定・ADR-0010 の皮を背景にも拡張）
 import daynight  # 時刻→背景の昼夜レイヤ（tint 乗算＋glow 加算月光）の純関数（ADR-0028）
+import voice    # web シェル固定ラベルの voice 上書き（ADR-0022 Inc2・既定 voice は無変化）
 
 def _base_dir():
     """アセット(皮)の基準ディレクトリ。PyInstaller の exe(frozen) は展開先 sys._MEIPASS、
@@ -1008,6 +1009,35 @@ def _load_scene_bg():
         return None
 
 
+def _localize_html(html):
+    """web シェルの固定ラベルを voice の strings で差し替え（ADR-0022 Inc2）。既定 voice（ja-osaka）は
+    strings が空＝置換は同文で無変化。JS 内の文字列リテラルは json.dumps でクォートごと安全に差す。"""
+    pairs = (
+        ('<button class="ac sel" data-p="">茶々</button>',
+         '<button class="ac sel" data-p="">' + voice.loc("ui_chip_resident", "茶々") + "</button>"),
+        ('<button class="ac" data-p="guest">客人</button>',
+         '<button class="ac" data-p="guest">' + voice.loc("ui_chip_guest", "客人") + "</button>"),
+        ('<button class="ac" data-p="both">二人とも</button>',
+         '<button class="ac" data-p="both">' + voice.loc("ui_chip_both", "二人とも") + "</button>"),
+        ('<button id="send">送信</button>',
+         '<button id="send">' + voice.loc("ui_send", "送信") + "</button>"),
+        ('placeholder="話しかける…"',
+         'placeholder="' + voice.loc("ui_placeholder", "話しかける…") + '"'),
+        ("'話しかける…（Enterで送信・Shift+Enterで改行）'",
+         json.dumps(voice.loc("ui_placeholder_send", "話しかける…（Enterで送信・Shift+Enterで改行）"),
+                    ensure_ascii=False)),
+        ("'話しかける…（改行OK・送信は Ctrl+Enter か 送信ボタン）'",
+         json.dumps(voice.loc("ui_placeholder_newline", "話しかける…（改行OK・送信は Ctrl+Enter か 送信ボタン）"),
+                    ensure_ascii=False)),
+        ('title="閉じる"', 'title="' + voice.loc("ui_close", "閉じる") + '"'),
+        ('<div id="nya">ニャー</div>', '<div id="nya">' + voice.loc("ui_meow", "ニャー") + "</div>"),
+        ("あなた ›", voice.loc("ui_you", "あなた") + " ›"),
+    )
+    for old, new in pairs:
+        html = html.replace(old, new)
+    return html
+
+
 def build_web_html(font=1.0):
     """WEB_HTML に sprite 設定・縁側背景・文字倍率(font)を注入して返す（run_web が使う）。
     font は本文/入力のフォントだけを calc(BASE * var(--fz)) で拡大＝スクロール領域のみ＝入力欄を押し出さない
@@ -1023,7 +1053,7 @@ def build_web_html(font=1.0):
     if enter_mode not in ("send", "newline"):
         enter_mode = "send"
     html = html.replace('/*ENTERMODE*/"send"', json.dumps(enter_mode))
-    return html.replace("/*FONT*/1", str(font))
+    return _localize_html(html.replace("/*FONT*/1", str(font)))
 
 
 def build_game_html(font=1.0):

@@ -149,13 +149,10 @@
 
 茶々の「声」を **voice 単位**（`ja-osaka`/`ja-kyoto`/`ja-kagoshima`/`en`…）で差し替え。**base 言語 ⟂ voice を分離**し継承（`<voice>→<base>→既定`）。中身（各地域の声）は現地が書き起こす＝transcreation（機械翻訳しない・原則#2）。設計は ADR-0022。**まず方言ユースケースで継ぎ目を安く検証**してから言語へ（YAGNI・ADR-0013）。
 
-- [ ] **Inc1: voice 選択＋persona オーバーレイ**（最小・方言が persona 一枚で差し替わる所まで）
-  - `voices/<id>/meta.json`(base/label/llm_lang)＋`persona.md`。選択は `config.get_str("ENGAWA_VOICE","voice",…,"ja-osaka")`（env>engawa.json>既定・ADR-0020 流）。
-  - `acp.spawn_resident` が選んだ `voices/<id>/persona.md` を cwd の CLAUDE.md として load（既存の人格注入＝ADR-0003 に直結）。既定 `ja-osaka` がフォールバックの底＝**消せば現状維持**。起動行に `茶々=<voice.label>` 表示。
-  - ユニット: voice 解決（env/json/既定）・persona パス・フォールバック。**JP 方言では `prompts.py` 不変**（persona が指示・「日本語で答えて」を足さない＝競合させない）。
-- [ ] **Inc2: UI シェルの i18n（英語向け）**
-  - `loc("key")` で active voice の `strings.json` → base → 組み込み既定。`scheduler`(/help・system)・`views`・`engawa_main` の文言をキー化。
-  - 英語 voice は `meta.base="en"`＋`llm_lang="en"`（`prompts.py` が任意で参照）＋`strings.json`（訳）。
+- [x] **Inc1: voice 選択＋persona オーバーレイ**＝**実装済み（7/18）**。`src/voice.py`（解決=env `ENGAWA_VOICE`>json>既定 `ja-osaka` 組み込み・`voices/<id>/` の meta/persona/strings・base 継承・欠損は組み込みへフォールバック＝消せば現状維持）。注入は `acp.setup_persona_dir`／`agent_openai` の system が `voice.persona_text()` を使う（両 backend 同文・ADR-0026）。起動行に `声=<label>`（既定時は非表示）。ユニット test_voice 6件。
+- [x] **Inc2: UI シェルの i18n（英語向け）**＝**実装済み（7/18）**。`voice.loc(key, 日本語既定)` で高頻度シェルを鍵化（/help・barge-in 演出・来訪・中座・timeout・起動行・web 固定ラベル=`views._localize_html`）＋`prompts._lang_note()`（llm_lang 時のみ言語指示1行・JP では不変）。**同梱 `voices/en`**（英語の茶々=transcreation＋strings 訳＋llm_lang=en）・spec datas 同梱・`engawa.json.sample[voice]`。配線テスト test_voice 7件（実 en バンドル検証込み）。
+  - [ ] **未鍵化の後送り**（日本語フォールバックで動く・要望が出たら鍵化）: /model 詳細・/restart 経路・/arc /game の対話文言・commands.py（/font /daynight）・game_controller。`/arc` キー引数（雀|猫|風）の英別名と住人表示名「茶々→Chacha」切替は culture/voice の判断待ち（固有名として維持中）。
+  - [ ] **実機E2E（ユーザー）**: `ENGAWA_VOICE=en` で起動→英語の茶々のトーン目視（persona.md の書き味レビュー）・UI 訳の見た目・時節トピック（日本語の種）に英語で反応する様子。
 - [ ] **Inc3（YAGNI・最初の外国語ロケールが来たら）: culture.json**
   - 季節モデル（二十四節気/旬→相応）・天気語彙・客人ペルソナを voice/base 継承で差し替え。下記の天気負債を吸収。
 - 関連負債の合流先: 「茶々用 CLAUDE.md を persona/ 別ディレクトリ運用」＝`voices/<id>/persona.md` に化ける ／ ~~「天気座標の大阪固定→設定化」＝`culture.json`(Inc3)~~＝**単独 config 節 `[weather]` で先行実装済み（2026-07-11・上記 [x]）。culture.json が来たら地名/語彙ごと吸収する余地は残る**。

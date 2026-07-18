@@ -22,6 +22,7 @@ import prompts       # LLM 文言ビルダー（注入プロンプト工場・so
 import room_speakers  # 3人会話の Speaker を作る RoomSpeakerFactory（ADR-0029 Phase 4a）
 import sources
 import views         # GAME_CLOSE_REQUEST（観戦窓×→お開きの制御トークン・入力 wire 形式の共有）
+from voice import loc  # UI シェル文言の voice 上書き（未訳キーは第2引数の日本語へ・ADR-0022 Inc2）
 
 TICK_MIN = config.get_float("ENGAWA_TICK_MIN", "timing", "tick_min", 35, lo=1)
 TICK_MAX = config.get_float("ENGAWA_TICK_MAX", "timing", "tick_max", 70, lo=1)
@@ -205,17 +206,17 @@ class Scheduler:
         1回の timeout で session を捨てない＝長命セッション（文脈が地続き・ADR-0005）を一過性の遅延で吹き飛ばさない。"""
         self._resident_timeouts += 1
         if self._resident_timeouts < RESIDENT_TIMEOUT_RESTART_AT:
-            self.view.system("  （茶々はふっと黙り込んだ……ちょっと間があいた）")
+            self.view.system(loc("resident_hiccup", "  （茶々はふっと黙り込んだ……ちょっと間があいた）"))
             return
         if self._spawn_resident is None:                 # 再起動手段が無い → 閉じるしかない
-            self.view.system("  （茶々の応答が戻らへん。縁側を閉じるわ）")
+            self.view.system(loc("resident_dead", "  （茶々の応答が戻らへん。縁側を閉じるわ）"))
             self.stop.set()
             return
-        self.view.system("  （茶々がふっと席を外した……呼び直してくる）")
+        self.view.system(loc("absence_away", "  （茶々がふっと席を外した……呼び直してくる）"))
         if await self._restart_resident():
-            self.view.system("  （茶々が戻ってきた）")   # ※新セッション＝以前の文脈は持たない（永続化は別途・Backlog）
+            self.view.system(loc("absence_back", "  （茶々が戻ってきた）"))   # ※新セッション＝以前の文脈は持たない（永続化は別途・Backlog）
         else:
-            self.view.system("  （茶々を呼び直せなんだ。縁側を閉じるわ）")
+            self.view.system(loc("absence_fail", "  （茶々を呼び直せなんだ。縁側を閉じるわ）"))
             self.stop.set()
 
     # ── 中座＝世界観に溶かした定期セッション更新（ADR-0027）──────────────
@@ -231,7 +232,7 @@ class Scheduler:
             return False
         if self._turns_since_refresh < self._absence_target:
             return False
-        self.view.say("茶々", prompts.absence_leave())   # 「ちょっと外すわ」＝確定発話で直接表示
+        self.view.say("茶々", loc("absence_leave", prompts.absence_leave()))   # 「ちょっと外すわ」＝確定発話で直接表示（voice 上書き可）
         self._absent = True
         self.view.set_absent(True)                       # web は茶々スプライトを消す＝空っぽの縁側（console は no-op）
         self._away_until = time.time() + ABSENCE_GAP
@@ -250,7 +251,7 @@ class Scheduler:
         self._turns_since_refresh = 0                    # 圧をリセット＝次の中座までまた溜める
         self._absence_target = self._roll_absence_target()
         self.view.set_absent(False)                      # 茶々が戻る＝スプライト復帰（フェードイン）
-        self.view.say("茶々", prompts.absence_return())  # 「お待たせ」「どこまで話しとったっけ」＝忘却も自然
+        self.view.say("茶々", loc("absence_return", prompts.absence_return()))  # 「お待たせ」「どこまで話しとったっけ」＝忘却も自然
         log.debug("茶々 中座から復帰（セッション更新済み・圧リセット→次目標 %d）", self._absence_target)
 
     # ── ティック ──────────────────────────────────────────
@@ -370,7 +371,7 @@ class Scheduler:
         if interrupted:                                  # 進行中の注入だけを畳む（ambient・cancel優先）
             log.debug("cancel: user barge-in（speaking 中）")
             await self.resident.cancel()                 # session/cancel → stopReason=cancelled
-            self.view.system("[茶々がこちらを向いた]")
+            self.view.system(loc("turned_to_you", "[茶々がこちらを向いた]"))
         # active(source) は触らない → QUIET 明けに背景継続
         ctx = sources.build_context(self.weather, self.topics)   # 保持した天気を渡す（捏造防止）
         await self._inject(sources.Narration(prompts.user_narration(line, ctx, interrupted=interrupted), "user"))
@@ -382,17 +383,17 @@ class Scheduler:
             await self._commands.dispatch(self._cmd_ctx, line, parts)
             return
         if cmd in ("/quit", "/exit", "/bye"):
-            self.view.system("[*] 縁側を閉じます。"); self.stop.set()
+            self.view.system(loc("closing", "[*] 縁側を閉じます。")); self.stop.set()
         elif cmd == "/help":
-            self.view.system("  ふつうに打って Enter → 茶々に話しかける")
-            self.view.system("  /arc [雀|猫|風]  → 箱庭アークを今すぐ再生")
-            self.view.system("  /codex <人格>    → 客人(codex)を呼ぶ（3人会話の部屋を開く・ADR-0015）")
-            self.view.system("  /game <id> [見る] → ゲーム（id=blackjack/uno/leduc・「見る」で観戦・要 rlcard。/blackjack は別名）")
-            self.view.system("  /model           → 今のモデルを表示（住人=Claude / 客人=codex）")
-            self.view.system("  /font [倍率|save] → 文字サイズ（例 /font 1.4・/font で今の値・/font save で保存）")
-            self.view.system("  /daynight [on|off|HH:MM|demo|auto] → 背景の昼夜（on/off=有効無効を保存・HH:MM=固定・demo=夕→夜早送り・auto=実時間）")
-            self.view.system("  /restart         → 茶々のセッションを張り直す（染み出し/不調の時・文脈はリセット）")
-            self.view.system("  /quit            → 縁側を閉じる")
+            self.view.system(loc("help_talk", "  ふつうに打って Enter → 茶々に話しかける"))
+            self.view.system(loc("help_arc", "  /arc [雀|猫|風]  → 箱庭アークを今すぐ再生"))
+            self.view.system(loc("help_codex", "  /codex <人格>    → 客人(codex)を呼ぶ（3人会話の部屋を開く・ADR-0015）"))
+            self.view.system(loc("help_game", "  /game <id> [見る] → ゲーム（id=blackjack/uno/leduc・「見る」で観戦・要 rlcard。/blackjack は別名）"))
+            self.view.system(loc("help_model", "  /model           → 今のモデルを表示（住人=Claude / 客人=codex）"))
+            self.view.system(loc("help_font", "  /font [倍率|save] → 文字サイズ（例 /font 1.4・/font で今の値・/font save で保存）"))
+            self.view.system(loc("help_daynight", "  /daynight [on|off|HH:MM|demo|auto] → 背景の昼夜（on/off=有効無効を保存・HH:MM=固定・demo=夕→夜早送り・auto=実時間）"))
+            self.view.system(loc("help_restart", "  /restart         → 茶々のセッションを張り直す（染み出し/不調の時・文脈はリセット）"))
+            self.view.system(loc("help_quit", "  /quit            → 縁側を閉じる"))
         elif cmd == "/arc":
             await self._play_arc_now(parts[1] if len(parts) > 1 else None)
         elif cmd == "/codex":
@@ -433,7 +434,7 @@ class Scheduler:
                 guest = config.get_str("ENGAWA_CODEX_MODEL", "model", "guest", "")
                 self.view.system(f"  客人(codex): {guest + '（設定値・来訪時に使用）' if guest else '未指定（来訪時にアダプタ既定）'}")
         else:
-            self.view.system(f"  はて、そんな作法（{cmd}）は知らんな。/help どうぞ。")
+            self.view.system(loc("unknown_cmd", "  はて、そんな作法（{cmd}）は知らんな。/help どうぞ。").format(cmd=cmd))
 
     async def _summon_guest(self, persona):
         """/codex <人格>：客人を直接召喚（取り次ぎなし・即）。箱庭アーク中なら畳んで通す。
@@ -441,19 +442,19 @@ class Scheduler:
         if self._spawn_codex is None:
             self.view.system("  [P4] codex 接続が未設定（spawn_codex 無し）。"); return
         if self.games.active and not self.games.over:                # 対局中は客人を上げない（room と game の同時成立を防ぐ）
-            self.view.system("  今は対局中や。終わってからな。"); return
+            self.view.system(loc("busy_game", "  今は対局中や。終わってからな。")); return
         if self.active_guest is not None:                            # 既に客人 → 重ねない
-            self.view.system("  今は別の客人が来とる。ちょっと待ってな。"); return
+            self.view.system(loc("busy_guest", "  今は別の客人が来とる。ちょっと待ってな。")); return
         self.last_user_ts = time.time()                  # 召喚も user 活動（直後の独り言を抑制）
         if self.speaking:                                # 喋ってる最中なら畳む（cancel優先・ロック前に解く）
             await self.resident.cancel()
-            self.view.system("[茶々がこちらを向いた]")
+            self.view.system(loc("turned_to_you", "[茶々がこちらを向いた]"))
         async with self.drive_lock:                      # ここから active_source/active_guest を触る＝tick と排他
             if self.active_guest is not None:            # 待機中に自発客人が来た
-                self.view.system("  今は別の客人が来とる。ちょっと待ってな。"); return
+                self.view.system(loc("busy_guest", "  今は別の客人が来とる。ちょっと待ってな。")); return
             if self.active_source is not None:           # 箱庭アーク → 畳んで客人を通す
                 self._conclude(self.active_source)
-            self.view.system(f"  〔客人〕「{persona}」が訪ねてきた…")
+            self.view.system(loc("visit_arrive", "  〔客人〕「{persona}」が訪ねてきた…").format(persona=persona))
             self.active_guest = sources.GuestSource(persona, self._spawn_codex)
             await self._start_room(persona)              # 3人会話の部屋を開く（到着→人間待ち・ADR-0015）
 
@@ -478,7 +479,7 @@ class Scheduler:
             log.debug("cancel: user barge-in（room・客人生成中）")
             preempted = True
         if preempted:                                    # 実際に畳んだ時だけ演出（自然完了と紛れない）
-            self.view.system("[話の途中でこちらを向いた]")
+            self.view.system(loc("room_turned", "[話の途中でこちらを向いた]"))
 
     async def _start_room(self, persona):
         """codex を先に spawn（失敗なら来訪中止）、Speaker を結線して Room を開き、到着の挨拶を出す。
@@ -487,7 +488,7 @@ class Scheduler:
             await self.active_guest.ensure_agent()       # codex を今 spawn（失敗は例外）
         except Exception as e:
             log.debug("客人 spawn 失敗: %s: %s", type(e).__name__, e)
-            self.view.system("  （客人は来られなんだ。codex 接続・ChatGPT 認証を確認してな）")
+            self.view.system(loc("visit_fail", "  （客人は来られなんだ。codex 接続・ChatGPT 認証を確認してな）"))
             self._conclude(self.active_guest)
             return
         log.debug("客人 spawn: %s / room open", persona)
@@ -548,7 +549,7 @@ class Scheduler:
         log.debug("timeout: %s → 急用退場",
                   "住人+客人" if (resident_dead and sp.guest_timed_out) else
                   ("住人" if resident_dead else "客人"))
-        self.view.system("  " + prompts.guest_timeout_leave())   # 客人が急用で去る（定型・local。世界観を壊さない）
+        self.view.system("  " + loc("guest_timeout_leave", prompts.guest_timeout_leave()))   # 客人が急用で去る（定型・local。世界観を壊さない）
         await self._end_visit()                                   # 部屋を閉じ codex を破棄（taskkill /T /F で確実に殺す・_speakers も None に）
         if resident_dead:
             await self._resident_timed_out()                     # 住人も無応答なら段階回復へ
@@ -588,7 +589,7 @@ class Scheduler:
                 try:
                     await self.on_user_input(line)
                 except AgentTimeoutError:               # どの経路でも timeout でアプリは落とさない（最終保険）
-                    self.view.system("  （応答が戻らへん……ちょっと間があいた）")
+                    self.view.system(loc("no_response", "  （応答が戻らへん……ちょっと間があいた）"))
                 if self.stop.is_set():
                     break
         except (KeyboardInterrupt, asyncio.CancelledError):

@@ -19,7 +19,7 @@ import tempfile
 import agent    # 中立ポート（AgentTimeoutError／Agent Protocol・ADR-0026）。ACPTimeoutError はこれを継承
 import config   # モデル選択つまみ（env > engawa.json > 既定）
 import debuglog
-import persona  # 住人の人格（backend 中立・cwd の CLAUDE.md に書き出す）
+import voice    # 住人の人格＝選択 voice の persona（backend 中立・cwd の CLAUDE.md に書き出す・ADR-0022/0026）
 
 log = debuglog.get("acp")
 
@@ -75,7 +75,8 @@ class ACPTimeoutError(agent.AgentTimeoutError):
     中立の `agent.AgentTimeoutError` を継承＝呼び側（Scheduler）は実体を知らず `except agent.AgentTimeoutError`
     で受ける（ADR-0026・型で正規化）。ACP 固有の握り潰し防止シグナルとしては従来どおり（住人=段階回復／客人=退場）。"""
 
-PERSONA_CLAUDE_MD = persona.RESIDENT_PERSONA   # 人格は persona.py に一元化（backend 中立・ADR-0026）
+# 人格は persona.py に一元化（backend 中立・ADR-0026）。voice バンドル選択（ADR-0022）を通すため
+# 定数でなく spawn 時に voice.persona_text() を評価する（setup_persona_dir 参照）。
 
 
 def resolve_command(cmd_parts):
@@ -207,7 +208,7 @@ def _session_model(result):
 
 def setup_persona_dir():
     d = pathlib.Path(tempfile.mkdtemp(prefix="engawa_chacha_"))
-    (d / "CLAUDE.md").write_text(PERSONA_CLAUDE_MD, encoding="utf-8")
+    (d / "CLAUDE.md").write_text(voice.persona_text(), encoding="utf-8")   # 声＝選択 voice の persona（ADR-0022）
     return d
 
 
