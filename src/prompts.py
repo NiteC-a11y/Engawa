@@ -18,6 +18,7 @@ import random
 import re
 
 import conversation     # 3人会話の kind 定数（ARRIVE/LEAVE/REPLY/CHIME/REACT/LEAVE_REACT）
+import props as props_mod   # 縁側の小物＝茶々が「自分の縁側に在る物」を知る narrate 行（ADR-0032）
 from sources import time_of_day   # 時刻帯ユーティリティ（源側に常駐・一方向 import）
 import voice            # 出力言語ノブ llm_lang（ADR-0022 決定3・JP 方言では None＝注入文は不変）
 
@@ -54,6 +55,9 @@ def user_narration(text, ctx=None, interrupted=False):
         if w.get("temp") is not None:
             s += f"、{w['temp']}℃"
         lines.append(s + "。")
+    n = props_mod.narration_line(now)
+    if n:
+        lines.append(n)     # 縁側に在る小物（天気と同じ「持たせるだけ」＝言い立てない・ADR-0032）
     if interrupted:
         lines.append(_INTERRUPTED_FRAME)
     lines.append(f"{_TALKED_FRAME}:\n「{text}」")
@@ -98,7 +102,10 @@ def ambient_line(ctx):
         s += f"、外は{ctx.get('desc', '')}"
         if w.get("temp") is not None:
             s += f"、{w['temp']}℃"
-    return s + "。今の時刻に合わせて話す（自分の設定の時間帯より今を優先）。\n"
+    s += "。"
+    if now:
+        s += props_mod.narration_line(now)   # 縁側に在る小物（room の全員が知る・ADR-0032）
+    return s + "今の時刻に合わせて話す（自分の設定の時間帯より今を優先）。\n"
 
 
 def guest_air(tidbit):

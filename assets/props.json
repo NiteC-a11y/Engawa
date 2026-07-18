@@ -1,14 +1,13 @@
 {
-  "_comment": "縁側の小物の台帳（ADR-0032・renderer 非依存の契約＝将来 canvas シーン化しても台帳は不変）。id=識別名 / image=この json からの相対パス / left_pct・bottom_pct=#scene 内の位置（%） / display_px=表示幅 px（絵は固定・表示側で縮小） / months=出す月のリスト（省略=常時・実日付ゲート＝季節の環境反応） / effect=任意の汎用演出（kind: rise=粒が立ちのぼる。x_pct/y_pct=発生点＝画像内%・color=粒色・period_ms=間隔。演出は汎用語彙のみ＝小物専用コードは書かない）。差し替えは env ENGAWA_PROPS_CONFIG か engawa.json[assets].props_config。",
+  "_comment": "縁側の小物の台帳（ADR-0032 v2＝エンティティ＋コンポーネント・renderer 非依存の契約）。1エントリ=小物1つ。image=この json からの相対パス（必須）。place=置き場（left_pct/bottom_pct=#scene 内の%・display_px=表示幅px）。when=表示条件（全フィールド AND・months=出す月のリスト・省略=常時。実日付ゲート＝季節の環境反応で poll が毎回判定＝月替わりも再起動不要）。effect=汎用演出（kind: rise=粒が立ちのぼる=煙/湯気。x_pct/y_pct=発生点=画像内%・color・period_ms。語彙制＝小物専用コードは書かない）。narrate=茶々の環境行に載る一文（茶々が『自分の縁側に在る物』として知る・省略=語らない）。新しい小物はコード0行＝絵を props/ に置いてここに1行。差し替えは env ENGAWA_PROPS_CONFIG か engawa.json[assets].props_config。",
   "props": [
     {
       "id": "katori-senko",
       "image": "props/katori-senko.png",
-      "left_pct": 75,
-      "bottom_pct": 7,
-      "display_px": 46,
-      "months": [6, 7, 8, 9],
-      "effect": { "kind": "rise", "x_pct": 38, "y_pct": 62, "color": "#c9c9c9", "period_ms": 2600 }
+      "place": { "left_pct": 75, "bottom_pct": 7, "display_px": 46 },
+      "when": { "months": [6, 7, 8, 9] },
+      "effect": { "kind": "rise", "x_pct": 38, "y_pct": 62, "color": "#c9c9c9", "period_ms": 2600 },
+      "narrate": "縁側にはあなたが焚いた蚊取り線香がある"
     }
   ]
 }

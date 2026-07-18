@@ -582,38 +582,49 @@ class TestHeartParticles(unittest.TestCase):
 
 
 class TestProps(unittest.TestCase):
-    """縁側の小物（props・ADR-0032）: 台帳→dataURI 化＋月ゲート＋HTML 注入（実アニメは目視・JS は node --check）。"""
+    """縁側の小物（props・ADR-0032 v2）: 資産は起動時に全部注入・表示は poll の active 集合
+    （実アニメ/出入りは目視・JS は node --check）。同梱台帳（蚊取り線香）の実ファイル検証もここ。"""
 
-    def test_load_props_july_has_katori(self):
-        import datetime
-        out = views._load_props(now=datetime.datetime(2026, 7, 15))
+    def setUp(self):
+        import props as props_mod
+        self._saved = os.environ.pop("ENGAWA_PROPS_CONFIG", None)
+        props_mod._CACHE = None                                        # 既定台帳（assets/props.json）を読む
+
+    def tearDown(self):
+        import props as props_mod
+        if self._saved is not None:
+            os.environ["ENGAWA_PROPS_CONFIG"] = self._saved
+        props_mod._CACHE = None
+
+    def test_assets_include_katori_regardless_of_month(self):
+        out = views._props_assets()                                    # 資産＝月に関係なく全部（表示は poll 側）
         katori = [p for p in out if p["id"] == "katori-senko"]
-        self.assertEqual(len(katori), 1)                              # 夏＝蚊取り線香が出る（同梱台帳）
+        self.assertEqual(len(katori), 1)
         self.assertTrue(katori[0]["dataUri"].startswith("data:image/png;base64,"))
-        self.assertEqual(katori[0]["effect"]["kind"], "rise")         # 煙は汎用演出 rise（台帳から）
+        self.assertEqual(katori[0]["effect"]["kind"], "rise")          # 煙は汎用演出 rise（台帳から）
+        self.assertEqual(katori[0]["left_pct"], 75)                    # place コンポーネント
 
-    def test_load_props_winter_has_no_katori(self):
+    def test_bundled_ledger_gates_and_narrates(self):
         import datetime
-        out = views._load_props(now=datetime.datetime(2026, 1, 15))
-        self.assertEqual([p for p in out if p["id"] == "katori-senko"], [])   # 冬＝出ない（月ゲート）
+        import props as props_mod
+        july, january = datetime.datetime(2026, 7, 15), datetime.datetime(2026, 1, 15)
+        self.assertIn("katori-senko", props_mod.active_ids(july))      # 夏＝出る（同梱台帳）
+        self.assertNotIn("katori-senko", props_mod.active_ids(january))
+        self.assertIn("蚊取り線香", props_mod.narration_line(july))     # 茶々が知る一文（あなたが焚いた）
+        self.assertNotIn("蚊取り線香", props_mod.narration_line(january))
 
-    def test_load_props_missing_config_is_empty(self):
-        saved = os.environ.get("ENGAWA_PROPS_CONFIG")
-        os.environ["ENGAWA_PROPS_CONFIG"] = os.path.join(os.path.dirname(__file__), "no-such-props.json")
-        try:
-            self.assertEqual(views._load_props(), [])                 # 欠損＝空（起動を止めない）
-        finally:
-            if saved is None:
-                os.environ.pop("ENGAWA_PROPS_CONFIG", None)
-            else:
-                os.environ["ENGAWA_PROPS_CONFIG"] = saved
+    def test_poll_carries_active_set(self):
+        v = views.WebView()
+        out = v.poll(0)
+        self.assertIsInstance(out.get("props"), list)                  # 資産と分離した「いま出ている集合」
 
-    def test_web_html_replaces_props_marker_and_has_effect_js(self):
+    def test_web_html_replaces_props_marker_and_has_wiring(self):
         h = views.build_web_html()
-        self.assertNotIn("/*PROPS*/null", h)                          # マーカーは必ず置換（リスト or null）
-        self.assertIn(".riseP{", h)                                   # 粒の CSS
+        self.assertNotIn("/*PROPS*/null", h)                           # マーカーは必ず置換（リスト or null）
+        self.assertIn(".riseP{", h)                                    # 粒の CSS
         self.assertIn("@keyframes riseUp", h)
-        self.assertIn("className='prop'", h.replace('"', "'"))        # 台帳駆動の描画 JS
+        self.assertIn("applyProps(r.props)", h)                        # poll → 出し入れの配線
+        self.assertIn(".prop.on{", h)                                  # ふわっと出入りの CSS
 
 
 if __name__ == "__main__":

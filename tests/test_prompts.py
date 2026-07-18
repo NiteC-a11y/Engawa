@@ -124,6 +124,56 @@ class TestUserNarrationInterrupted(unittest.TestCase):
         self.assertEqual(out, "なんや、おったんかいな。")
 
 
+class TestPropsNarration(unittest.TestCase):
+    """縁側の小物を茶々（と room の全員）が知る（ADR-0032 案①）: active な narrate が環境行に載る。
+    天気と同じ「持たせるだけ」＝言い立てさせる文言は足さない。"""
+
+    def setUp(self):
+        import json
+        import os
+        import tempfile
+        import config
+        import props as props_mod
+        self._saved = os.environ.pop("ENGAWA_PROPS_CONFIG", None)
+        f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+        json.dump({"props": [{"id": "k", "image": "k.png", "when": {"months": [7]},
+                              "narrate": "縁側にはあなたが焚いた蚊取り線香がある"}]}, f, ensure_ascii=False)
+        f.close()
+        self._tmp = f.name
+        os.environ["ENGAWA_PROPS_CONFIG"] = f.name
+        config._CFG = None
+        props_mod._CACHE = None
+
+    def tearDown(self):
+        import os
+        import config
+        import props as props_mod
+        os.unlink(self._tmp)
+        if self._saved is None:
+            os.environ.pop("ENGAWA_PROPS_CONFIG", None)
+        else:
+            os.environ["ENGAWA_PROPS_CONFIG"] = self._saved
+        config._CFG = None
+        props_mod._CACHE = None
+
+    def test_user_narration_carries_prop_in_july(self):
+        import datetime
+        ctx = {"now": datetime.datetime(2026, 7, 15, 19, 0), "tod": "夜"}
+        self.assertIn("蚊取り線香", prompts.user_narration("暑いなあ", ctx))
+
+    def test_user_narration_silent_in_january(self):
+        import datetime
+        ctx = {"now": datetime.datetime(2026, 1, 15, 19, 0), "tod": "夜"}
+        self.assertNotIn("蚊取り線香", prompts.user_narration("寒いなあ", ctx))
+
+    def test_ambient_line_carries_prop_for_room(self):
+        import datetime
+        ctx = {"now": datetime.datetime(2026, 7, 15, 19, 0), "tod": "夜"}
+        line = prompts.ambient_line(ctx)
+        self.assertIn("蚊取り線香", line)                              # room の全員（茶々/客人）が知る
+        self.assertLess(line.index("蚊取り線香"), line.index("今の時刻に合わせて話す"))
+
+
 class TestSanitizePersona(unittest.TestCase):
     """/codex 自由入力 persona の最小サニタイズ（制御文字/改行/長さ・公開前の最低線）。"""
 

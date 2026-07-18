@@ -493,6 +493,9 @@ class WebView(View):
         # 昼夜 tint（ADR-0028）: 大阪時刻を単一情報源に毎回配る（無効時 None＝JS は素通し）。
         # /daynight の override（固定/早送り）も含めて _resolve_day が解決（判断は daynight の純関数）。
         out["day"] = self._resolve_day()
+        # 小物の「いま出ている集合」（ADR-0032 v2）: 資産は起動時注入・出す/引っ込めるは毎 poll の純関数判定
+        # ＝月替わりに再起動不要。将来「茶々が点け消しする」時もこの経路に集合を流すだけ（JS は無改修）。
+        out["props"] = props_mod.active_ids()
         return out
 
     @staticmethod
@@ -708,8 +711,11 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   @keyframes floatUp{0%{opacity:0;transform:translate(0,4px) scale(.5)}
     25%{opacity:1;transform:translate(calc(var(--dx) * .35),-16px) scale(1)}
     100%{opacity:0;transform:translate(var(--dx),-64px) scale(.9)}}
-  /* 縁側の小物（props・ADR-0032）: 台帳駆動の静止画レイヤ。z=1（茶々 z2 の後ろ・昼夜膜 z15-17 の下＝夜は小物も暮れる） */
-  .prop{position:absolute;z-index:1;image-rendering:pixelated;pointer-events:none}
+  /* 縁側の小物（props・ADR-0032）: 台帳駆動の静止画レイヤ。z=1（茶々 z2 の後ろ・昼夜膜 z15-17 の下＝夜は小物も暮れる）。
+     資産は常駐・表示は poll の active 集合で .on（ふわっと出入り） */
+  .prop{position:absolute;z-index:1;image-rendering:pixelated;pointer-events:none;
+    opacity:0;transition:opacity 1.4s ease}
+  .prop.on{opacity:1}
   /* 汎用演出 rise: 小さな四角の粒がゆっくり立ちのぼる（煙/湯気。ピクセル画風・ハート♥と同じ機構＝トークン0） */
   .riseP{position:absolute;z-index:3;pointer-events:none;opacity:0;will-change:transform,opacity;
     animation:riseUp var(--dur) linear forwards}
@@ -799,6 +805,7 @@ async function tick(){
     applyFont(r.font);                                          // /font のライブ適用（--fz 差し替え）
     setAbsent(!!r.absent);                                      // 中座＝空っぽの縁側（poll の absent を反映）
     applyDay(r.day);                                            // 背景の昼夜 tint（poll の {tint,glow}・ADR-0028）
+    applyProps(r.props);                                        // 小物の出し入れ（poll の active 集合・ADR-0032）
     // append 前に「下端付近にいるか」を見る。上へスクロールして履歴を見ている時は引き戻さない
     const stick=log.scrollHeight-log.scrollTop-log.clientHeight<48;
     for(const it of r.items){
@@ -964,9 +971,11 @@ function meow(){
   chacha.lastUser=performance.now();                            // 反応＝既存 attentive（こっち見てにっこり）
 }
 cv.addEventListener('dblclick',meow);
-// 縁側の小物（props・ADR-0032）: 台帳（assets/props.json）駆動＝どの絵を・どこに・いつ・どんな演出で、は
-// Python 側が月ゲート済みのリストを注入する。演出は汎用語彙 rise のみ（小物専用コードは書かない＝増殖の蓋）。
+// 縁側の小物（props・ADR-0032 v2）: 資産（絵/置き場/演出）は起動時に全部注入（Flyweight）、
+// 「いま出ている集合」は poll が毎回配り applyProps が .on を出し入れする（状態と資産の分離）。
+// 演出は汎用語彙 rise のみ（小物専用コードは書かない＝増殖の蓋）。表示中だけ焚く。
 const PROPS = /*PROPS*/null;
+const propEls = {};
 (function(){
   if(!PROPS || !PROPS.length) return;
   const scene=document.getElementById('scene');
@@ -974,11 +983,11 @@ const PROPS = /*PROPS*/null;
     const el=document.createElement('img'); el.className='prop'; el.src=p.dataUri;
     el.style.left=(p.left_pct||10)+'%'; el.style.bottom=(p.bottom_pct||6)+'%';
     el.style.width=(p.display_px||40)+'px';
-    scene.appendChild(el);
+    scene.appendChild(el); propEls[p.id]=el;
     const ef=p.effect||null;
     if(ef && ef.kind==='rise'){                                  // 粒が立ちのぼる（煙/湯気）＝まばらに・静かに
       setInterval(()=>{
-        if(document.hidden) return;                              // 非表示中は焚かない（無駄な DOM を作らない）
+        if(document.hidden || !el.classList.contains('on')) return;   // 引っ込めている小物は焚かない
         const r=el.getBoundingClientRect(), sr=scene.getBoundingClientRect();
         const ax=r.left-sr.left+r.width*((ef.x_pct==null?50:ef.x_pct)/100);
         const ay=r.top-sr.top+r.height*((ef.y_pct==null?0:ef.y_pct)/100);
@@ -995,6 +1004,11 @@ const PROPS = /*PROPS*/null;
     }
   }
 })();
+function applyProps(ids){                                        // poll の active 集合 → .on の出し入れ（ふわっと）
+  if(!ids) return;
+  const on=new Set(ids);
+  for(const id in propEls) propEls[id].classList.toggle('on', on.has(id));
+}
 // 右下グリップ → frameless 窓のドラッグ・リサイズ（pywebview window.resize を api 経由で呼ぶ）。
 // 画面座標(screenX/Y)で差分を取り、窓が伸びても基準がぶれないように。min は Python 側でも 240 にクランプ。
 (function(){
@@ -1049,28 +1063,25 @@ def _load_scene_bg():
         return None
 
 
-def _load_props(now=None):
-    """小物の台帳（props.json・ADR-0032）を読み、今日出す小物を dataURI 化して返す。
-    パスは env ENGAWA_PROPS_CONFIG > engawa.json[assets].props_config > assets/props.json（皮の流儀）。
-    image は台帳 json からの相対パス。皮＝ADR-0010 と同じ2層（ブラウザ層 dataURI・ファイル層は起動時
-    ディスク読み→配布は spec datas 同梱）。欠損/読めない小物はスキップ＝起動を止めない。now はテスト注入用。"""
-    path = _asset_path("ENGAWA_PROPS_CONFIG", "props_config", "props.json")
-    items = props_mod.active(props_mod.load_config(path), now or datetime.datetime.now())
+def _props_assets():
+    """小物の**資産**（絵と置き場・演出）を全エントリ分 dataURI 化して返す（ADR-0032 v2・Flyweight＝
+    重い資産は起動時に一度だけ注入し、**「いま出ている集合」は poll が毎回配る**＝月替わりも再起動不要・
+    将来の茶々による点け消しも同じ経路）。image は台帳 json からの相対パス。皮＝ADR-0010 と同じ2層
+    （ブラウザ層 dataURI・ファイル層は起動時ディスク読み→配布は spec datas 同梱）。読めない小物はスキップ。"""
     out = []
-    for p in items:
-        img = p.get("image") or ""
-        img_path = img if os.path.isabs(img) else os.path.join(os.path.dirname(path), img)
+    for p in props_mod.catalog():
+        img = p["image"]
+        img_path = img if os.path.isabs(img) else os.path.join(props_mod.base_dir(), img)
         try:
             with open(img_path, "rb") as f:
                 uri = "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
         except Exception:
             continue
-        q = {"id": p.get("id") or img, "dataUri": uri,
-             "left_pct": p.get("left_pct", 10), "bottom_pct": p.get("bottom_pct", 6),
-             "display_px": p.get("display_px", 40)}
-        if isinstance(p.get("effect"), dict) and p["effect"].get("kind"):
-            q["effect"] = p["effect"]
-        out.append(q)
+        place = p["place"]
+        out.append({"id": p["id"], "dataUri": uri,
+                    "left_pct": place.get("left_pct", 10), "bottom_pct": place.get("bottom_pct", 6),
+                    "display_px": place.get("display_px", 40),
+                    "effect": p["effect"]})
     return out
 
 
@@ -1118,7 +1129,7 @@ def build_web_html(font=1.0):
     if enter_mode not in ("send", "newline"):
         enter_mode = "send"
     html = html.replace('/*ENTERMODE*/"send"', json.dumps(enter_mode))
-    plist = _load_props()                                  # 縁側の小物（台帳駆動・月ゲート済み・ADR-0032）
+    plist = _props_assets()                                # 縁側の小物の資産（全エントリ・表示は poll 側・ADR-0032 v2）
     html = html.replace("/*PROPS*/null",
                         json.dumps(plist, ensure_ascii=False) if plist else "null")
     return _localize_html(html.replace("/*FONT*/1", str(font)))

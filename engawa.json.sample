@@ -96,7 +96,7 @@
     "id": "ja-osaka"
   },
   "assets": {
-    "_comment": "見た目の差し替え口（皮＝ADR-0010。茶々スプライトも縁側背景も好みの絵に丸ごと替えられる）。sprite_config=茶々スプライト設定 sprite.json のパス(空=assets/sprite.json。シートPNGはその隣で解決＝設定ごと替えれば絵も替わる。frame_w/h・display_px・shadow_*・animations は sprite.json 側)。scene_bg=縁側の背景画像PNGのパス(空=assets/scene.png。無ければ CSS のグラデ＋障子/床プレースホルダにフォールバック。透かしは消す・下端中央に猫が座る前提で床は下側に)。props_config=縁側の小物の台帳 props.json のパス(空=assets/props.json。何を・どこに・いつ(months=出す月)・どんな演出(rise=煙/湯気の粒)で置くかは台帳側・ADR-0032。夏の蚊取り線香を同梱・位置調整は left_pct/bottom_pct)。env ENGAWA_SPRITE_CONFIG / ENGAWA_SCENE_BG / ENGAWA_PROPS_CONFIG でも指定可(env>engawa.json>既定)。差し替えたら再起動で反映。",
+    "_comment": "見た目の差し替え口（皮＝ADR-0010。茶々スプライトも縁側背景も好みの絵に丸ごと替えられる）。sprite_config=茶々スプライト設定 sprite.json のパス(空=assets/sprite.json。シートPNGはその隣で解決＝設定ごと替えれば絵も替わる。frame_w/h・display_px・shadow_*・animations は sprite.json 側)。scene_bg=縁側の背景画像PNGのパス(空=assets/scene.png。無ければ CSS のグラデ＋障子/床プレースホルダにフォールバック。透かしは消す・下端中央に猫が座る前提で床は下側に)。props_config=縁側の小物の台帳 props.json のパス(空=assets/props.json。台帳は entity+component: place=置き場/when=条件(months=出す月・poll が毎回判定)/effect=演出(rise=煙/湯気の粒)/narrate=茶々が知る一文・ADR-0032 v2。夏の蚊取り線香を同梱・位置調整は place の left_pct/bottom_pct)。env ENGAWA_SPRITE_CONFIG / ENGAWA_SCENE_BG / ENGAWA_PROPS_CONFIG でも指定可(env>engawa.json>既定)。差し替えたら再起動で反映。",
     "sprite_config": "",
     "scene_bg": "",
     "props_config": ""
