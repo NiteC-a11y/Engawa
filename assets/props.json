@@ -8,7 +8,7 @@
       "bottom_pct": 7,
       "display_px": 46,
       "months": [6, 7, 8, 9],
-      "effect": { "kind": "rise", "x_pct": 36, "y_pct": 62, "color": "#c9c9c9", "period_ms": 2600 }
+      "effect": { "kind": "rise", "x_pct": 38, "y_pct": 62, "color": "#c9c9c9", "period_ms": 2600 }
     }
   ]
 }
