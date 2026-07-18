@@ -213,7 +213,6 @@ class CaptureView(View):
         self._absent = bool(absent)
         self.events.append(("set_absent", self._absent, None))
         return True
-        return True
 
     def current_font(self):
         return self._font
