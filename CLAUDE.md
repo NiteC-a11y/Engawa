@@ -46,7 +46,7 @@
 - `voices/en/`（root） — 英語 voice バンドル（adr/0022・meta.json+persona.md+strings.json＝英語の茶々と英語UI。`ENGAWA_VOICE=en` で有効・自作 voice はフォルダを足すだけ・配布時は spec datas 同梱）。
 - `topic_sources.json`（root） — 客人の世間話トピックの取得先ホワイトリスト（config主導・adr/0014）。
 - `engawa.json`（root・**個人設定＝gitignore**／雛形は `engawa.json.sample`） + `src/config.py` — アプリ挙動の設定（model/guest/間合い/topic）。優先順位 **env(ENGAWA_*) > engawa.json > 既定**。キーは入れない(adr/0002)。端末ごとに調整・全キー任意＝消せばコード既定（gitignore 個人設定＋追跡サンプルの流儀）。
-- `engawa.bat` / `engawa-debug.bat`（root） — Windows ランチャ。`engawa.bat`＝web 常用（`set ENGAWA_UI=web` → 直 `python`）。`engawa-debug.bat`＝`ENGAWA_DEBUG=1`＋別窓で `engawa.log` を追尾。**cmd が cp932 でバッチを読む都合上 ASCII-only 厳守**（日本語コメントは化けて実行される）。
+- `engawa.bat` / `engawa-debug.bat`（root） — Windows ランチャ。`engawa.bat`＝web 常用（`set ENGAWA_UI=web` → `start pythonw` で**切り離して即閉じ**＝黒い cmd 窓が残らない。web 経路は stdout 出力ゼロ＝--noconsole exe と同じ理屈で安全・7/18）。`engawa-debug.bat`＝`ENGAWA_DEBUG=1`＋ブロッキング console＋別窓で `engawa.log` を追尾（出力を見たい時はこちら）。**cmd が cp932 でバッチを読む都合上 ASCII-only 厳守**（日本語コメントは化けて実行される）。
 - `poc/engawa_p1/p2/p3_*.py` — 各フェーズの検証済み基準点。**温存・触らない**。
 - `docs/adr/`（0001〜0031）, `docs/TECH_RULES.md`（**固有の実装契約のみ**＝ワイヤ契約/OS地雷/境界/テスト運用・決定は1行＋ADRポインタ・adr/0030）, `docs/Backlog.md`
 - `docs/engawa-acp-spec.md` — ピボット前の**旧構想 仕様書 v1**（adr/0004 で転換・adr/0016 で降格）。歴史的参照として温存・**現行仕様ではない**。
