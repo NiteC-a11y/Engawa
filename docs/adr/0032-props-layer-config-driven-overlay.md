@@ -41,7 +41,7 @@
 ## 影響 / 帰結
 
 - `assets/props.json`（台帳）＋ `assets/props/katori-senko.png`（第1号・446×370）。
-- `src/props.py`（葉・純関数＝`load_config`/`active`）／`views._load_props`（dataURI 化・2層＝ADR-0010 と同じ）／
+- `src/props.py`（葉・純関数＝`catalog`/`active`/`narration_line`・v2 で改名）／`views._props_assets`（dataURI 化・2層＝ADR-0010 と同じ）／
   `views` の CSS `.prop`/`.riseP`＋JS（台帳描画＋rise・`/*PROPS*/null` 注入）。
 - PyInstaller spec datas に props.json＋props/ 同梱。`engawa.json.sample[assets].props_config`。
 - テスト: props 純関数（月ゲート境界・フォールバック）＋views（7月に出る/1月に出ない・欠損空・マーカー置換・JS は node --check）。
