@@ -581,5 +581,40 @@ class TestHeartParticles(unittest.TestCase):
         self.assertIn("hearts();", h)                 # meow（dblclick）から呼ぶ
 
 
+class TestProps(unittest.TestCase):
+    """縁側の小物（props・ADR-0032）: 台帳→dataURI 化＋月ゲート＋HTML 注入（実アニメは目視・JS は node --check）。"""
+
+    def test_load_props_july_has_katori(self):
+        import datetime
+        out = views._load_props(now=datetime.datetime(2026, 7, 15))
+        katori = [p for p in out if p["id"] == "katori-senko"]
+        self.assertEqual(len(katori), 1)                              # 夏＝蚊取り線香が出る（同梱台帳）
+        self.assertTrue(katori[0]["dataUri"].startswith("data:image/png;base64,"))
+        self.assertEqual(katori[0]["effect"]["kind"], "rise")         # 煙は汎用演出 rise（台帳から）
+
+    def test_load_props_winter_has_no_katori(self):
+        import datetime
+        out = views._load_props(now=datetime.datetime(2026, 1, 15))
+        self.assertEqual([p for p in out if p["id"] == "katori-senko"], [])   # 冬＝出ない（月ゲート）
+
+    def test_load_props_missing_config_is_empty(self):
+        saved = os.environ.get("ENGAWA_PROPS_CONFIG")
+        os.environ["ENGAWA_PROPS_CONFIG"] = os.path.join(os.path.dirname(__file__), "no-such-props.json")
+        try:
+            self.assertEqual(views._load_props(), [])                 # 欠損＝空（起動を止めない）
+        finally:
+            if saved is None:
+                os.environ.pop("ENGAWA_PROPS_CONFIG", None)
+            else:
+                os.environ["ENGAWA_PROPS_CONFIG"] = saved
+
+    def test_web_html_replaces_props_marker_and_has_effect_js(self):
+        h = views.build_web_html()
+        self.assertNotIn("/*PROPS*/null", h)                          # マーカーは必ず置換（リスト or null）
+        self.assertIn(".riseP{", h)                                   # 粒の CSS
+        self.assertIn("@keyframes riseUp", h)
+        self.assertIn("className='prop'", h.replace('"', "'"))        # 台帳駆動の描画 JS
+
+
 if __name__ == "__main__":
     unittest.main()

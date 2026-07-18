@@ -16,6 +16,7 @@ import time
 
 import config   # アセット(皮)の差し替えパス解決（env(ENGAWA_*) > engawa.json[assets] > 既定・ADR-0010 の皮を背景にも拡張）
 import daynight  # 時刻→背景の昼夜レイヤ（tint 乗算＋glow 加算月光）の純関数（ADR-0028）
+import props as props_mod  # 縁側の小物の台帳解決＋月ゲート（ADR-0032・純関数）
 import voice    # web シェル固定ラベルの voice 上書き（ADR-0022 Inc2・既定 voice は無変化）
 
 def _base_dir():
@@ -707,6 +708,14 @@ WEB_HTML = r"""<!doctype html><html><head><meta charset="utf-8">
   @keyframes floatUp{0%{opacity:0;transform:translate(0,4px) scale(.5)}
     25%{opacity:1;transform:translate(calc(var(--dx) * .35),-16px) scale(1)}
     100%{opacity:0;transform:translate(var(--dx),-64px) scale(.9)}}
+  /* 縁側の小物（props・ADR-0032）: 台帳駆動の静止画レイヤ。z=1（茶々 z2 の後ろ・昼夜膜 z15-17 の下＝夜は小物も暮れる） */
+  .prop{position:absolute;z-index:1;image-rendering:pixelated;pointer-events:none}
+  /* 汎用演出 rise: 小さな四角の粒がゆっくり立ちのぼる（煙/湯気。ピクセル画風・ハート♥と同じ機構＝トークン0） */
+  .riseP{position:absolute;z-index:3;pointer-events:none;opacity:0;will-change:transform,opacity;
+    animation:riseUp var(--dur) linear forwards}
+  @keyframes riseUp{0%{opacity:0;transform:translate(0,2px)}
+    18%{opacity:.5}55%{opacity:.4;transform:translate(calc(var(--sx) * -0.6),-24px)}
+    100%{opacity:0;transform:translate(var(--sx),-52px)}}
   /* 接地影：浮き感を消す（スプライトの足元に敷く） */
   #chashadow{position:absolute;left:50%;transform:translateX(-50%);height:9px;display:none;z-index:1;
     background:rgba(0,0,0,.22);border-radius:50%;filter:blur(3px)}
@@ -955,6 +964,37 @@ function meow(){
   chacha.lastUser=performance.now();                            // 反応＝既存 attentive（こっち見てにっこり）
 }
 cv.addEventListener('dblclick',meow);
+// 縁側の小物（props・ADR-0032）: 台帳（assets/props.json）駆動＝どの絵を・どこに・いつ・どんな演出で、は
+// Python 側が月ゲート済みのリストを注入する。演出は汎用語彙 rise のみ（小物専用コードは書かない＝増殖の蓋）。
+const PROPS = /*PROPS*/null;
+(function(){
+  if(!PROPS || !PROPS.length) return;
+  const scene=document.getElementById('scene');
+  for(const p of PROPS){
+    const el=document.createElement('img'); el.className='prop'; el.src=p.dataUri;
+    el.style.left=(p.left_pct||10)+'%'; el.style.bottom=(p.bottom_pct||6)+'%';
+    el.style.width=(p.display_px||40)+'px';
+    scene.appendChild(el);
+    const ef=p.effect||null;
+    if(ef && ef.kind==='rise'){                                  // 粒が立ちのぼる（煙/湯気）＝まばらに・静かに
+      setInterval(()=>{
+        if(document.hidden) return;                              // 非表示中は焚かない（無駄な DOM を作らない）
+        const r=el.getBoundingClientRect(), sr=scene.getBoundingClientRect();
+        const ax=r.left-sr.left+r.width*((ef.x_pct==null?50:ef.x_pct)/100);
+        const ay=r.top-sr.top+r.height*((ef.y_pct==null?0:ef.y_pct)/100);
+        const s=document.createElement('span'); s.className='riseP';
+        const px=2+Math.round(Math.random()*2);                  // 2〜4px のカクついた粒（ピクセル画風）
+        s.style.width=px+'px'; s.style.height=px+'px';
+        s.style.background=ef.color||'#c9c9c9';
+        s.style.left=Math.round(ax)+'px'; s.style.top=Math.round(ay)+'px';
+        s.style.setProperty('--sx',(Math.random()*14-7).toFixed(0)+'px');
+        s.style.setProperty('--dur',(3.2+Math.random()*1.6).toFixed(1)+'s');
+        scene.appendChild(s);
+        setTimeout(()=>s.remove(),5200);                         // アニメ後に掃除（溜めない）
+      }, ef.period_ms||2600);
+    }
+  }
+})();
 // 右下グリップ → frameless 窓のドラッグ・リサイズ（pywebview window.resize を api 経由で呼ぶ）。
 // 画面座標(screenX/Y)で差分を取り、窓が伸びても基準がぶれないように。min は Python 側でも 240 にクランプ。
 (function(){
@@ -1009,6 +1049,31 @@ def _load_scene_bg():
         return None
 
 
+def _load_props(now=None):
+    """小物の台帳（props.json・ADR-0032）を読み、今日出す小物を dataURI 化して返す。
+    パスは env ENGAWA_PROPS_CONFIG > engawa.json[assets].props_config > assets/props.json（皮の流儀）。
+    image は台帳 json からの相対パス。皮＝ADR-0010 と同じ2層（ブラウザ層 dataURI・ファイル層は起動時
+    ディスク読み→配布は spec datas 同梱）。欠損/読めない小物はスキップ＝起動を止めない。now はテスト注入用。"""
+    path = _asset_path("ENGAWA_PROPS_CONFIG", "props_config", "props.json")
+    items = props_mod.active(props_mod.load_config(path), now or datetime.datetime.now())
+    out = []
+    for p in items:
+        img = p.get("image") or ""
+        img_path = img if os.path.isabs(img) else os.path.join(os.path.dirname(path), img)
+        try:
+            with open(img_path, "rb") as f:
+                uri = "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+        except Exception:
+            continue
+        q = {"id": p.get("id") or img, "dataUri": uri,
+             "left_pct": p.get("left_pct", 10), "bottom_pct": p.get("bottom_pct", 6),
+             "display_px": p.get("display_px", 40)}
+        if isinstance(p.get("effect"), dict) and p["effect"].get("kind"):
+            q["effect"] = p["effect"]
+        out.append(q)
+    return out
+
+
 def _localize_html(html):
     """web シェルの固定ラベルを voice の strings で差し替え（ADR-0022 Inc2）。既定 voice（ja-osaka）は
     strings が空＝置換は同文で無変化。JS 内の文字列リテラルは json.dumps でクォートごと安全に差す。"""
@@ -1053,6 +1118,9 @@ def build_web_html(font=1.0):
     if enter_mode not in ("send", "newline"):
         enter_mode = "send"
     html = html.replace('/*ENTERMODE*/"send"', json.dumps(enter_mode))
+    plist = _load_props()                                  # 縁側の小物（台帳駆動・月ゲート済み・ADR-0032）
+    html = html.replace("/*PROPS*/null",
+                        json.dumps(plist, ensure_ascii=False) if plist else "null")
     return _localize_html(html.replace("/*FONT*/1", str(font)))
 
 
