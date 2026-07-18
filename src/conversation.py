@@ -149,6 +149,7 @@ class Room:
         self.transcript = Transcript()
         self._on_say = on_say or (lambda speaker, text, kind: None)   # 表示/記録フック（任意）
         self._stop = lambda: False        # 現ドライブの失効判定（barge-in・ADR-0031）。各ドライブ入口で差し替え
+        self._live_preemptible = True     # いま生成中（say の await 中）の手が barge-in で畳めるか（ADR-0031 修正 7/18）
         self._state = Greeting(self)
 
     # 観測用
@@ -164,6 +165,13 @@ class Room:
     def preempted(self):
         """現在のドライブが barge-in で失効しているか（commit gate と同じ判定・ADR-0031）。"""
         return self._stop()
+
+    @property
+    def utter_preemptible(self):
+        """いま生成中の手が barge-in で畳めるか（生成中でなければ True＝次の手は gate が守る）。
+        Scheduler の _room_barge_in がこれを見て、中断不可の手（ARRIVE/辞去）の生成中は agent cancel を
+        送らない＝cancel 由来の部分文が preemptible=False の commit を素通りする穴を塞ぐ（codex diff レビュー 7/18）。"""
+        return self._live_preemptible
 
     # 外部イベント（Scheduler が駆動）。状態へ委譲＝State パターン。
     # should_stop: 「このドライブはもう最新でない」判定（barge-in・ADR-0031）。省略時は従来挙動（止まらない）。
@@ -184,7 +192,11 @@ class Room:
     async def _utter(self, speaker, kind, preemptible=True):
         if preemptible and self._stop():
             return ""
-        text = _unquote((await speaker.say(self.transcript.window(), kind) or "").strip())
+        self._live_preemptible = preemptible          # 生成中の手の中断可否を外へ見せる（utter_preemptible）
+        try:
+            text = _unquote((await speaker.say(self.transcript.window(), kind) or "").strip())
+        finally:
+            self._live_preemptible = True
         if preemptible and self._stop():
             return ""
         if text:

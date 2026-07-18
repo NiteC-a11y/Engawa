@@ -528,6 +528,164 @@ class TestRoomBargeIn(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(s._speakers.resident_timed_out)
         self.assertFalse(s.room.closed)
 
+    async def test_arrive_not_cancelled_and_commits_fully(self):
+        # 到着挨拶（ARRIVE=中断不可）の生成中に被せても cancel が飛ばず、完全な到着発話が1回 commit される
+        # （cancel の部分文が preemptible=False の gate を素通りして commit される穴の再発防止・codex diff レビュー 7/18）
+        created = []
+
+        class SlowArriveCodex:
+            def __init__(self):
+                self.closed = False
+                self.reported_model = None
+                self.prompts = []
+                self.cancels = 0
+                self.calls = 0
+                self.started = asyncio.Event()
+                self.gate = asyncio.Event()
+
+            async def prompt(self, text, on_chunk=None):
+                self.calls += 1
+                self.prompts.append(text)
+                if self.calls == 1:                      # 到着挨拶（ARRIVE）を生成中に被せられる
+                    self.started.set()
+                    await self.gate.wait()
+                    return "ごめんやす、ええ縁側やなあ"
+                return "ほいほい"
+
+            async def cancel(self):
+                self.cancels += 1
+                self.gate.set()
+
+            async def close(self):
+                self.closed = True
+
+        async def spawn():
+            c = SlowArriveCodex()
+            created.append(c)
+            return c
+
+        s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
+                            views.CaptureView(), spawn_codex=spawn)
+        s.active_guest = sources.GuestSource("ご隠居", spawn)
+
+        async def open_room():                            # 自発来訪の挨拶＝tick タスク相当（drive_lock 下で begin）
+            async with s.drive_lock:
+                await s._start_room("ご隠居")
+
+        task = asyncio.create_task(open_room())
+        while not created:
+            await asyncio.sleep(0)
+        await created[0].started.wait()
+        inp = asyncio.create_task(s.on_user_input("Hello there"))
+        for _ in range(10):
+            await asyncio.sleep(0)                        # barge 判定が走るまで回す
+        self.assertEqual(created[0].cancels, 0)           # ARRIVE は畳まれない（中断不可）
+        created[0].gate.set()                             # 到着の挨拶が完走
+        await task
+        await inp
+        says = self._says(s.view)
+        self.assertEqual(says[0], ("ご隠居", "ごめんやす、ええ縁側やなあ"))   # 完全な到着発話
+        self.assertEqual([t for _sp, t in says].count("ごめんやす、ええ縁側やなあ"), 1)
+        self.assertEqual(says[1], ("茶々", "ええ天気やな"))   # REACT は rev 失効で省略→次は Hello への REPLY
+        self.assertFalse(s.room.closed)
+
+    async def test_leaving_not_cancelled_and_completes(self):
+        # 辞去（LEAVE/見送り=中断不可）の生成中に被せても cancel が飛ばず、挨拶が完走して終端に着く
+        created = []
+
+        class SlowLeaveCodex:
+            def __init__(self):
+                self.closed = False
+                self.reported_model = None
+                self.prompts = []
+                self.cancels = 0
+                self.calls = 0
+                self.started = asyncio.Event()
+                self.gate = asyncio.Event()
+
+            async def prompt(self, text, on_chunk=None):
+                self.calls += 1
+                self.prompts.append(text)
+                if self.calls == 2:                      # 1=到着(即答) 2=暇乞い（LEAVE・生成中に被せられる）
+                    self.started.set()
+                    await self.gate.wait()
+                    return "ほな、またお邪魔しますわ"
+                return "ごめんやす"
+
+            async def cancel(self):
+                self.cancels += 1
+                self.gate.set()
+
+            async def close(self):
+                self.closed = True
+
+        async def spawn():
+            c = SlowLeaveCodex()
+            created.append(c)
+            return c
+
+        s = sched.Scheduler(FakeResident(), [], sources.WeatherSource(),
+                            views.CaptureView(), spawn_codex=spawn)
+        await s._summon_guest("ご隠居")
+        room = s.room
+        room.fill_cap, room._fill_left, room.idle_leave_ticks = 0, 0, 1
+        task = asyncio.create_task(self._drive_tick(s))   # 辞去（LEAVE 生成中で停止）
+        await created[0].started.wait()
+        inp = asyncio.create_task(s.on_user_input("wait!"))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        self.assertEqual(created[0].cancels, 0)           # 辞去は畳まれない
+        created[0].gate.set()
+        await task
+        await inp
+        says = self._says(s.view)
+        self.assertIn(("ご隠居", "ほな、またお邪魔しますわ"), says)   # 完全な暇乞い
+        self.assertTrue(room.closed)                      # 見送りまで完走して終端（挨拶なく消えない）
+
+    async def test_greeting_react_is_cancellable(self):
+        # 挨拶の2手目（REACT=中断可）は従来どおり畳める＝ARRIVE と REACT で cancel 可否が分かれる
+        class SlowReactResident(FakeResident):
+            def __init__(self):
+                super().__init__()
+                self.calls = 0
+                self.started = asyncio.Event()
+                self.gate = asyncio.Event()
+
+            async def prompt(self, text, on_chunk=None):
+                self.calls += 1
+                if self.calls == 1:                      # 挨拶の REACT を生成中に被せる
+                    self.started.set()
+                    await self.gate.wait()
+                    return "古い反応"
+                return await super().prompt(text, on_chunk)
+
+            async def cancel(self):
+                await super().cancel()
+                self.gate.set()
+
+        created = []
+        spawn = _codex_factory(created)
+        r = SlowReactResident()
+        s = sched.Scheduler(r, [], sources.WeatherSource(),
+                            views.CaptureView(), spawn_codex=spawn)
+        s.active_guest = sources.GuestSource("ご隠居", spawn)
+
+        async def open_room():
+            async with s.drive_lock:
+                await s._start_room("ご隠居")
+
+        task = asyncio.create_task(open_room())
+        await r.started.wait()
+        inp = asyncio.create_task(s.on_user_input("Hello"))
+        for _ in range(10):
+            await asyncio.sleep(0)
+        self.assertEqual(r.cancels, 1)                    # REACT は畳まれる（cancel が gate を解く）
+        await task
+        await inp
+        says = self._says(s.view)
+        self.assertNotIn("古い反応", [t for _sp, t in says])   # 言いかけの反応は出ない
+        self.assertEqual(says[1], ("茶々", "ええ天気やな"))     # 次の茶々は Hello への REPLY
+
     async def test_input_when_room_idle_no_effect_line(self):
         # 生成中の手が無ければ何も畳まない＝演出も出ない（自然完了と紛れない・ADR-0031）
         created = []

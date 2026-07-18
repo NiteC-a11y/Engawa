@@ -379,6 +379,26 @@ class TestBargeIn(unittest.IsolatedAsyncioTestCase):
         await room.on_tick(should_stop=lambda: False)             # 失効なし・茶々が無言
         self.assertEqual(room._fill_left, 1)                      # 予算は減ったまま
 
+    async def test_utter_preemptible_flag_by_kind(self):
+        # 生成中の手の中断可否を Scheduler が観測できる（ARRIVE/辞去=不可・REACT=可・生成外=True・ADR-0031 修正 7/18）
+        seen, holder = {}, {}
+
+        def spk(name):
+            async def fn(window, kind):
+                seen[kind] = holder["room"].utter_preemptible
+                return "x"
+            return conv.Speaker(name, fn)
+
+        room = conv.Room(PERSONA, spk("茶々"), spk("ご隠居"), fill_cap=0, idle_leave_ticks=1)
+        holder["room"] = room
+        await room.begin()                                  # 挨拶: ARRIVE→REACT
+        await room.on_tick()                                # 辞去: LEAVE→LEAVE_REACT
+        self.assertFalse(seen[conv.ARRIVE])
+        self.assertTrue(seen[conv.REACT])
+        self.assertFalse(seen[conv.LEAVE])
+        self.assertFalse(seen[conv.LEAVE_REACT])
+        self.assertTrue(room.utter_preemptible)             # 生成外は True（次の手は gate が守る）
+
     async def test_default_no_predicate_unchanged(self):
         # should_stop 省略＝従来挙動（既存スイート全体も回帰網だが、明示の1本を置く）
         log = []

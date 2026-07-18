@@ -470,8 +470,14 @@ class Scheduler:
     async def _room_barge_in(self):
         """部屋への入力到着＝進行中ドライブを失効させ（rev+1）、生成中の手を best-effort で畳む（ADR-0031）。
         tick 駆動チェーン（挨拶/代打/辞去）中は入力ループが空いているのでここが即時に走る。
-        入力起点チェーン中の連打は run() の逐次入力ゆえ届かない＝スコープL（ADR-0031 備考）。"""
+        入力起点チェーン中の連打は run() の逐次入力ゆえ届かない＝スコープL（ADR-0031 備考）。
+        **中断不可の手（ARRIVE/辞去）の生成中は rev だけ進めて cancel しない**＝preemptible=False は
+        gate を素通りするので、cancel の部分文がそのまま commit される穴があった（codex diff レビュー 7/18）。
+        rev は進めてよい: 非中断手は gate を無視して完走し、後続の中断可の手（REACT 等）だけが省略される。"""
         self._room_rev += 1
+        if self.room is not None and not self.room.utter_preemptible:
+            log.debug("barge-in 保留: 中断不可の手（ARRIVE/辞去）を生成中＝完走を待つ")
+            return
         preempted = False
         if self.speaking:                                # 茶々が room 発話の生成中（ソロ barge-in と同型）
             log.debug("cancel: user barge-in（room・茶々生成中）")
