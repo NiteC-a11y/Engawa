@@ -626,6 +626,25 @@ class TestProps(unittest.TestCase):
         self.assertIn("applyProps(r.props)", h)                        # poll → 出し入れの配線
         self.assertIn(".prop.on{", h)                                  # ふわっと出入りの CSS
 
+    def test_web_html_survives_broken_ledger(self):
+        # codex レビュー【高】: image が非 str の台帳で build_web_html が TypeError で落ちていた
+        # → 正規化層で entity ごと捨て、組み立ては正常に返る（起動を止めない契約）
+        import json
+        import tempfile
+        import props as props_mod
+        f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+        json.dump({"props": [{"id": "bad", "image": 123}, {"image": []}]}, f)
+        f.close()
+        self.addCleanup(os.unlink, f.name)
+        os.environ["ENGAWA_PROPS_CONFIG"] = f.name
+        props_mod._CACHE = None
+        try:
+            h = views.build_web_html()                                 # 例外なく返る
+            self.assertIn("const PROPS = null;", h)                    # 全滅＝null 注入（小物なしで開く）
+        finally:
+            os.environ.pop("ENGAWA_PROPS_CONFIG", None)
+            props_mod._CACHE = None
+
 
 if __name__ == "__main__":
     unittest.main()

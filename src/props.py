@@ -14,6 +14,7 @@
 """
 import datetime
 import json
+import math
 import os
 import sys
 
@@ -40,15 +41,50 @@ def base_dir():
     return os.path.dirname(_config_path())
 
 
-def _normalize(p):
-    """台帳エントリを component 形に正規化（image 必須・id 省略は image 名・塊は dict に矯正）。"""
-    if not isinstance(p, dict) or not p.get("image"):
+def _num(v, default, lo, hi):
+    """台帳の数値を有限数に矯正して [lo, hi] へクランプ（型不正/NaN/∞ は default）。
+    壊れた台帳1件で常駐 GUI を劣化させない（例: period_ms 負値→setInterval ほぼ0ms の DOM 連打・codex レビュー 7/18）。"""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(f):
+        return default
+    return min(max(f, lo), hi)
+
+
+def _normalize(p, base):
+    """台帳エントリを component 形に正規化する**正本境界**（codex レビュー 7/18 反映）:
+    - image は空でない str のみ（数値/list 等は entity ごと捨てる＝views の os.path が落ちない）
+    - **画像ファイルが実在しない entity も捨てる**＝「画面に出せない物は世界にも無い」＝views（描画）と
+      prompts（narrate）が同じ集合を見る（食い違いの構造防止・ADR-0032 の Facade を型でも守る）
+    - 数値は _num で有限数＋範囲へ（0 は 0 のまま有効＝JS 側も ?? で受ける）"""
+    if not isinstance(p, dict):
         return None
-    return {"id": p.get("id") or p["image"],
-            "image": p["image"],
-            "place": p.get("place") if isinstance(p.get("place"), dict) else {},
+    img = p.get("image")
+    if not isinstance(img, str) or not img.strip():
+        return None
+    img_path = img if os.path.isabs(img) else os.path.join(base, img)
+    if not os.path.isfile(img_path):
+        return None
+    pid = p.get("id")
+    place_in = p.get("place") if isinstance(p.get("place"), dict) else {}
+    eff_in = p.get("effect") if isinstance(p.get("effect"), dict) else None
+    effect = None
+    if eff_in and isinstance(eff_in.get("kind"), str) and eff_in["kind"]:
+        effect = {"kind": eff_in["kind"],
+                  "x_pct": _num(eff_in.get("x_pct"), 50, 0, 100),
+                  "y_pct": _num(eff_in.get("y_pct"), 0, 0, 100),
+                  "color": eff_in.get("color") if isinstance(eff_in.get("color"), str) else "#c9c9c9",
+                  "period_ms": _num(eff_in.get("period_ms"), 2600, 250, 60000)}
+    return {"id": pid if (isinstance(pid, str) and pid.strip()) else img,
+            "image": img,
+            "image_path": img_path,
+            "place": {"left_pct": _num(place_in.get("left_pct"), 10, 0, 100),
+                      "bottom_pct": _num(place_in.get("bottom_pct"), 6, 0, 100),
+                      "display_px": _num(place_in.get("display_px"), 40, 8, 400)},
             "when": p.get("when") if isinstance(p.get("when"), dict) else {},
-            "effect": p.get("effect") if (isinstance(p.get("effect"), dict) and p["effect"].get("kind")) else None,
+            "effect": effect,
             "narrate": p.get("narrate") if isinstance(p.get("narrate"), str) else ""}
 
 
@@ -59,7 +95,8 @@ def _load(path):
         items = data.get("props") if isinstance(data, dict) else None
         if not isinstance(items, list):
             return []
-        return [q for q in (_normalize(p) for p in items) if q]
+        base = os.path.dirname(path)
+        return [q for q in (_normalize(p, base) for p in items) if q]
     except Exception:
         return []          # 無い/壊れ → 小物なし（起動を止めない）
 

@@ -981,8 +981,8 @@ const propEls = {};
   const scene=document.getElementById('scene');
   for(const p of PROPS){
     const el=document.createElement('img'); el.className='prop'; el.src=p.dataUri;
-    el.style.left=(p.left_pct||10)+'%'; el.style.bottom=(p.bottom_pct||6)+'%';
-    el.style.width=(p.display_px||40)+'px';
+    el.style.left=(p.left_pct??10)+'%'; el.style.bottom=(p.bottom_pct??6)+'%';   // ??＝0 は有効な端位置（||だと既定に化ける）
+    el.style.width=(p.display_px??40)+'px';
     scene.appendChild(el); propEls[p.id]=el;
     const ef=p.effect||null;
     if(ef && ef.kind==='rise'){                                  // 粒が立ちのぼる（煙/湯気）＝まばらに・静かに
@@ -1000,7 +1000,7 @@ const propEls = {};
         s.style.setProperty('--dur',(3.2+Math.random()*1.6).toFixed(1)+'s');
         scene.appendChild(s);
         setTimeout(()=>s.remove(),5200);                         // アニメ後に掃除（溜めない）
-      }, ef.period_ms||2600);
+      }, Math.max(250, Number(ef.period_ms)||2600));             // 下限クランプ＝壊れた台帳で DOM 連打しない（二重弁）
     }
   }
 })();
@@ -1070,18 +1070,16 @@ def _props_assets():
     （ブラウザ層 dataURI・ファイル層は起動時ディスク読み→配布は spec datas 同梱）。読めない小物はスキップ。"""
     out = []
     for p in props_mod.catalog():
-        img = p["image"]
-        img_path = img if os.path.isabs(img) else os.path.join(props_mod.base_dir(), img)
-        try:
-            with open(img_path, "rb") as f:
+        try:                                             # 正規化漏れがあっても1件スキップで済ます二重弁（codex レビュー）
+            with open(p["image_path"], "rb") as f:       # 実在チェック済みパス（props._normalize が正本境界）
                 uri = "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+            place = p["place"]
+            out.append({"id": p["id"], "dataUri": uri,
+                        "left_pct": place["left_pct"], "bottom_pct": place["bottom_pct"],
+                        "display_px": place["display_px"],
+                        "effect": p["effect"]})
         except Exception:
             continue
-        place = p["place"]
-        out.append({"id": p["id"], "dataUri": uri,
-                    "left_pct": place.get("left_pct", 10), "bottom_pct": place.get("bottom_pct", 6),
-                    "display_px": place.get("display_px", 40),
-                    "effect": p["effect"]})
     return out
 
 

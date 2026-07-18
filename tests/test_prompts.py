@@ -135,20 +135,23 @@ class TestPropsNarration(unittest.TestCase):
         import config
         import props as props_mod
         self._saved = os.environ.pop("ENGAWA_PROPS_CONFIG", None)
-        f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
-        json.dump({"props": [{"id": "k", "image": "k.png", "when": {"months": [7]},
-                              "narrate": "縁側にはあなたが焚いた蚊取り線香がある"}]}, f, ensure_ascii=False)
-        f.close()
-        self._tmp = f.name
-        os.environ["ENGAWA_PROPS_CONFIG"] = f.name
+        self._tmp = tempfile.mkdtemp(prefix="engawa_props_")
+        with open(os.path.join(self._tmp, "k.png"), "wb") as f:
+            f.write(b"\x89PNG-fake")                    # カタログの画像実在チェック対応（ダミーで可）
+        path = os.path.join(self._tmp, "props.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"props": [{"id": "k", "image": "k.png", "when": {"months": [7]},
+                                  "narrate": "縁側にはあなたが焚いた蚊取り線香がある"}]}, f, ensure_ascii=False)
+        os.environ["ENGAWA_PROPS_CONFIG"] = path
         config._CFG = None
         props_mod._CACHE = None
 
     def tearDown(self):
         import os
+        import shutil
         import config
         import props as props_mod
-        os.unlink(self._tmp)
+        shutil.rmtree(self._tmp, ignore_errors=True)
         if self._saved is None:
             os.environ.pop("ENGAWA_PROPS_CONFIG", None)
         else:
