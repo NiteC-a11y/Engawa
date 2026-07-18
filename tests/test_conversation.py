@@ -38,6 +38,29 @@ class TestResolveAddressee(unittest.TestCase):
         self.assertIn("隠居", al)
         self.assertIn("客人", al)
 
+    # ── 英字対応（英語 persona/voice・ADR-0022。既定は変わらず茶々）─────────
+    EN_PERSONA = "the retired gardener next door"
+
+    def test_en_guest_by_persona_word(self):
+        self.assertEqual(conv.resolve_addressee("Gardener, what do you think?", self.EN_PERSONA), "guest")
+
+    def test_en_guest_by_generic_word(self):
+        self.assertEqual(conv.resolve_addressee("Guest, are you still there?", PERSONA), "guest")
+
+    def test_en_both_when_each_named(self):
+        self.assertEqual(conv.resolve_addressee("Chacha and the gardener should hear this", self.EN_PERSONA), "both")
+
+    def test_en_both_keyword(self):
+        self.assertEqual(conv.resolve_addressee("What do you two think?", self.EN_PERSONA), "both")
+
+    def test_en_stopwords_do_not_route(self):
+        # 機能語/ありふれ語（the/old/man/next/door…）は呼び名にしない＝素の英文は既定の茶々へ
+        self.assertEqual(conv.resolve_addressee("It is hot today", "the old man next door"), "resident")
+
+    def test_en_word_boundary_no_substring_hit(self):
+        # 単語境界: gardening に gardener は当たらない（substring 誤爆防止）
+        self.assertEqual(conv.resolve_addressee("I enjoy gardening these days", self.EN_PERSONA), "resident")
+
 
 class TestUnquote(unittest.TestCase):
     def test_strips_kagi(self):

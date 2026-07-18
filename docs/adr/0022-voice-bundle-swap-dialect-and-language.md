@@ -67,7 +67,11 @@
 - `prompts._lang_note()` … `llm_lang` が立つ時だけ住人注入の末尾に言語指示1行（JP 方言では 1 バイトも不変＝決定3どおり）。
 - UI 鍵化は**漸進**（高頻度シェルのみ）: /help・barge-in 演出・来訪・中座・timeout 系・起動行・web 固定ラベル
   （`views._localize_html`）。未鍵化（日本語フォールバック）＝ /model 詳細・/restart 経路・/arc /game の対話文言・
-  commands.py（/font /daynight）・game_controller。`/arc` のキー引数（雀|猫|風）と住人表示名「茶々」は固有名として維持。
+  commands.py（/font /daynight）・game_controller。住人表示名「茶々」は固有名として維持。
+- **英語運用の追補（7/18 同日）**: `conversation.resolve_addressee` に英字対応（persona の英単語 alias＝機能語ストップ
+  ＋単語境界照合・「Guest/Chacha/both/you two」）／`prompts.strip_resident_leak` の思考除去ヒューリスティック
+  （先頭の非日本語塊＝染み出し）は **llm_lang 非日本語では跳ばす**（英文中の和語引用で正当な英文を壊さない）／
+  `/arc` に英別名 sparrow/cat/wind（`scheduler.ARC_KEY_ALIASES`）。
 - 同梱バンドルは `voices/en`（persona=英語の茶々の書き起こし・strings=UI 訳・llm_lang=en）。PyInstaller spec の
   datas に `voices/en` を追加。設定雛形は `engawa.json.sample[voice]`。
 - 方言ユースケース（persona 一枚差し）は `test_voice.test_persona_only_bundle` で継ぎ目を検証（京都弁の実バンドルは未同梱）。

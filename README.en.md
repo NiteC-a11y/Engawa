@@ -122,9 +122,9 @@ Plain text is **talking to Chacha**; input starting with `/` is a **command to t
 
 | Command | Description |
 |---|---|
-| `/codex <persona>` | Summon a guest (Codex) wearing **any persona you type** (e.g. `/codex the retired gardener next door`) — in the web UI, use the addressee chips (Chacha / Guest / Both) to direct your words |
+| `/codex <persona>` | Summon a guest (Codex) wearing **any persona you type** (e.g. `/codex the retired gardener next door`) — address them by name, or say "Guest" / use the web UI's addressee chips |
 | `/game <id> [watch]` | Mini-games (`blackjack` / `uno` / `leduc`). Add `watch` (or `見る`) to spectate. Requires `pip install rlcard` |
-| `/arc [雀\|猫\|風]` | Replay a diorama event (arc: sparrow/cat/wind) — for debugging |
+| `/arc [sparrow\|cat\|wind]` | Replay a diorama event (arc) — for debugging (`雀\|猫\|風` also accepted) |
 | `/model` | Show the current models (resident / guest) |
 | `/font [scale\|save]` | Live-adjust the web font size in-app (`/font save` persists it) |
 | `/daynight [on\|off\|HH:MM\|demo\|auto]` | Toggle / pin / fast-forward the day-night background tint (web UI only) |

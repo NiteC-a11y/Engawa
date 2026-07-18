@@ -22,16 +22,35 @@
 """
 import re
 
-# ── 宛先解決（ADR-0015 決定: 名前メンション＋既定は茶々）────────────────────
+# ── 宛先解決（ADR-0015 決定: 名前メンション＋既定は茶々。英字対応＝英語 voice/persona・ADR-0022）──
 _BOTH_WORDS = ("二人", "両方", "みんな", "双方")
+_BOTH_WORDS_EN = ("both", "everyone", "you two")
 _GUEST_WORDS = ("客人", "お客")
+_GUEST_WORDS_EN = ("guest", "visitor")
 # 呼び名候補＝漢字/カタカナの2字以上の連なり（「近所の物知りなご隠居」→ 近所/物知/隠居。助詞は落ちる）。
 _NAME_RUN = re.compile(r"[一-鿿゠-ヿ]{2,}")
+# 英字の呼び名候補＝3字以上の単語。機能語/ありふれ語は呼び名にしない（和字側の「助詞は落ちる」と同発想）。
+_LATIN_RUN = re.compile(r"[A-Za-z]{3,}")
+_EN_STOP = frozenset((
+    "the", "and", "for", "with", "from", "who", "whom", "that", "this", "these", "those",
+    "she", "her", "him", "his", "its", "they", "them", "their", "you", "your", "yours",
+    "our", "ours", "was", "were", "are", "been", "being", "has", "have", "had", "does",
+    "did", "not", "but", "all", "any", "some", "one", "two", "old", "young", "little",
+    "next", "door", "near", "nearby", "man", "woman", "person", "about", "into", "over",
+))
+
+
+def _word_hit(text, word):
+    """英字 alias は単語境界＋大小無視で照合（substring だと outdoors に door が当たる類の誤爆防止）。"""
+    return re.search(r"\b" + re.escape(word) + r"\b", text, re.IGNORECASE) is not None
 
 
 def guest_aliases(persona):
-    """persona から客人の呼び名候補を粗く拾う。完全一致は要らない（ユーザーは「ご隠居」等と短く呼ぶ）。"""
-    return set(_NAME_RUN.findall(persona or "")) | set(_GUEST_WORDS)
+    """persona から客人の呼び名候補を粗く拾う。完全一致は要らない（ユーザーは「ご隠居」等と短く呼ぶ）。
+    和字（漢字/カタカナ連なり）に加え英単語も拾う＝英語 persona の客人も名前で呼べる（ADR-0022）。"""
+    jp = set(_NAME_RUN.findall(persona or ""))
+    en = {w.lower() for w in _LATIN_RUN.findall(persona or "")} - _EN_STOP
+    return jp | en | set(_GUEST_WORDS) | set(_GUEST_WORDS_EN)
 
 
 _QUOTE_PAIRS = (("「", "」"), ("『", "』"), ("“", "”"), ('"', '"'), ("'", "'"))
@@ -49,12 +68,14 @@ def _unquote(s):
 
 def resolve_addressee(text, persona):
     """誰に言ったか → 'both' | 'guest' | 'resident'（既定）。副作用なしの純関数。
-    明示語「二人/両方…」=both、「茶々」=resident、persona 語/「客人」=guest、両方該当=both、無印=既定 resident。"""
+    明示語「二人/両方…/both」=both、「茶々/Chacha」=resident、persona 語/「客人/guest」=guest、
+    両方該当=both、無印=既定 resident。英字 alias は単語境界＋大小無視（和字は従来どおり substring）。"""
     t = text or ""
-    if any(w in t for w in _BOTH_WORDS):
+    if any(w in t for w in _BOTH_WORDS) or any(_word_hit(t, w) for w in _BOTH_WORDS_EN):
         return "both"
-    to_guest = any(a in t for a in guest_aliases(persona))
-    to_resident = "茶々" in t
+    to_guest = any(_word_hit(t, a) if a.isascii() else (a in t)
+                   for a in guest_aliases(persona))
+    to_resident = ("茶々" in t) or _word_hit(t, "chacha")
     if to_guest and to_resident:
         return "both"
     if to_guest:

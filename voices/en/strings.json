@@ -11,7 +11,7 @@
   "boot_bye": "[*] Closing the engawa. Chacha will mind the house.",
 
   "help_talk": "  just type and press Enter → talk to Chacha",
-  "help_arc": "  /arc [雀|猫|風]  → play a garden arc now (sparrow/cat/wind)",
+  "help_arc": "  /arc [sparrow|cat|wind]  → play a garden arc now (雀|猫|風 also accepted)",
   "help_codex": "  /codex <persona>  → invite a guest (opens a three-way chat)",
   "help_game": "  /game <id> [watch] → play a game (blackjack/uno/leduc; add `watch` to spectate; needs rlcard)",
   "help_model": "  /model           → show current models (resident=Claude / guest=codex)",

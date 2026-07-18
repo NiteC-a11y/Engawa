@@ -1056,6 +1056,12 @@ class TestArcInterruptible(unittest.IsolatedAsyncioTestCase):
         # デバッグ表記は出さない＝成功時は無言で active に載るだけ（窓を汚さない）
         self.assertFalse(any("debug" in (m or "") for m in self._systems(v)))
 
+    async def test_arc_english_alias(self):
+        # /arc sparrow → 雀 の source が選ばれる（英別名・source key は和字のまま・ADR-0022）
+        s, r, v, arc = self._make_with_arc("雀")
+        await s.on_user_input("/arc sparrow")
+        self.assertIs(s.active_source, arc)
+
     async def test_bargein_works_during_arc(self):
         s, r, v, arc = self._make_with_arc("雀")
         await s.on_user_input("/arc 雀")

@@ -158,6 +158,12 @@ class TestEnBundleAndWiring(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Respond in English", prompts.room_resident_prompt((), "reply"))
         self.assertIn("Respond in English", prompts.room_guest_prompt("traveler", (), "reply"))   # 客人も英語で応じる
 
+    def test_leak_guard_spares_english_speech(self):
+        # en voice（llm_lang=en）では jp 省略でも思考除去ヒューリスティックを跳ばす＝英文を壊さない
+        import prompts
+        out = "Mm, the summer solstice—夏至—came around already."
+        self.assertEqual(prompts.strip_resident_leak(out), out)
+
     def test_prompts_lang_note_absent_by_default(self):
         self._use_default_voice()
         import prompts

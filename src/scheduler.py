@@ -46,6 +46,8 @@ UI_FONT_MIN, UI_FONT_MAX = commands.FONT_MIN, commands.FONT_MAX   # /font クラ
 
 log = debuglog.get("scheduler")          # デバッグログ（種の注入・来訪/room・cancel/timeout 等の主要ライフサイクル）
 
+ARC_KEY_ALIASES = {"sparrow": "雀", "cat": "猫", "wind": "風"}   # /arc の英別名（source key は和字のまま・ADR-0022）
+
 
 def _parse_addr(line):
     """web チップの明示宛先を本文と分離: '\\x00<to>\\x00<text>' → (to, text)。無印(console 等)は (None, line)。"""
@@ -560,6 +562,7 @@ class Scheduler:
         以前はここで完走まで while ループでブロックしていて、その間 on_user_input が返らず＝**再生中の
         話しかけ（割り込み）が効かなかった**。active に載せ替えて即 return し、以降は _tick が前進させる
         ＝入力ループが空くので barge-in（cancel優先・ADR-0006）が通る。"""
+        key = ARC_KEY_ALIASES.get((key or "").lower(), key)   # 英別名（sparrow/cat/wind・英語 voice の /help と対応・ADR-0022）
         weather = await asyncio.to_thread(sources.fetch_weather)
         self.weather = weather                       # 取れた天気は保持（捏造防止・tick と揃える）
         ctx = sources.build_context(weather, self.topics)

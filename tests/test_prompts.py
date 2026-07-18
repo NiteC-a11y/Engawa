@@ -93,6 +93,17 @@ class TestStripResidentLeak(unittest.TestCase):
         out = prompts.strip_resident_leak(leaked)
         self.assertEqual(out, "ほな、ぼちぼちいこか。")
 
+    def test_reasoning_strip_skipped_for_non_jp_voice(self):
+        # 英語 voice（jp=False）: 英文中に和語（夏至等）を引用しても手前の正当な英文を削らない（ADR-0022）
+        out = "Mm, the summer solstice—夏至—came around already, didn't it."
+        self.assertEqual(prompts.strip_resident_leak(out, jp=False), out)
+
+    def test_reasoning_strip_applies_for_jp_voice(self):
+        # 日本語 voice（jp=True）: 従来どおり先頭の非日本語塊（思考）は削られる
+        leaked = ("I should reply as Chacha in a casual Kansai tone without markdown. "
+                  "ええ天気やなあ")
+        self.assertEqual(prompts.strip_resident_leak(leaked, jp=True), "ええ天気やなあ")
+
 
 class TestUserNarrationInterrupted(unittest.TestCase):
     """barge-in（喋りかけ cancel）の事実を注入に語る（UI の「[茶々がこちらを向いた]」演出と文脈の一致）。"""

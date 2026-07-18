@@ -197,10 +197,12 @@ def _leak_markers():
     return ms
 
 
-def strip_resident_leak(output, injected=None):
+def strip_resident_leak(output, injected=None, jp=None):
     """住人(茶々)の応答から、注入プロンプトの復唱＋先頭の思考(英語/メタ)を取り除く純関数。
     痕跡が無ければ原文をそのまま返す（正常出力は無改変＝過剰トリム防止）。表示前に噛ませる。
-    injected を渡すと kind ごとの指示文（注入文の最終行）も marker に加わり追従性が上がる。"""
+    injected を渡すと kind ごとの指示文（注入文の最終行）も marker に加わり追従性が上がる。
+    jp=「本文は日本語のはず」（None=voice.llm_lang から導出）。第2段の思考除去は日本語前提の
+    ヒューリスティックなので、英語 voice 等（llm_lang 非日本語）では跳ばす＝正当な英文を壊さない（ADR-0022）。"""
     if not output:
         return output
     text = output
@@ -221,9 +223,14 @@ def strip_resident_leak(output, injected=None):
         text = text[cut:]
     # 2) 先頭の思考ブロックを除去: 茶々は日本語＝先頭に非日本語が MIN 文字以上続いたら思考の染み出し。
     #    日本語本文が後続する場合のみ、その頭までを削る（"OK、" 程度の軽い先頭は残す）。
-    m = _JP_RE.search(text)
-    if m and m.start() >= _MIN_REASONING_LEN:
-        text = text[m.start():]
+    #    非日本語 voice では本文自体が非日本語＝この前提が崩れる（英文中に和語を引用しただけで
+    #    手前の正当な英文が消える）ので適用しない。
+    if jp is None:
+        jp = voice.llm_lang() in (None, "ja")
+    if jp:
+        m = _JP_RE.search(text)
+        if m and m.start() >= _MIN_REASONING_LEN:
+            text = text[m.start():]
     return text.strip()
 
 
