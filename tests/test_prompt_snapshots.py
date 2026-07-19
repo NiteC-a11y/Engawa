@@ -94,7 +94,7 @@ class TestPromptSnapshots(unittest.TestCase):
                     with open(p, "w", encoding="utf-8", newline="\n") as f:
                         f.write(text)
                     continue
-                with open(p, encoding="utf-8", newline="") as f:
+                with open(p, encoding="utf-8") as f:      # universal newlines＝CRLF checkout でも \n に正規化（EOL 非依存）
                     want = f.read()
                 self.assertEqual(text, want,
                                  f"[{vid}/{name}] 注入文が snapshot と不一致＝LLM に届く文字列が変わった。"

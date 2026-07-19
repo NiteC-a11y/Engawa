@@ -1,0 +1,2 @@
+# snapshot はバイト突合の正本＝autocrlf 環境の checkout で CRLF 化させない（LF 固定・test_prompt_snapshots）
+tests/snapshots/** text eol=lf
