@@ -120,10 +120,10 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 
 ## 9. テスト（必須・adr/0023。層別の設計判断と教訓は adr/0022 追記・0031 追記・0033 予定）
 
-- **完了条件**: ソース修正はテストを同梱し `python -m unittest discover -s tests -t .`（stdlib unittest・GUI/ネット不要）で**全 PASS を確認してから完了**。**正常な緑は `OK (skipped=2)`**＝`test_web_behavior` の opt-in ブラウザテスト2件（設計どおり。3以上に増えたら環境不足か新規 opt-in を疑う）。※pytest への段階移行は宿題（Backlog・7/13）。
+- **完了条件**: ソース修正はテストを同梱し `python -m unittest discover -s tests -t .`（stdlib unittest・GUI/ネット不要）で**全 PASS を確認してから完了**。**正常な緑は `OK (skipped=3)`**＝`test_web_behavior` の opt-in ブラウザテスト3件（設計どおり。4以上に増えたら環境不足か新規 opt-in を疑う）。※pytest への段階移行は宿題（Backlog・7/13）。
 - **6層の防御**（守る対象別。バグはどこかの層の穴＝下の変換規則で塞ぐ）:
   1. **ユニット**: テスト困難な GUI/外部依存は判断ロジックを**純関数に切り出して**検証（例: `engawa_main._web_window_kwargs`・`views.build_web_html`・`daynight.layers`）。
-  2. **合成テスト**: 層またぎの不変条件は「経路の明示列挙×条件」＋**命名 canary**で機械強制（`tests/test_injection_lang.py`＝llm_lang 時の全注入に言語指示・`*_narration`/`*_prompt` は COVERED∪EXEMPT に必ず分類／`tests/test_strings_registry.py`＝loc キー∈台帳・インライン既定禁止・placeholder 一致・雛形一致・adr/0033）。モジュール別テストの継ぎ目に落ちる型（adr/0031 ARRIVE 穴）への対策。
+  2. **合成テスト**: 層またぎの不変条件は「経路の明示列挙×条件」＋**命名 canary**で機械強制（`tests/test_injection_lang.py`＝llm_lang 時の全注入に言語指示・`*_narration`/`*_prompt` は COVERED∪EXEMPT に必ず分類／`tests/test_strings_registry.py`＝loc キー∈台帳・インライン既定禁止・placeholder 一致・雛形一致／`tests/test_ui_surfaces.py`＝**掃引二系統**（residue=en 全キーに日本語残ゼロ・sovereignty=sentinel voice で可視文言が台帳経由の証明）＋View 出力メソッド canary・adr/0033）。モジュール別テストの継ぎ目に落ちる型（adr/0031 ARRIVE 穴）への対策。
   3. **スナップショット**: **LLM に届く注入文は voice ごとにバイト凍結**（`tests/test_prompt_snapshots.py`＋`tests/snapshots/`）＝「書いていない不変条件」を diff で検問。**意図した変更は `ENGAWA_UPDATE_SNAPSHOTS=1` で再生成し、diff を読んでからコミット**（反射更新は防御ゼロ）。
   4. **境界の向こう岸**: Python↔JS 契約は **DOM で assert**（`tests/test_web_behavior.py`・playwright・既定スキップ＝`ENGAWA_BROWSER_TESTS=1` で実行・CI では常時）。**JS を触った時だけでなく、JS が消費するデータを変えた時も走らせる**（「渡した」≠「使われた」・7/19）。
   5. **実 LLM E2E**: `tests/e2e/leak_probe.py`（**手動 opt-in・課金あり**・discover 非対象）＝本番ビルダー×本番配線（RoomSpeakerFactory の実 Speaker 名＝fixture の配線迂回禁止）×**trial ごと新品セッション既定**（文脈慣性なし＝最悪条件。`--sticky` で慣性観測）。

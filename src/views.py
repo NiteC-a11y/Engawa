@@ -105,9 +105,11 @@ class ConsoleView(View):
         self._started = self._gap = False
 
     @staticmethod
-    def _voice_block(label, voice):
+    def _voice_block(label, text):
+        # 客人ラベルは voice.loc（sovereignty 掃引の対象・ADR-0033 Inc2）。param は text＝module `voice` と衝突させない
         now = datetime.datetime.now().strftime("%H:%M:%S")
-        return f"\n──[{now}] {label or '客人'} ───────────────\n   客人 › {collapse_ws(voice)}\n"
+        g = voice.loc("ui_chip_guest")
+        return f"\n──[{now}] {label or g} ───────────────\n   {g} › {collapse_ws(text)}\n"
 
     @staticmethod
     def _header(who, kind, label):
@@ -116,7 +118,8 @@ class ConsoleView(View):
             return f"   {who} › "
         if kind == "arc":
             return f"\n──[{label}] {now} ─────\n   {who} › "
-        suffix = "（移ろい）" if kind == "transition" else ""
+        # label（縁側の外・箱庭〔…〕）は sources 由来＝EXEMPT（culture/Inc4 で吸収・test_ui_surfaces）。suffix は view 所有＝鍵化
+        suffix = voice.loc("ui_transition_suffix") if kind == "transition" else ""
         return f"\n──[{now}] {label or '縁側の外'}{suffix} ───────────────\n   {who} › "
 
     def chunk(self, text):
@@ -1111,6 +1114,8 @@ def _localize_html(html):
          '<span class="al">' + voice.loc("ui_addr") + "</span>"),
         ("const RESIDENT='茶々';",                             # JS の住人表示名（ソロ転写ラベル・say の色分け・客人在室判定が参照・7/19）
          "const RESIDENT=" + json.dumps(voice.resident_name(), ensure_ascii=False) + ";"),
+        ('<span class="who">客人 ›</span>',                    # 客人の声ブロック（P4 v1 経路）の客人ラベル（ADR-0033 Inc2）
+         '<span class="who">' + voice.loc("ui_chip_guest") + " ›</span>"),
     )
     for old, new in pairs:
         html = html.replace(old, new)

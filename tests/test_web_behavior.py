@@ -149,5 +149,63 @@ class TestWebBehavior(unittest.TestCase):
                 b.close()
 
 
+    def test_sentinel_voice_dom_labels(self):
+        """sovereignty の DOM 版（ADR-0033 追補11/16）: 全キーを sentinel に差し替えた voice で、
+        **JS が実行時に組むラベル**（ソロ転写の RESIDENT・客人声ブロックの客人）も bundle 経由である
+        ことを DOM で証明。文字列レベル掃引（test_ui_surfaces）では JS 合成を見逃す＝7/19 の教訓。"""
+        import json
+        import config
+        import views
+        import voice
+        saved = {k: os.environ.get(k) for k in ("ENGAWA_VOICE", "ENGAWA_VOICES_DIR")}
+        vtmp = tempfile.mkdtemp(prefix="engawa_sentv_")
+        d = os.path.join(vtmp, "sentinel")
+        os.makedirs(d)
+        reg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "locales", "strings.json")
+        with open(reg, encoding="utf-8") as f:
+            keys = [k for k in json.load(f) if k != "_comment"]
+        with open(os.path.join(d, "meta.json"), "w", encoding="utf-8") as f:
+            json.dump({"label": "sentinel"}, f)
+        with open(os.path.join(d, "strings.json"), "w", encoding="utf-8") as f:
+            json.dump({k: f"__L10N_{k}__" for k in keys}, f, ensure_ascii=False)
+        os.environ["ENGAWA_VOICES_DIR"] = vtmp
+        os.environ["ENGAWA_VOICE"] = "sentinel"
+        config._CFG = None
+        voice._CACHE = None
+        voice._REGISTRY = None
+        try:
+            html_path = os.path.join(self._tmp, "engawa_sentinel.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(views.build_web_html())
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            config._CFG = None
+            voice._CACHE = None
+            voice._REGISTRY = None
+        url = "file:///" + os.path.abspath(html_path).replace("\\", "/")
+        items = [
+            {"id": 1, "type": "turn", "kind": "ambient", "label": None, "voice": None,
+             "text": "mm.", "done": True},
+            {"id": 2, "type": "turn", "kind": "arc", "label": "x", "voice": "greetings.",
+             "text": "hm.", "done": True},
+        ]
+        init = ("window.pywebview={api:{poll:async()=>({items:" + json.dumps(items)
+                + ",cursor:2,font:1,absent:false,day:null}),send:()=>{},close:()=>{},resize:()=>{}}};")
+        with sync_playwright() as pw:
+            b, pg = self._open(pw, init, url)
+            try:
+                pg.wait_for_timeout(400)
+                labels = pg.evaluate("[...document.querySelectorAll('#log .who')].map(e=>e.textContent)")
+                self.assertIn("__L10N_resident_name__ ›", labels)      # ソロ転写＝JS の RESIDENT 定数
+                self.assertIn("__L10N_ui_chip_guest__ ›", labels)      # 客人声ブロック＝JS 組み立てラベル
+            finally:
+                b.close()
+
+
 if __name__ == "__main__":
     unittest.main()
