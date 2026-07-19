@@ -5,8 +5,13 @@
 - バンドル: `voices/<id>/` ＝ `meta.json`（base/label/llm_lang）＋ `persona.md`（声の本体＝transcreation・
   機械翻訳しない）＋ `strings.json`（UI シェル文言の上書き・任意）。欠落は継承 `<voice> → <base> → 組み込み既定`。
 - persona の底は `persona.RESIDENT_PERSONA`（ja-osaka）＝**ゼロ設定/バンドル欠損でも現状維持**（起動を止めない）。
-- `loc(key, default)`: UI シェル文言の解決。未訳キーは default（コード内の日本語リテラル）に落ちる＝
-  **部分導入で壊れない**（ADR-0022 の漸進導入）。LLM 注入文言は対象外（言語は `lang_note()` の1行だけ）。
+- `loc(key, default=None)`: UI シェル文言の解決（ADR-0033 決定4＝**3段**）: `<voice>+<base>` strings →
+  呼び側 default（動的既定＝absence 系 random プール専用）→ **`locales/strings.json`（台帳＝キー＋日本語既定の
+  単一正本）** → キー名そのまま（欠損が画面で一目でバレる・起動は止めない・決定10）。src の静的文言は
+  台帳が正本＝インライン既定は書かない（静的照合テストで強制）。LLM 注入文言は対象外（言語は `lang_note()`）。
+- 台帳は専用ローダー（決定13）＝読込結果 `ok/missing/malformed/wrong-shape` を保持し debuglog に一度だけ出す
+  （`_read_json` の「全部 {} に畳む」は任意 bundle 用・正本には使わない）。置き場は repo 直下 `locales/`
+  （frozen 時 `sys._MEIPASS/locales`・`ENGAWA_LOCALES_DIR` で差し替え＝テスト用）。
 - `lang_note()`: llm_lang 時だけ LLM 注入末尾に足す出力言語指示1行。prompts と sources の**両ビルダー群が共用**
   （「住人に届く全注入」の概念単位で漏らさない・7/19 のソロ経路穴の教訓＝tests/test_injection_lang.py が列挙検証）。
 - 置き場は repo 直下 `voices/`（frozen 時は `sys._MEIPASS/voices`＝spec の datas 同梱・views._base_dir と同流）。
@@ -19,7 +24,10 @@ import os
 import sys
 
 import config
+import debuglog
 import persona
+
+log = debuglog.get("voice")
 
 DEFAULT_ID = "ja-osaka"     # 組み込みの底（persona.RESIDENT_PERSONA・ファイル不要）
 
@@ -33,6 +41,57 @@ def _voices_dir():
         base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         return os.path.join(base, "voices")
     return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "voices")
+
+
+def _locales_dir():
+    """台帳（locales/strings.json）の置き場（_voices_dir と同流・ENGAWA_LOCALES_DIR はテスト/特殊環境用）。"""
+    if os.environ.get("ENGAWA_LOCALES_DIR"):
+        return os.environ["ENGAWA_LOCALES_DIR"]
+    if getattr(sys, "frozen", False):
+        base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        return os.path.join(base, "locales")
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "locales")
+
+
+_REGISTRY = None            # (data, state) の cache。テストは None でリセット（_CACHE と同流）
+
+
+def _load_registry():
+    """台帳の専用ローダー（ADR-0033 決定13）。任意 bundle と違い**単一正本**なので失敗を握りつぶさず
+    `ok / missing / malformed / wrong-shape` を識別して debuglog に一度だけ出す（起動は止めない・決定10）。
+    値は空でない str のみ採用（空文字・非文字列は欠損扱い＝ドロップ数もログへ）。`_comment` は台帳の注記。"""
+    path = os.path.join(_locales_dir(), "strings.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        log.debug("locales 台帳が無い: %s（全キーがキー名表示になる＝同梱漏れを疑う）", path)
+        return {}, "missing"
+    except (ValueError, OSError) as e:
+        log.debug("locales 台帳が読めない: %s (%s: %s)", path, type(e).__name__, e)
+        return {}, "malformed"
+    if not isinstance(raw, dict):
+        log.debug("locales 台帳の形が不正（root が dict でない）: %s", path)
+        return {}, "wrong-shape"
+    data = {k: v for k, v in raw.items()
+            if k != "_comment" and isinstance(v, str) and v}
+    dropped = len(raw) - 1 - len(data) if "_comment" in raw else len(raw) - len(data)
+    if dropped:
+        log.debug("locales 台帳: 空/非文字列の値 %d 件を欠損扱いでドロップ", dropped)
+    return data, "ok"
+
+
+def _registry():
+    global _REGISTRY
+    if _REGISTRY is None:
+        _REGISTRY = _load_registry()
+    return _REGISTRY[0]
+
+
+def registry_state():
+    """台帳の読込状態（ok/missing/malformed/wrong-shape・診断用）。"""
+    _registry()
+    return _REGISTRY[1]
 
 
 def _read_json(path):
@@ -116,10 +175,18 @@ def resident_name():
     `resident_name` で voice ごとに差し替え（en=Chacha＝チップ「Chacha」と画面内で揃える・7/19 ユーザー判断）。
     既定は固有名「茶々」。宛先解決（conversation.resolve_addressee）は文面ベースで茶々/Chacha 両対応済み＝
     表示名を変えてもロジックは壊れない。"""
-    return loc("resident_name", "茶々")
+    return loc("resident_name")
 
 
-def loc(key, default):
-    """UI シェル文言の解決（<voice>+<base> の strings → default＝コード内の日本語）。"""
+def loc(key, default=None):
+    """UI シェル文言の解決（ADR-0033 決定4＝3段）: `<voice>+<base>` strings → 呼び側 default →
+    台帳（locales/strings.json）→ **キー名そのまま**（台帳欠損が画面で一目でバレる・起動は止めない）。
+    呼び側 default は**動的既定専用**（absence_leave/return・guest_timeout_leave＝JP は random プール）＝
+    src の静的文言は台帳が正本でインライン既定は書かない（tests/test_strings_registry.py が強制）。"""
     s = current()["strings"].get(key)
-    return s if isinstance(s, str) and s else default
+    if isinstance(s, str) and s:
+        return s
+    if default is not None:
+        return default
+    r = _registry().get(key)
+    return r if r else key

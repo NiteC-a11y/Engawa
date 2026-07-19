@@ -51,9 +51,9 @@ def _resident_tag(resident):
     ラベル（茶々=/既定/声=）も voice 追従＝外枠 boot_ok_* だけ鍵化して中身が混成日本語になる穴の修正（codex 7/19 [中]）。"""
     sid = getattr(resident, "sessionId", None)
     tag = (f"session={sid[:8]}… / " if sid else "") \
-        + f"{voice.resident_name()}={resident.model or voice.loc('ui_model_default', '既定')}"
+        + f"{voice.resident_name()}={resident.model or voice.loc('ui_model_default')}"
     if voice.current()["id"] != voice.DEFAULT_ID:
-        tag += f" / {voice.loc('ui_voice_label', '声')}={voice.label()}"
+        tag += f" / {voice.loc('ui_voice_label')}={voice.label()}"
     return tag
 
 
@@ -74,29 +74,29 @@ def _build(resident, view):
 
 
 async def run_console():
-    print(voice.loc("boot_title", "[*] 茶々の縁側を開きます（箱庭アーク / event-source 構成）"))
-    print(voice.loc("boot_starting_console", "[*] 起動中…（初回は npx ダウンロード）  話しかけてみて。/help、/arc で試写\n"))
+    print(voice.loc("boot_title"))
+    print(voice.loc("boot_starting_console"))
     try:
         resident = await _resident_spawner()()
     except RuntimeError as e:
         print("[x]", e)
-        print(voice.loc("boot_auth_hint", "    認証エラーなら、先に `claude` で本命サブスクにログインのこと（openai backend なら LM Studio を起動）。"))
+        print(voice.loc("boot_auth_hint"))
         return 1
-    print(voice.loc("boot_ok_console", "[ok] 縁側が開きました（{tag}）\n").format(tag=_resident_tag(resident)))
+    print(voice.loc("boot_ok_console").format(tag=_resident_tag(resident)))
     await _build(resident, views.ConsoleView()).run()
-    print(voice.loc("boot_bye", "[*] 縁側を閉じます。茶々はまた留守番。"))
+    print(voice.loc("boot_bye"))
     return 0
 
 
 async def _serve_web(view):
-    view.system(voice.loc("boot_starting", "[*] 起動中…（初回は npx ダウンロード）"))
+    view.system(voice.loc("boot_starting"))
     try:
         resident = await _resident_spawner()()
     except RuntimeError as e:
         view.system(f"[x] {e}")
-        view.system(voice.loc("boot_auth_hint_web", "認証エラーなら、先に `claude` でログイン（openai backend なら LM Studio を起動）。"))
+        view.system(voice.loc("boot_auth_hint_web"))
         return
-    view.system(voice.loc("boot_ok_web", "[ok] 縁側が開きました（{tag}）話しかけてみて").format(tag=_resident_tag(resident)))
+    view.system(voice.loc("boot_ok_web").format(tag=_resident_tag(resident)))
     await _build(resident, view).run()
 
 

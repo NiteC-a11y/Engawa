@@ -1,2 +1,5 @@
 # snapshot はバイト突合の正本＝autocrlf 環境の checkout で CRLF 化させない（LF 固定・test_prompt_snapshots）
 tests/snapshots/** text eol=lf
+# 雛形もバイト一致テストの正本＝LF 固定（tools/gen_voice_template.py・test_strings_registry）
+voices/_template/** text eol=lf
+locales/** text eol=lf
