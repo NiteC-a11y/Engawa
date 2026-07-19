@@ -42,10 +42,23 @@
 - テスト側の前倒し3本（注入 snapshot・leak_probe 本番配線・DOM ラベル掃引）は実装済み・TECH_RULES §9 に正本化済み＝本 ADR の掃引はその**全サーフェス拡張**。
 - LLM 注入側（プロンプト工場）は本 ADR の対象外＝日本語のまま＋lang note 方式を維持（変えるなら別 ADR）。
 
-## 備考（Open Questions＝設計フェーズで決める）
+## 設計決定（追記 2026-07-19・ユーザー確定）
 
-- 台帳の置き場・形式: `src/strings.py`（dict）か JSON か。`loc()` との結線・既定値の一元参照の形。
+1. **台帳は JSON**（既存 strings.json と同じ流儀＝非開発者に優しい・コメントは `_comment` キー）。
+2. **置き場は新設 `locales/`（repo root）＝世界慣習の名前**（Rails/i18next 等の最多数派。「local」は `/usr/local` 系の誤読があり不採用）。**voices/ は動かさない**＝locale は言語×地域・voice はその上位（`ja-osaka`/`ja-kyoto` は同 locale 別声）で、voices を locales の下に畳むと ADR-0022 の「声が主役」の序列が逆転するため却下。
+3. **分担ルール（一行）**: **「キーの定義は locales・訳と声は voices」**。
+   - `locales/strings.json` … 台帳＝全キー＋日本語既定の単一正本（開発者が定義・著者は読むだけ）。
+   - `locales/culture.json` … (Inc3) 季節/天気語彙・役名プール・地名の日本既定（同じ対称性）。
+   - `voices/_template/strings.json` … 台帳から生成した雛形（著者の作業場に近接させる）。
+   - `voices/<id>/strings.json`（+ culture.json）… 上書き。
+4. **`loc()` の解決順は3段**: `voices/<id>` → base → **`locales/strings.json`（既定）**＝コード内インライン既定を廃止（同キー別既定のドリフト源を根治）。
+5. 移行コスト: 既存 `voices/en`・PyInstaller datas・`ENGAWA_VOICES_DIR`・bat は無変更（新設ファイルのみ locales/ へ。locales/ の datas 同梱は実装時に spec へ追加）。
+
+## 備考（Open Questions＝設計フェーズで決める・残り）
+
+- ~~台帳の置き場・形式~~ → **決定済み（上記 設計決定 1〜4）**。
 - 雛形の生成タイミング: リポジトリにチェックイン（生成物を diff で見える化）か、ツールでオンデマンド生成か。
 - 掃引テストのサーフェス列挙: render callable の registry（injection canary と同型）か。DOM レベルの範囲（web だけか console 出力も文字列レベルで掃くか）。
 - lint の形: `python tools/voice_lint.py <id>` 等の CLI。EXEMPT 台帳の置き場（コードか JSON か）と粒度。
 - culture.json のスキーマと移行順序（役名プール→地名→季節/天気語彙のどれから）。
+- `locales/strings.json` 欠損時のフォールバック（壊れたインストールでも起動を止めない・config と同じ流儀にするか）。
