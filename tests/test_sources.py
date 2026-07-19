@@ -6,6 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+import config
 import prompts
 import sources
 
@@ -238,14 +239,20 @@ class TestWeatherLocation(unittest.TestCase):
         self.assertIn("大阪は晴れ", sources.ambient_narration(self._CTX))
 
     def test_place_label_is_configurable(self):
-        orig = sources.PLACE_LABEL
-        sources.PLACE_LABEL = "京都"
+        # env ENGAWA_PLACE_LABEL が最優先（> voice culture > locales 既定・ADR-0033 追補17）
+        saved = os.environ.get("ENGAWA_PLACE_LABEL")
+        os.environ["ENGAWA_PLACE_LABEL"] = "京都"
+        config._CFG = None
         try:
             line = sources.ambient_narration(self._CTX)
             self.assertIn("京都は晴れ", line)
             self.assertNotIn("大阪", line)
         finally:
-            sources.PLACE_LABEL = orig
+            if saved is None:
+                os.environ.pop("ENGAWA_PLACE_LABEL", None)
+            else:
+                os.environ["ENGAWA_PLACE_LABEL"] = saved
+            config._CFG = None
 
 
 class TestGuestAir(unittest.TestCase):

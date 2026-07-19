@@ -60,11 +60,25 @@ valid answer, never self-introduces as an AI.
   it as `same-as-default` for review, not as an error.
 - `_comment` is ignored.
 
-## 6. culture.json (coming — ADR-0033 Inc4)
+## 6. culture.json — place & guest roles
 
-Role names for visiting guests, the place label Chacha mentions with the weather, and seasonal
-vocabulary will become bundle-overridable data. Until then those stay Japanese (documented
-exemptions).
+```json
+{
+  "place": "Osaka",
+  "guest_personas": [
+    { "id": "peddler", "display": "a whimsical traveling peddler" },
+    ...
+  ]
+}
+```
+
+- `place` — the place name Chacha mentions with the weather ("Osaka is cloudy…"). A user's
+  `ENGAWA_PLACE_LABEL` setting always wins over this; you provide the default for your voice.
+- `guest_personas` — the pool for spontaneous guest visits. **Keep the `id` values exactly as in
+  `locales/culture.json`** (stable identifiers used for topic matching — never translate them);
+  translate only `display`. See `voices/en/culture.json` for a complete example.
+- Seasonal/weather vocabulary is *not* bundle data yet (measured to be a non-issue: Chacha never
+  recites the weather term verbatim; documented in ADR-0022/0033).
 
 ## 7. Checking your work: voice_lint
 

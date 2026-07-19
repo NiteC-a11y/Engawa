@@ -1,0 +1,11 @@
+{
+  "_comment": "土地と役のデータ側の単一正本（ADR-0033 Inc4）。定義はここ・上書きは voices/<id>/culture.json。place=茶々が天気で口にする地名（ユーザー設定 ENGAWA_PLACE_LABEL が最優先）。guest_personas=自発来訪の役プール（id は安定識別子＝topic 照合用・翻訳しない。display は表示と prompt 注入＝訳してよい）。季節/天気語彙は実需待ちで未収載（ADR-0022 追記＝茶々は天気を復唱しない設計で訳語ゆれは実測非問題）。",
+  "place": "大阪",
+  "guest_personas": [
+    { "id": "peddler", "display": "気まぐれな旅の行商人" },
+    { "id": "elder", "display": "近所の物知りなご隠居" },
+    { "id": "poet", "display": "句をひねる風流人" },
+    { "id": "painter", "display": "腹を空かせた野良の絵描き" },
+    { "id": "traveler", "display": "夕暮れに道を訪ねてきた旅人" }
+  ]
+}

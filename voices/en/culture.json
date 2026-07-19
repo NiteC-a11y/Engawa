@@ -1,0 +1,11 @@
+{
+  "_comment": "English culture overrides (ADR-0033 Inc4). Keep the ids — they are stable identifiers for topic matching; translate only display/place.",
+  "place": "Osaka",
+  "guest_personas": [
+    { "id": "peddler", "display": "a whimsical traveling peddler" },
+    { "id": "elder", "display": "the knowing old neighbor" },
+    { "id": "poet", "display": "a wandering haiku poet" },
+    { "id": "painter", "display": "a hungry stray painter" },
+    { "id": "traveler", "display": "a traveler who came asking the way at dusk" }
+  ]
+}

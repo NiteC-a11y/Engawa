@@ -94,6 +94,79 @@ def registry_state():
     return _REGISTRY[1]
 
 
+# ── culture（ADR-0033 Inc4・追補17）: 土地と役のデータ側。「定義は locales・上書きは voices」の対称形 ──
+# cache しない＝コールドパス（来訪の抽選・ambient ビート単位）で毎回ファイル解決しても安く、
+# テストの cache リセット地雷（voice を切り替えたのに culture が古い）を構造的に避ける。
+
+# 組み込みの底（locales/culture.json 欠損でも来訪と天気行が壊れない・persona.RESIDENT_PERSONA と同じ流儀。
+# 正本は locales/culture.json＝これはあくまで最終フォールバック）。id は安定識別子（topic 照合・表示に使わない）。
+_BUILTIN_PLACE = "大阪"
+_BUILTIN_PERSONAS = (
+    {"id": "peddler", "display": "気まぐれな旅の行商人"},
+    {"id": "elder", "display": "近所の物知りなご隠居"},
+    {"id": "poet", "display": "句をひねる風流人"},
+    {"id": "painter", "display": "腹を空かせた野良の絵描き"},
+    {"id": "traveler", "display": "夕暮れに道を訪ねてきた旅人"},
+)
+
+
+def _clean_culture(d):
+    """culture dict の既知キーだけを型検証して通す（place=空でない str・guest_personas=id/display を持つ dict 列）。"""
+    out = {}
+    if isinstance(d.get("place"), str) and d["place"]:
+        out["place"] = d["place"]
+    ps = d.get("guest_personas")
+    if isinstance(ps, list):
+        valid = [p for p in ps if isinstance(p, dict)
+                 and isinstance(p.get("id"), str) and p["id"]
+                 and isinstance(p.get("display"), str) and p["display"]]
+        if valid:
+            out["guest_personas"] = valid
+    return out
+
+
+def _load_culture_canonical():
+    """locales/culture.json（正本）＝strings 台帳と同じ専用ローダー流（失敗を識別・debuglog 一度・起動継続）。"""
+    path = os.path.join(_locales_dir(), "culture.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        log.debug("locales culture が無い: %s（組み込み既定＝大阪/JP 役名で継続）", path)
+        return {}
+    except (ValueError, OSError) as e:
+        log.debug("locales culture が読めない: %s (%s: %s)", path, type(e).__name__, e)
+        return {}
+    if not isinstance(raw, dict):
+        log.debug("locales culture の形が不正（root が dict でない）: %s", path)
+        return {}
+    return _clean_culture(raw)
+
+
+def culture():
+    """解決済み culture（locales 既定 ← base voice ← voice の浅い上書き・キー単位）。"""
+    data = _load_culture_canonical()
+    v = current()
+    if v["base"] and v["base"] != v["id"]:
+        data.update(_clean_culture(_read_json(os.path.join(_voices_dir(), v["base"], "culture.json"))))
+    if v["id"] != DEFAULT_ID:
+        data.update(_clean_culture(_read_json(os.path.join(_voices_dir(), v["id"], "culture.json"))))
+    return data
+
+
+def place_label():
+    """茶々が天気で口にする地名（voice culture → locales 既定 → 組み込み 大阪）。
+    ユーザー設定 `ENGAWA_PLACE_LABEL` の優先は呼び側＝`sources.place_label()` が担う（env > voice > locale・追補17）。"""
+    return culture().get("place") or _BUILTIN_PLACE
+
+
+def guest_personas():
+    """自発来訪の役プール（[{id, display}]・culture 解決済み・欠損は組み込み JP）。
+    id は安定識別子＝topic の persona タグ照合に使う（display の翻訳でマッチが壊れない・追補17＝
+    Speaker.name 一人二役事故の culture 先回り）。display は表示と prompt 注入に使う。"""
+    return list(culture().get("guest_personas") or _BUILTIN_PERSONAS)
+
+
 def _read_json(path):
     try:
         with open(path, encoding="utf-8") as f:

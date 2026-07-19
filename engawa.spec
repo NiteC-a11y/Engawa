@@ -44,6 +44,7 @@ a = Analysis(
         (os.path.join(SPECPATH, 'assets', 'props.json'), 'assets'),               # 縁側の小物の台帳（ADR-0032）。
         (os.path.join(SPECPATH, 'assets', 'props'), os.path.join('assets', 'props')),   # 小物 PNG（蚊取り線香 等）。
         (os.path.join(SPECPATH, 'locales', 'strings.json'), 'locales'),           # UI 文言の台帳＝単一正本（ADR-0033。voice._locales_dir が frozen 時 sys._MEIPASS/locales を解決。同梱漏れは全キーがキー名表示＝一目でバレる）。
+        (os.path.join(SPECPATH, 'locales', 'culture.json'), 'locales'),           # 土地・役のデータ既定（ADR-0033 Inc4。同梱漏れは組み込み底＝大阪/JP 役で継続）。
     ],                                       # views._base_dir() が frozen 時 sys._MEIPASS/assets を指すので runtime で見つかる。
     hiddenimports=hiddenimports,
     hookspath=[],

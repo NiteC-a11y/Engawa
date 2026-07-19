@@ -501,7 +501,8 @@ class Scheduler:
             return
         log.debug("客人 spawn: %s / room open", persona)
         self._speakers = room_speakers.RoomSpeakerFactory(   # 種プール＋timeout フラグを凝集・per-room で新規（cooldown=0 始まり）
-            persona, resident_speak=self._room_resident_speak,
+            persona, persona_id=getattr(self.active_guest, "persona_id", None),   # 安定 id（自発のみ・topic 照合・ADR-0033 Inc4）
+            resident_speak=self._room_resident_speak,
             guest_agent_provider=lambda: self.active_guest.agent if self.active_guest is not None else None,
             context_provider=lambda: sources.build_context(self.weather, self.topics),
             topics_provider=lambda: self.topics, log=log,
