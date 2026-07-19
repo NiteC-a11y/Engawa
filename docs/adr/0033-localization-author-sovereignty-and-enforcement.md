@@ -1,6 +1,6 @@
 # ADR-0033: ローカライズは「著者主権＋機械強制」＝現地の人がコード0行で自分の土地の表記と茶々を作りきれる（0022 の refine）
 
-- ステータス: Accepted（設計確定＝設計決定10点＋codex レビュー追補10点・**Inc1+Inc2 実装済み 2026-07-19**＝台帳/ローダー/3段解決/全サイト移行/雛形/静的照合＋掃引二系統（residue/sovereignty sentinel）/View canary/DOM sentinel/残ハードコード鍵化。残り Inc3=lint＋README・Inc4=culture）
+- ステータス: Accepted（設計確定＝設計決定10点＋codex レビュー追補10点・**Inc1〜Inc3 実装済み 2026-07-19**＝台帳/ローダー/3段解決/全サイト移行/雛形/静的照合＋掃引二系統（residue/sovereignty sentinel）/View canary/DOM sentinel/残ハードコード鍵化＋voice_lint（5状態・初回実行で同梱 en の base 自己参照を発見→修正）/voices/README。残り Inc4=culture）
 - 日付: 2026-07-19
 - 関連: ADR-0022（voice バンドル＝親・本 ADR はその完成形）, ADR-0030（TECH_RULES 規約）, ADR-0031/0032（列挙 canary・台帳駆動の流儀）, 原則#4（config 主導）, TECH_RULES §9（テスト方針＝掃引の受け皿）
 - 出自: 7/19 ユーザー要件「**現地の人が、自分の土地に合わせた表記と茶々にしたい、で簡単に修正できるように**」＋同日までの修正漏れ続発の実証（7/18 同類穴3件・7/19 lang note ソロ経路・宛先バー・表示名・起動 tag・console ヘッダ・web JS ハードコード3箇所）

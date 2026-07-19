@@ -1,6 +1,5 @@
 {
-  "_comment": "English voice bundle (ADR-0022). base=en / llm_lang steers the resident's output language.",
-  "base": "en",
+  "_comment": "English voice bundle (ADR-0022). llm_lang steers the resident's output language. base is for inheriting another voice's strings/persona (one level) — not a language marker.",
   "label": "English",
   "llm_lang": "en"
 }
