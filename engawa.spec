@@ -41,6 +41,7 @@ a = Analysis(
         (os.path.join(SPECPATH, 'assets', 'chacha.png'), 'assets'),    # 三毛猫 4表情シート（起動時 dataURI 化）。
         (os.path.join(SPECPATH, 'assets', 'scene.png'), 'assets'),     # 縁側背景（障子＋板の間）。
         (os.path.join(SPECPATH, 'voices', 'en'), os.path.join('voices', 'en')),   # 英語 voice バンドル（ADR-0022。voice._voices_dir が frozen 時 sys._MEIPASS/voices を解決）。
+        (os.path.join(SPECPATH, 'voices', 'ja-kyoto'), os.path.join('voices', 'ja-kyoto')),   # 京ことば voice（方言の同梱見本・部分訳スタイル・ADR-0033 ドッグフーディング産・7/19）。
         (os.path.join(SPECPATH, 'assets', 'props.json'), 'assets'),               # 縁側の小物の台帳（ADR-0032）。
         (os.path.join(SPECPATH, 'assets', 'props'), os.path.join('assets', 'props')),   # 小物 PNG（蚊取り線香 等）。
         (os.path.join(SPECPATH, 'locales', 'strings.json'), 'locales'),           # UI 文言の台帳＝単一正本（ADR-0033。voice._locales_dir が frozen 時 sys._MEIPASS/locales を解決。同梱漏れは全キーがキー名表示＝一目でバレる）。

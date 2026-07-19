@@ -1,0 +1,11 @@
+{
+  "_comment": "京都の縁側。id は基準のまま（翻訳しない）・display は京の空気に少しだけ寄せる。",
+  "place": "京都",
+  "guest_personas": [
+    { "id": "peddler", "display": "気まぐれな旅の行商人" },
+    { "id": "elder", "display": "近所の物知りなご隠居はん" },
+    { "id": "poet", "display": "句をひねる風流人" },
+    { "id": "painter", "display": "腹を空かせた野良の絵描き" },
+    { "id": "traveler", "display": "夕暮れに道を訪ねてきた旅のお人" }
+  ]
+}

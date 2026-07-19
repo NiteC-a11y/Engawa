@@ -180,5 +180,46 @@ class TestShippedEnBundle(unittest.TestCase):
         self.assertEqual(voice_lint.exit_code(r), 0, voice_lint.render_report(r))
 
 
+class TestShippedKyotoBundle(unittest.TestCase):
+    """同梱 voices/ja-kyoto（方言・部分訳スタイル＝ADR-0033 ドッグフーディング産・7/19 昇格）は
+    「健全な部分訳」を保つ＝missing は設計（日本語既定に落ちる）だが、壊れ・placeholder 事故・
+    culture 欠けはゼロ。llm_lang 無し＝注入不変（決定3）も固定。"""
+
+    def test_kyoto_is_healthy_partial(self):
+        registry, state = voice._load_registry()
+        self.assertEqual(state, "ok")
+        r = voice_lint.lint_bundle("ja-kyoto", voice._voices_dir(), registry)
+        self.assertEqual(r["errors"], [])
+        self.assertEqual(r["warnings"], [])
+        self.assertEqual(r["placeholder_mismatch"], [])
+        self.assertEqual(r["format_errors"], [])
+        self.assertEqual(r["culture_findings"], [], voice_lint.render_report(r))
+        self.assertEqual(r["culture"]["place"], "京都")
+        self.assertNotIn("unknown", r["states"].values())      # typo キーゼロ（missing は部分訳＝許容）
+        self.assertGreaterEqual(list(r["states"].values()).count("translated"), 10)
+
+    def test_kyoto_has_no_llm_lang(self):
+        # 方言 voice＝llm_lang 無し → lang_note 空＝注入文は1バイトも変わらない（ADR-0022 決定3）
+        saved = {k: os.environ.get(k) for k in ("ENGAWA_VOICE", "ENGAWA_CONFIG")}
+        os.environ["ENGAWA_VOICE"] = "ja-kyoto"
+        os.environ["ENGAWA_CONFIG"] = os.path.join(os.path.dirname(__file__), "no-such-engawa.json")
+        import config
+        config._CFG = None
+        voice._CACHE = None
+        try:
+            self.assertIsNone(voice.llm_lang())
+            self.assertEqual(voice.lang_note(), "")
+            self.assertIn("京ことば", voice.persona_text())     # persona 差しが効いている
+            self.assertEqual(voice.label(), "京ことば")
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            config._CFG = None
+            voice._CACHE = None
+
+
 if __name__ == "__main__":
     unittest.main()

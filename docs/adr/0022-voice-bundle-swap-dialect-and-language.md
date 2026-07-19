@@ -74,7 +74,7 @@
   `/arc` に英別名 sparrow/cat/wind（`scheduler.ARC_KEY_ALIASES`）。
 - 同梱バンドルは `voices/en`（persona=英語の茶々の書き起こし・strings=UI 訳・llm_lang=en）。PyInstaller spec の
   datas に `voices/en` を追加。設定雛形は `engawa.json.sample[voice]`。
-- 方言ユースケース（persona 一枚差し）は `test_voice.test_persona_only_bundle` で継ぎ目を検証（京都弁の実バンドルは未同梱）。
+- 方言ユースケース（persona 一枚差し）は `test_voice.test_persona_only_bundle` で継ぎ目を検証。~~京都弁の実バンドルは未同梱~~＝**`voices/ja-kyoto` を 7/19 に同梱**（ADR-0033 の著者手順ドッグフーディング産・部分訳スタイル＝strings13キー＋culture place=京都・llm_lang 無しで注入不変を実 bundle で実証）。
 
 ## 追記（2026-07-19・lang note のソロ経路穴＝実測→修正→検証3層）
 
