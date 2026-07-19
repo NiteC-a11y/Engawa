@@ -104,12 +104,13 @@ class TestPersonaIdMatching(_Fixture):
         self.assertTrue(sources._persona_matches("気まぐれな旅の行商人", ["行商"], guest_id="peddler"))  # JP 互換維持
 
     def test_pick_topic_text_uses_persona_id(self):
-        pool = [{"text": "相場の話", "persona": ["peddler"]}, {"text": "季節の話"}]
-        self.assertEqual(sources.pick_topic_text(pool, "a whimsical traveling peddler",
-                                                 persona_id="peddler"), "相場の話")
-        # id 不一致の役はタグ付きが候補外→無タグへ
+        # 注意: 無タグの種は「全員可」＝タグ持ちの役の候補にも混ざる（設計）。決定的にするため分けて検証
+        tagged = [{"text": "相場の話", "persona": ["peddler"]}]
+        self.assertEqual(sources.pick_topic_text(tagged, "a whimsical traveling peddler",
+                                                 persona_id="peddler"), "相場の話")   # id で候補に入る
+        pool = tagged + [{"text": "季節の話"}]
         self.assertEqual(sources.pick_topic_text(pool, "the knowing old neighbor",
-                                                 persona_id="elder"), "季節の話")
+                                                 persona_id="elder"), "季節の話")     # id 不一致→タグ付きは候補外
 
     def test_guest_source_reset_assigns_id_and_display(self):
         g = sources.GuestSource()                                     # 自発（persona=None）
