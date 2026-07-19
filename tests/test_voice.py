@@ -186,6 +186,29 @@ class TestEnBundleAndWiring(unittest.IsolatedAsyncioTestCase):
         self.assertIn("話しかける…", html)
         self.assertIn(">ニャー<", html)
 
+    def test_resident_name_and_addr_english(self):
+        # 表示名 茶々→Chacha（transcript/チップの画面内不一致の解消・7/19）＋宛先バー見出しの鍵化漏れ修正
+        import views
+        self.assertEqual(voice.resident_name(), "Chacha")
+        self.assertIn('<span class="al">To</span>', views.build_web_html())
+        self.assertEqual(views.ConsoleView._header("Chacha", "user", None), "   Chacha › ")  # console も who 追従
+
+    def test_resident_tag_english(self):
+        # 起動 tag のラベルも voice 追従（外枠 boot_ok_* だけ鍵化で中身が混成日本語になる穴・codex 7/19 [中]1）
+        import agent_openai
+        import engawa_main
+        a = agent_openai.OpenAIAgent("http://x/v1", "qwen", "k", 30)
+        self.assertEqual(engawa_main._resident_tag(a), "Chacha=qwen / voice=English")
+        a2 = agent_openai.OpenAIAgent("http://x/v1", None, "k", 30)
+        self.assertIn("Chacha=default", engawa_main._resident_tag(a2))   # モデル未指定の「既定」も英語
+
+    def test_resident_name_and_addr_default_unchanged(self):
+        self._use_default_voice()
+        import views
+        self.assertEqual(voice.resident_name(), "茶々")
+        self.assertIn('<span class="al">宛先</span>', views.build_web_html())
+        self.assertEqual(views.ConsoleView._header("茶々", "user", None), "   茶々 › ")
+
     async def test_scheduler_help_localized(self):
         import scheduler as sched
         import sources

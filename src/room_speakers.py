@@ -15,6 +15,7 @@ from agent import AgentTimeoutError
 import conversation
 import prompts
 import sources
+import voice        # 住人表示名（transcript の話者タグ・en=Chacha・ADR-0022・7/19）
 
 
 class RoomSpeakerFactory:
@@ -47,7 +48,7 @@ class RoomSpeakerFactory:
 
     def speakers(self):
         """(茶々 Speaker, 客人 Speaker) を返す。Room がこれを均一に呼ぶ。"""
-        return (conversation.Speaker("茶々", self._resident_say),
+        return (conversation.Speaker(voice.resident_name(), self._resident_say),
                 conversation.Speaker(self.persona, self._guest_say))
 
     async def _resident_say(self, window, kind):

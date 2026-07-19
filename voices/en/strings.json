@@ -1,6 +1,11 @@
 {
   "_comment": "UI shell strings for the English voice (ADR-0022 Inc2). Missing keys fall back to the built-in Japanese.",
 
+  "resident_name": "Chacha",
+  "ui_addr": "To",
+  "ui_model_default": "default",
+  "ui_voice_label": "voice",
+
   "boot_title": "[*] Opening Chacha's engawa (garden arcs / event-source build)",
   "boot_starting_console": "[*] Starting up… (first run downloads npx)  Say hi. /help for commands\n",
   "boot_starting": "[*] Starting up… (first run downloads npx)",

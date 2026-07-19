@@ -19,6 +19,7 @@ from agent import AgentTimeoutError
 import game
 import prompts
 import sources
+import voice        # 住人表示名（対局プレイヤー名・en=Chacha・ADR-0022・7/19）
 
 
 class GameController:
@@ -119,7 +120,8 @@ class GameController:
             players = []
             if not watch:
                 players.append(game.Player("私"))    # 人間（観戦時は入れない＝全AI）。slot 0
-            players.append(game.Player("茶々", self._ai_decider(self._resident_provider(), "茶々", len(players))))
+            name = voice.resident_name()
+            players.append(game.Player(name, self._ai_decider(self._resident_provider(), name, len(players))))
             self._game_guests = []
             while len(players) < n:                  # 人数が足りないゲームの時だけ客人(codex)で埋める（blackjack では起きない）
                 persona = random.choice(sources.GUEST_PERSONAS)

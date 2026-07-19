@@ -111,6 +111,14 @@ def label():
     return current()["label"]
 
 
+def resident_name():
+    """住人の**表示名**（transcript の話者タグ・console prefix・game プレイヤー名）。strings の
+    `resident_name` で voice ごとに差し替え（en=Chacha＝チップ「Chacha」と画面内で揃える・7/19 ユーザー判断）。
+    既定は固有名「茶々」。宛先解決（conversation.resolve_addressee）は文面ベースで茶々/Chacha 両対応済み＝
+    表示名を変えてもロジックは壊れない。"""
+    return loc("resident_name", "茶々")
+
+
 def loc(key, default):
     """UI シェル文言の解決（<voice>+<base> の strings → default＝コード内の日本語）。"""
     s = current()["strings"].get(key)

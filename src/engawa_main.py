@@ -47,11 +47,13 @@ def _guest_spawner():
 
 def _resident_tag(resident):
     """起動行の住人表示。sessionId は ACP 固有なので getattr で任意扱い（OpenAIAgent は持たない）。
-    voice が既定以外なら `声=<label>` を添える（ADR-0022 Inc1・既定 ja-osaka では従来表示のまま）。"""
+    voice が既定以外なら `声=<label>` を添える（ADR-0022 Inc1・既定 ja-osaka では従来表示のまま）。
+    ラベル（茶々=/既定/声=）も voice 追従＝外枠 boot_ok_* だけ鍵化して中身が混成日本語になる穴の修正（codex 7/19 [中]）。"""
     sid = getattr(resident, "sessionId", None)
-    tag = (f"session={sid[:8]}… / " if sid else "") + f"茶々={resident.model or '既定'}"
+    tag = (f"session={sid[:8]}… / " if sid else "") \
+        + f"{voice.resident_name()}={resident.model or voice.loc('ui_model_default', '既定')}"
     if voice.current()["id"] != voice.DEFAULT_ID:
-        tag += f" / 声={voice.label()}"
+        tag += f" / {voice.loc('ui_voice_label', '声')}={voice.label()}"
     return tag
 
 

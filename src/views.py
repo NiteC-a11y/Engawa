@@ -99,9 +99,9 @@ class ConsoleView(View):
     def turn_start(self, who, kind, label=None, voice=None):
         if voice is not None:                       # 客人の声は即表示（茶々が黙っても見せる）
             sys.stdout.write(self._voice_block(label, voice)); sys.stdout.flush()
-            self._pending = "   茶々 › "             # 茶々の prefix だけ遅延
+            self._pending = f"   {who} › "           # 茶々の prefix だけ遅延（表示名は呼び側＝voice 追従・7/19）
         else:
-            self._pending = self._header(kind, label)   # ここでは出さない（遅延）
+            self._pending = self._header(who, kind, label)   # ここでは出さない（遅延）
         self._started = self._gap = False
 
     @staticmethod
@@ -110,14 +110,14 @@ class ConsoleView(View):
         return f"\n──[{now}] {label or '客人'} ───────────────\n   客人 › {collapse_ws(voice)}\n"
 
     @staticmethod
-    def _header(kind, label):
+    def _header(who, kind, label):
         now = datetime.datetime.now().strftime("%H:%M:%S")
         if kind == "user":
-            return "   茶々 › "
+            return f"   {who} › "
         if kind == "arc":
-            return f"\n──[{label}] {now} ─────\n   茶々 › "
+            return f"\n──[{label}] {now} ─────\n   {who} › "
         suffix = "（移ろい）" if kind == "transition" else ""
-        return f"\n──[{now}] {label or '縁側の外'}{suffix} ───────────────\n   茶々 › "
+        return f"\n──[{now}] {label or '縁側の外'}{suffix} ───────────────\n   {who} › "
 
     def chunk(self, text):
         buf = []
@@ -1106,6 +1106,8 @@ def _localize_html(html):
         ('title="閉じる"', 'title="' + voice.loc("ui_close", "閉じる") + '"'),
         ('<div id="nya">ニャー</div>', '<div id="nya">' + voice.loc("ui_meow", "ニャー") + "</div>"),
         ("あなた ›", voice.loc("ui_you", "あなた") + " ›"),
+        ('<span class="al">宛先</span>',                       # 宛先バーの見出し（チップだけ鍵化して見出しを取りこぼしていた・7/19）
+         '<span class="al">' + voice.loc("ui_addr", "宛先") + "</span>"),
     )
     for old, new in pairs:
         html = html.replace(old, new)

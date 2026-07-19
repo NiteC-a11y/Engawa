@@ -22,7 +22,7 @@ import prompts       # LLM 文言ビルダー（注入プロンプト工場・so
 import room_speakers  # 3人会話の Speaker を作る RoomSpeakerFactory（ADR-0029 Phase 4a）
 import sources
 import views         # GAME_CLOSE_REQUEST（観戦窓×→お開きの制御トークン・入力 wire 形式の共有）
-from voice import loc  # UI シェル文言の voice 上書き（未訳キーは第2引数の日本語へ・ADR-0022 Inc2）
+from voice import loc, resident_name  # UI シェル文言と住人表示名の voice 上書き（未訳キーは日本語既定へ・ADR-0022 Inc2）
 
 TICK_MIN = config.get_float("ENGAWA_TICK_MIN", "timing", "tick_min", 35, lo=1)
 TICK_MAX = config.get_float("ENGAWA_TICK_MAX", "timing", "tick_max", 70, lo=1)
@@ -143,7 +143,7 @@ class Scheduler:
         async with self.turn_lock:
             log.debug("inject 茶々 (%s%s)", narration.kind,      # 茶々ソロの発話（ambient つぶやき/アーク beat/ソロ応答）＝タイミングの起点
                       f"/{narration.label}" if narration.label else "")
-            self.view.turn_start("茶々", narration.kind, narration.label, narration.voice)
+            self.view.turn_start(resident_name(), narration.kind, narration.label, narration.voice)
             timed_out = False
             stop_reason = None
             try:
@@ -234,7 +234,7 @@ class Scheduler:
             return False
         if self._turns_since_refresh < self._absence_target:
             return False
-        self.view.say("茶々", loc("absence_leave", prompts.absence_leave()))   # 「ちょっと外すわ」＝確定発話で直接表示（voice 上書き可）
+        self.view.say(resident_name(), loc("absence_leave", prompts.absence_leave()))   # 「ちょっと外すわ」＝確定発話で直接表示（voice 上書き可）
         self._absent = True
         self.view.set_absent(True)                       # web は茶々スプライトを消す＝空っぽの縁側（console は no-op）
         self._away_until = time.time() + ABSENCE_GAP
@@ -253,7 +253,7 @@ class Scheduler:
         self._turns_since_refresh = 0                    # 圧をリセット＝次の中座までまた溜める
         self._absence_target = self._roll_absence_target()
         self.view.set_absent(False)                      # 茶々が戻る＝スプライト復帰（フェードイン）
-        self.view.say("茶々", loc("absence_return", prompts.absence_return()))  # 「お待たせ」「どこまで話しとったっけ」＝忘却も自然
+        self.view.say(resident_name(), loc("absence_return", prompts.absence_return()))  # 「お待たせ」「どこまで話しとったっけ」＝忘却も自然
         log.debug("茶々 中座から復帰（セッション更新済み・圧リセット→次目標 %d）", self._absence_target)
 
     # ── ティック ──────────────────────────────────────────
