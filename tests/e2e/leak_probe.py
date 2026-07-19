@@ -42,6 +42,7 @@ sys.path.insert(0, str(_ROOT / "src"))
 import agent as agent_mod                       # noqa: E402  中立ポート（AgentTimeoutError）
 import conversation                             # noqa: E402
 import prompts                                  # noqa: E402
+import room_speakers                            # noqa: E402  本番の Speaker 名で窓を組む（配線迂回を塞ぐ・7/19）
 import sources                                  # noqa: E402
 import voice                                    # noqa: E402
 
@@ -83,17 +84,28 @@ def _u(speaker, text):
     return conversation.Utterance(speaker, text)
 
 
-ROOM_TRIALS = [  # 客人/私は英語（en モードの実態）・枠と話者ラベルは日本語のまま
-    (conversation.REACT, [_u("客人", "Good evening. Mind if I rest here a moment?")]),
-    (conversation.REPLY, [_u("客人", "This breeze is lovely."), _u("私", "Chacha, how has your day been?")]),
-    (conversation.REPLY, [_u("私", "Chacha, what do you think of our guest?")]),
-    (conversation.CHIME, [_u("私", "I heard the cicadas started early this year."), _u("客人", "Ah, they woke me at dawn, truly.")]),
-    (conversation.REPLY, [_u("客人", "Does it always smell of mosquito coil here, Chacha?")]),
-    (conversation.CHIME, [_u("客人", "I once painted a veranda just like this one."), _u("私", "Oh, you paint?")]),
-    (conversation.MUSE, [_u("客人", "The evening sun sits low already.")]),
-    (conversation.REPLY, [_u("私", "Chacha, should we offer our guest some tea?")]),
-    (conversation.CHIME, [_u("私", "The forecast said rain tomorrow."), _u("客人", "Then I shall borrow the sky while it lasts.")]),
-    (conversation.LEAVE_REACT, [_u("客人", "Well then, I ought to be going. Thank you for the seat.")]),
+# room の窓は話者タグを **本番配線**＝RoomSpeakerFactory の実 Speaker 名から取る（手組みの「客人」ラベルは
+# fixture が本番を迂回し、Speaker 名の変更が E2E に流れない盲点だった・7/19 の教訓）。
+# 客人役名は自発来訪の実プール相当の和字＝窓に和字ラベルが混ざるのも本番どおり。客人/私は英語で喋る（en モードの実態）。
+GUEST_PERSONA = "気まぐれな旅の行商人"
+_factory = room_speakers.RoomSpeakerFactory(GUEST_PERSONA, resident_speak=None,
+                                            guest_agent_provider=lambda: None,
+                                            context_provider=lambda: None,
+                                            topics_provider=lambda: [], log=None)
+_res_spk, _guest_spk = _factory.speakers()
+RESIDENT_TAG, GUEST_TAG = _res_spk.name, _guest_spk.name   # 注入窓タグ（display でなく name 側＝LLM が読む方）
+
+ROOM_TRIALS = [
+    (conversation.REACT, [_u(GUEST_TAG, "Good evening. Mind if I rest here a moment?")]),
+    (conversation.REPLY, [_u(GUEST_TAG, "This breeze is lovely."), _u("私", "Chacha, how has your day been?")]),
+    (conversation.REPLY, [_u(RESIDENT_TAG, "mm, quiet one."), _u("私", "Chacha, what do you think of our guest?")]),
+    (conversation.CHIME, [_u("私", "I heard the cicadas started early this year."), _u(GUEST_TAG, "Ah, they woke me at dawn, truly.")]),
+    (conversation.REPLY, [_u(GUEST_TAG, "Does it always smell of mosquito coil here, Chacha?")]),
+    (conversation.CHIME, [_u(RESIDENT_TAG, "……"), _u(GUEST_TAG, "I once painted a veranda just like this one."), _u("私", "Oh, you paint?")]),
+    (conversation.MUSE, [_u(GUEST_TAG, "The evening sun sits low already.")]),
+    (conversation.REPLY, [_u("私→客人", "Have you eaten anything today?"), _u(GUEST_TAG, "Only the view, I'm afraid."), _u("私", "Chacha, should we offer our guest some tea?")]),
+    (conversation.CHIME, [_u("私", "The forecast said rain tomorrow."), _u(GUEST_TAG, "Then I shall borrow the sky while it lasts.")]),
+    (conversation.LEAVE_REACT, [_u(RESIDENT_TAG, "mm."), _u(GUEST_TAG, "Well then, I ought to be going. Thank you for the seat.")]),
 ]
 
 

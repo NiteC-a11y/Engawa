@@ -190,8 +190,21 @@ class TestEnBundleAndWiring(unittest.IsolatedAsyncioTestCase):
         # 表示名 茶々→Chacha（transcript/チップの画面内不一致の解消・7/19）＋宛先バー見出しの鍵化漏れ修正
         import views
         self.assertEqual(voice.resident_name(), "Chacha")
-        self.assertIn('<span class="al">To</span>', views.build_web_html())
+        html = views.build_web_html()
+        self.assertIn('<span class="al">To</span>', html)
+        self.assertIn('const RESIDENT="Chacha";', html)          # JS のソロ転写ラベル/色分け/在室判定も追従（7/19 実機バグ）
         self.assertEqual(views.ConsoleView._header("Chacha", "user", None), "   Chacha › ")  # console も who 追従
+
+    def test_room_speaker_display_split(self):
+        # room の注入窓（LLM が読む側）は「茶々」のまま・画面表示だけ Chacha（Speaker.display 分離・7/19）
+        import room_speakers
+        f = room_speakers.RoomSpeakerFactory("旅人", resident_speak=None,
+                                             guest_agent_provider=lambda: None,
+                                             context_provider=lambda: None,
+                                             topics_provider=lambda: [], log=None)
+        res, guest = f.speakers()
+        self.assertEqual((res.name, res.display), ("茶々", "Chacha"))
+        self.assertEqual((guest.name, guest.display), ("旅人", "旅人"))
 
     def test_resident_tag_english(self):
         # 起動 tag のラベルも voice 追従（外枠 boot_ok_* だけ鍵化で中身が混成日本語になる穴・codex 7/19 [中]1）
@@ -206,7 +219,9 @@ class TestEnBundleAndWiring(unittest.IsolatedAsyncioTestCase):
         self._use_default_voice()
         import views
         self.assertEqual(voice.resident_name(), "茶々")
-        self.assertIn('<span class="al">宛先</span>', views.build_web_html())
+        html = views.build_web_html()
+        self.assertIn('<span class="al">宛先</span>', html)
+        self.assertIn('const RESIDENT="茶々";', html)            # JP でも定数注入（値は同じ＝挙動不変）
         self.assertEqual(views.ConsoleView._header("茶々", "user", None), "   茶々 › ")
 
     async def test_scheduler_help_localized(self):

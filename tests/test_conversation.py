@@ -408,5 +408,25 @@ class TestBargeIn(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_kinds(log), [("ご隠居", conv.REPLY), ("茶々", conv.CHIME)])
 
 
+class TestSpeakerDisplayName(unittest.IsolatedAsyncioTestCase):
+    """表示名と注入窓の分離（7/19 実機バグ）＝display は on_say（画面）だけ・transcript（LLM が読む窓）は
+    name のまま。分離が無いと表示名切替（en=Chacha）が注入文まで変え、場面指示「茶々として」と分裂して
+    茶々の口調が客人化する。"""
+
+    def test_display_defaults_to_name(self):
+        s = conv.Speaker("ご隠居", None)
+        self.assertEqual(s.display, "ご隠居")
+
+    async def test_display_decoupled_from_transcript(self):
+        seen = []
+        async def fn(window, kind):
+            return "ほい"
+        room = conv.Room(PERSONA, conv.Speaker("茶々", fn, display="Chacha"), conv.Speaker(PERSONA, fn),
+                         on_say=lambda who, text, kind: seen.append(who))
+        await room._utter(room.resident, conv.REPLY)
+        self.assertEqual(seen, ["Chacha"])                        # 画面は display
+        self.assertEqual(room.transcript.window()[-1].speaker, "茶々")   # LLM の窓は name＝注入文は不変
+
+
 if __name__ == "__main__":
     unittest.main()

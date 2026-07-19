@@ -767,18 +767,19 @@ let since=0; const seen={}; let busy=false;
 let curFont=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--fz'))||1;
 function applyFont(f){ if(typeof f==='number'&&f>0&&f!==curFont){curFont=f;document.documentElement.style.setProperty('--fz',f);} }
 // 茶々の state（poll から推定して canvas の動きへ）
+const RESIDENT='茶々';                       // 住人の表示名（_localize_html が voice の resident_name に差し替え・7/19）
 const chacha={lastGuest:-1e9,lastUser:-1e9}; const liveSet=new Set(); let lastTurnId=0;
 let guestName='', lastGuestSeen=-1e9;   // @メニュー用: 来訪中の客人名と最終発話時刻
 function render(it){
   if(it.type==='system') return '<div class="sys">'+esc(it.text)+'</div>';
   if(it.type==='you') return '<div class="you"><span class="who">あなた ›</span>'+esc(it.text)+'</div>';
   if(it.type==='say'){                    // 3人会話の確定発話（茶々 or 客人）
-    const cls=(it.speaker==='茶々')?'cha':'guest';
+    const cls=(it.speaker===RESIDENT)?'cha':'guest';
     return '<div class="'+cls+'"><span class="who">'+esc(it.speaker)+' ›</span>'+esc(it.text)+'</div>';
   }
   let h='';
   if(it.voice) h+='<div class="guest"><span class="who">客人 ›</span>'+esc(it.voice)+'</div>';
-  h+='<div class="cha"><span class="who">茶々 ›</span>'+esc(it.text)+'</div>';
+  h+='<div class="cha"><span class="who">'+esc(RESIDENT)+' ›</span>'+esc(it.text)+'</div>';
   return h;
 }
 let absent=false;
@@ -813,7 +814,7 @@ async function tick(){
       if(!el){el=document.createElement('div');el.className='item';log.appendChild(el);seen[it.id]=el;}
       el.innerHTML=render(it);
       if(it.type==='you') chacha.lastUser=performance.now();          // 話しかけたら即こっち見る
-      if(it.type==='say'&&it.speaker!=='茶々'){chacha.lastGuest=performance.now();guestName=it.speaker;lastGuestSeen=performance.now();}  // 客人が喋った＝耳ピン/気配＋@候補
+      if(it.type==='say'&&it.speaker!==RESIDENT){chacha.lastGuest=performance.now();guestName=it.speaker;lastGuestSeen=performance.now();}  // 客人が喋った＝耳ピン/気配＋@候補
       if(it.type==='turn'){
         if(it.done) liveSet.delete(it.id); else liveSet.add(it.id);   // 話してる最中か
         if(it.id>lastTurnId){
@@ -1108,6 +1109,8 @@ def _localize_html(html):
         ("あなた ›", voice.loc("ui_you", "あなた") + " ›"),
         ('<span class="al">宛先</span>',                       # 宛先バーの見出し（チップだけ鍵化して見出しを取りこぼしていた・7/19）
          '<span class="al">' + voice.loc("ui_addr", "宛先") + "</span>"),
+        ("const RESIDENT='茶々';",                             # JS の住人表示名（ソロ転写ラベル・say の色分け・客人在室判定が参照・7/19）
+         "const RESIDENT=" + json.dumps(voice.resident_name(), ensure_ascii=False) + ";"),
     )
     for old, new in pairs:
         html = html.replace(old, new)

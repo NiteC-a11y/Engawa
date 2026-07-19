@@ -119,11 +119,15 @@ ARRIVE, REACT, REPLY, CHIME, LEAVE, LEAVE_REACT, MUSE = (
 
 
 class Speaker:
-    """茶々/客人を均一に喋らせる注入アダプタ。name は transcript の話者タグ。
+    """茶々/客人を均一に喋らせる注入アダプタ。name は transcript の話者タグ＝**LLM が読む会話窓の側**
+    （`_render_window` の「名「…」」・場面指示の「茶々として」と一致させて注入文は変えない）。
+    display は**画面表示だけ**の名前（省略時 name）＝voice の表示名（en=Chacha）は表示にのみ効かせる。
+    一人二役だった name を分離（7/19・表示名切替が注入窓まで変えて茶々の口調が客人化した実機バグの修正）。
     fn: async (window: tuple[Utterance], kind: str) -> str | None（None/空＝無言で積まない）。"""
-    def __init__(self, name, fn):
+    def __init__(self, name, fn, display=None):
         self.name = name
         self._fn = fn
+        self.display = display or name
 
     async def say(self, window, kind):
         return await self._fn(window, kind)
@@ -200,8 +204,8 @@ class Room:
         if preemptible and self._stop():
             return ""
         if text:
-            self.transcript.append(speaker.name, text)
-            self._on_say(speaker.name, text, kind)
+            self.transcript.append(speaker.name, text)      # 注入窓は name（LLM 側・不変）
+            self._on_say(speaker.display, text, kind)       # 画面は display（voice 追従・7/19）
         return text
 
     def _goto(self, state):

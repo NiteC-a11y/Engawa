@@ -61,13 +61,13 @@ class TestWebBehavior(unittest.TestCase):
         except OSError:
             pass
 
-    def _open(self, pw, init_script):
+    def _open(self, pw, init_script, url=None):
         # glob で拾えた chromium を優先（pip playwright とインストール版のバージョン差を吸収）。
         # 見つからなければ playwright 既定の解決に任せる（CI＝バージョン一致なので既定で launch できる）。
         b = pw.chromium.launch(**({"executable_path": _CHROME} if _CHROME else {}))
         pg = b.new_page()
         pg.add_init_script(init_script)      # ページ script より先に pywebview.api を注入
-        pg.goto(self._url)
+        pg.goto(url or self._url)
         return b, pg
 
     def test_daynight_off_resets_tint_to_neutral(self):
@@ -96,6 +96,55 @@ class TestWebBehavior(unittest.TestCase):
                 self.assertEqual(tint, "rgb(255, 255, 255)")  # 白＝乗算で無変化（← 修正前は夜色のまま＝バグ）
                 self.assertEqual(glow, "0")                   # 月光を消す
                 self.assertEqual(lamp, "0")                   # 室内灯を消す
+            finally:
+                b.close()
+
+
+    def test_en_voice_transcript_labels_follow_resident(self):
+        """en voice の転写 DOM: ソロ転写ラベルが RESIDENT（Chacha）追従・say の色分け/客人在室判定が
+        display 名で正しい・転写に日本語が残らない（7/19 実機バグ＝JS の「茶々」ハードコード3箇所の回帰止め。
+        Python 側の string テストは「渡す」までしか見えず、JS が使うかは DOM でしか検証できない）。"""
+        import json
+        import re
+        import config
+        import views
+        import voice
+        saved = os.environ.get("ENGAWA_VOICE")
+        os.environ["ENGAWA_VOICE"] = "en"
+        config._CFG = None
+        voice._CACHE = None
+        try:
+            html_path = os.path.join(self._tmp, "engawa_en.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(views.build_web_html())
+        finally:
+            if saved is None:
+                os.environ.pop("ENGAWA_VOICE", None)
+            else:
+                os.environ["ENGAWA_VOICE"] = saved
+            config._CFG = None
+            voice._CACHE = None
+        url = "file:///" + os.path.abspath(html_path).replace("\\", "/")
+        items = [   # 本物の poll スキーマ（turn=ソロ・say=room 確定発話）。Chacha の say を最後に置く＝在室判定の誤爆検出を鋭く
+            {"id": 1, "type": "turn", "kind": "ambient", "label": None, "voice": None,
+             "text": "mm, quiet morning.", "done": True},
+            {"id": 2, "type": "say", "speaker": "ojichan", "text": "indeed it is.", "done": True},
+            {"id": 3, "type": "say", "speaker": "Chacha", "text": "the breeze is nice.", "done": True},
+        ]
+        init = ("window.pywebview={api:{poll:async()=>({items:" + json.dumps(items)
+                + ",cursor:3,font:1,absent:false,day:null}),send:()=>{},close:()=>{},resize:()=>{}}};")
+        with sync_playwright() as pw:
+            b, pg = self._open(pw, init, url)
+            try:
+                pg.wait_for_timeout(400)                     # tick が items を描画
+                labels = pg.evaluate("[...document.querySelectorAll('#log .who')].map(e=>e.textContent)")
+                self.assertIn("Chacha ›", labels)            # ソロ転写ラベル＝RESIDENT 追従（旧: 茶々 › 固定）
+                guests = pg.evaluate("[...document.querySelectorAll('#log .guest .who')].map(e=>e.textContent)")
+                self.assertEqual(guests, ["ojichan ›"])      # 客人スタイルは客人だけ（旧: Chacha 行も guest 色）
+                self.assertEqual(pg.evaluate("guestName"), "ojichan")   # 在室判定が Chacha の say で誤爆しない
+                body = pg.evaluate("document.getElementById('log').textContent")
+                self.assertIsNone(re.search(r"[぀-ヿ㐀-䶿一-鿿]", body),
+                                  f"en の転写 DOM に日本語が残っている: {body!r}")
             finally:
                 b.close()
 

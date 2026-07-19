@@ -48,7 +48,7 @@ class RoomSpeakerFactory:
 
     def speakers(self):
         """(茶々 Speaker, 客人 Speaker) を返す。Room がこれを均一に呼ぶ。"""
-        return (conversation.Speaker(voice.resident_name(), self._resident_say),
+        return (conversation.Speaker("茶々", self._resident_say, display=voice.resident_name()),
                 conversation.Speaker(self.persona, self._guest_say))
 
     async def _resident_say(self, window, kind):

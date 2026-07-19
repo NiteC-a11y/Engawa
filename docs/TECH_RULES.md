@@ -96,6 +96,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 - **見た目は config 主導**（env > `engawa.json` > 既定）。つまみ一覧は CLAUDE.md。**スプライト/背景は差し替え可能なアセット層**（adr/0010, 0019）。
 - **拡大時は `imageSmoothingEnabled = false` / `image-rendering: pixelated` 必須**（ドット絵を滲ませない）。アニメ=コマ送り、移動=座標/transform のハイブリッド。state（天気/時刻/気分）→アニメ選択。
 - **既存IP（たまごっち / Clawd 等）に寄せない。** オリジナルで描く。
+- **日本語 IME と衝突する入力ギミックを避け、操作は明示コントロールで**（例: `@` メンションは IME で打ちにくい→宛先はチップ/セレクトで選ぶ。本窓に UI を増やさない方針とセット・adr/0015 の宛先チップ）。
 - **ブラウザストレージ（localStorage 等）は使わない。** 状態はメモリ／SQLite。永続化は `engawa.json` へ明示保存（`/font save` 流儀・`config.set_value`）。
 - **cross-thread の `evaluate_js` は使わない＝ライブ反映は poll 方式**（`WebView.poll` が font/absent/day 等の持続フラグを配り、JS 側が適用する）。
 - **窓全体の `zoom` は使わない**（frameless＋`height:100vh`＋`overflow:hidden` で入力欄が窓外に切れて操作不能・6/30 の事故・撤回済み）。文字拡大は本文/入力だけ `calc(BASE * var(--fz))`。
@@ -117,13 +118,19 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 
 ---
 
-## 9. テスト（必須・adr/0023）
+## 9. テスト（必須・adr/0023。層別の設計判断と教訓は adr/0022 追記・0031 追記・0033 予定）
 
-- **ソース修正にはテストを同梱**し、`python -m unittest discover -s tests -t .`（stdlib unittest・GUI/ネット不要）で**全 PASS を確認してから完了**とする。テスト無しの修正は回帰検知が効かず、後の変更で壊しても気づけない。※pytest への段階移行は宿題（Backlog・7/13）＝当面 unittest 形式のまま。
-- **テスト困難な GUI/外部依存は判断ロジックを純関数に切り出してユニット化**する（例: `engawa_main._web_window_kwargs`/`_ui_config`、`views.build_web_html`、`daynight.layers`）。GUI の見た目自体はユーザー目視（§7 / adr/0018, 0019）。
-- **JS の"振る舞い"は opt-in のブラウザテストで回帰止め**（`tests/test_web_behavior.py`）。純関数に切り出せない DOM 適用ロジック（`applyDay`/`render` 等）は、実 `WEB_HTML` を headless chromium(playwright) で開き `pywebview.api.poll` を mock して DOM を assert する。**既定スキップ**＝`ENGAWA_BROWSER_TESTS=1 python -m unittest tests.test_web_behavior` で実行。**JS(views.py の WEB_HTML)を触ったら走らせる**。
-- **harness で強制**：`.claude/settings.json`（project・committed）の **Stop フック**が src/tests 変更時にテストを走らせ、赤なら完了をブロック（`/hooks` で確認・無効化可）。**PreToolUse フック＋ask ルールで `git push` は毎回ユーザー承認必須**（push は都度合図の運用をハーネスで強制・7/14）。**開発者向け設定＝Bash 必須**（Windows は Git Bash 前提。アプリ利用者には無関係）。
-- **CI（GitHub Actions・`.github/workflows/ci.yml`）**：push / PR で **tests**（Python 3.10–3.13 マトリクス・依存インストール不要＝`import webview`/`rlcard` は遅延）＋ **ruff**（`ruff.toml`＝`select=F,E9` の実バグ級のみ）＋ **mermaid**（docs の図を mmdc で parse/render 検証）を自動実行。ローカルで合わせるなら `python -m ruff check src tests`。
+- **完了条件**: ソース修正はテストを同梱し `python -m unittest discover -s tests -t .`（stdlib unittest・GUI/ネット不要）で**全 PASS を確認してから完了**。**正常な緑は `OK (skipped=2)`**＝`test_web_behavior` の opt-in ブラウザテスト2件（設計どおり。3以上に増えたら環境不足か新規 opt-in を疑う）。※pytest への段階移行は宿題（Backlog・7/13）。
+- **6層の防御**（守る対象別。バグはどこかの層の穴＝下の変換規則で塞ぐ）:
+  1. **ユニット**: テスト困難な GUI/外部依存は判断ロジックを**純関数に切り出して**検証（例: `engawa_main._web_window_kwargs`・`views.build_web_html`・`daynight.layers`）。
+  2. **合成テスト**: 層またぎの不変条件は「経路の明示列挙×条件」＋**命名 canary**で機械強制（`tests/test_injection_lang.py`＝llm_lang 時の全注入に言語指示・`*_narration`/`*_prompt` は COVERED∪EXEMPT に必ず分類）。モジュール別テストの継ぎ目に落ちる型（adr/0031 ARRIVE 穴）への対策。
+  3. **スナップショット**: **LLM に届く注入文は voice ごとにバイト凍結**（`tests/test_prompt_snapshots.py`＋`tests/snapshots/`）＝「書いていない不変条件」を diff で検問。**意図した変更は `ENGAWA_UPDATE_SNAPSHOTS=1` で再生成し、diff を読んでからコミット**（反射更新は防御ゼロ）。
+  4. **境界の向こう岸**: Python↔JS 契約は **DOM で assert**（`tests/test_web_behavior.py`・playwright・既定スキップ＝`ENGAWA_BROWSER_TESTS=1` で実行・CI では常時）。**JS を触った時だけでなく、JS が消費するデータを変えた時も走らせる**（「渡した」≠「使われた」・7/19）。
+  5. **実 LLM E2E**: `tests/e2e/leak_probe.py`（**手動 opt-in・課金あり**・discover 非対象）＝本番ビルダー×本番配線（RoomSpeakerFactory の実 Speaker 名＝fixture の配線迂回禁止）×**trial ごと新品セッション既定**（文脈慣性なし＝最悪条件。`--sticky` で慣性観測）。
+  6. **人間の目視**: GUI 見た目・トーンは実機で。初手順序を変えたシナリオ（起動→idle 放置／起動→即話しかけ）も踏む。**GUI に見える修正は目視 OK 前に push しない**。
+- **バグ→テストの変換規則**: 実機でバグが見つかったら逃げ道3型を判定し同型を1本足す＝**A** 未認識の不変条件→層3／**B** fixture の配線迂回→本番の継ぎ目を通す／**C** 境界の向こう岸→層4。修正のスイープは**モジュール単位でなく概念単位**（例:「LLM に届く全注入」「ユーザーに見える全文字列」）。根因が概念の混線（一名多役）なら**分離が本体・テストはラチェット**（例: `Speaker.name`/`display`・7/19）。
+- **harness で強制**：`.claude/settings.json`（project・committed）の **Stop フック**が src/tests 変更時にテストを走らせ、赤なら完了をブロック（`/hooks` で確認・無効化可）。**PreToolUse フック＋ask ルールで `git push` は毎回ユーザー承認必須**（7/14）。**開発者向け設定＝Bash 必須**（Windows は Git Bash 前提。アプリ利用者には無関係）。
+- **CI / リリース**：push / PR で **tests**（Python 3.10–3.13 マトリクス・依存インストール不要＝`import webview`/`rlcard` は遅延）＋ **ruff**（`ruff.toml`＝実バグ級のみ）＋ **mermaid** ＋ **browser** を自動実行（ローカルは `python -m ruff check src tests`）。**exe は tag `v*.*.*` の push でのみ焼かれる**（`release.yml`・draft で停止→GUI 起動をユーザー目視→手動 Publish。docs のみのコミットはリリース対象外）。
 
 ---
 
