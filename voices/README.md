@@ -88,7 +88,10 @@ python tools/voice_lint.py <your-id>
 
 States per key: `translated` / `inherited-from-base` / `same-as-default` (review) /
 `missing` (falls back to Japanese) / `unknown` (not in the registry — typo?).
-Exit codes: `0` complete (no missing/unknown, placeholders OK) / `1` findings / `2` broken bundle.
+lint also checks **culture** (place defined? all role ids covered? duplicates/unknown ids?) and
+flags broken `{...}` format strings — inherited base values included (they run at runtime too).
+Exit codes: `0` the whole voice is complete (strings *and* culture, placeholders OK) /
+`1` findings / `2` broken bundle (bad JSON in your strings/culture or in your base).
 
 ## 8. Partial translation is normal
 

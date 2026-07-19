@@ -1,0 +1,3 @@
+
+──[HH:MM:SS] __L10N_ui_chip_guest__ ───────────────
+   __L10N_ui_chip_guest__ › hello
