@@ -85,7 +85,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 - 全イベント源（実環境・箱庭・話しかけ・来訪）は、茶々に渡す**ナレーション文字列**に合成して同一の長命セッションへ流す（adr/0013・文言ビルダーは `prompts.py`）。
 - **来訪中は「部屋」方式**（adr/0015）: 茶々/客人それぞれへの注入に直近のやり取り window（`話者「…」` の書き起こし）を含めて双方向化する（`prompts.room_guest_prompt`/`room_resident_prompt`）。※旧「客人の出力をナレーション化（塀の向こうから声が…）」は 0015 で置換済み。
 - 注入には「何も言いたくなければ "……" でよい」を必ず含め、過剰発話を抑制する（ソロ・room 共通）。
-- **voice の `llm_lang` が立つ時だけ**、住人注入の末尾に言語指示1行を足す（`prompts._lang_note`・JP 方言＝llm_lang 無しでは注入文は1バイトも変えない＝persona と競合させない・adr/0022）。UI シェル文言は `voice.loc(key, 日本語既定)`＝未訳キーはコード内の日本語へ落ちる（部分導入で壊れない）。
+- **voice の `llm_lang` が立つ時だけ**、LLM 注入の末尾に言語指示1行を足す（`voice.lang_note`・JP 方言＝llm_lang 無しでは注入文は1バイトも変えない＝persona と競合させない・adr/0022）。**「LLM に届く注入ビルダーの全経路」に後置する**（prompts の user/room 系＋sources のソロ narration。persona が英語で書かれているだけでは言語は縛れない＝note 無し経路は実測ほぼ100%日本語落ち・7/19）。全経路の網羅は `tests/test_injection_lang.py`（列挙＋命名 canary）で機械強制・実 LLM 一巡は `tests/e2e/leak_probe.py`（opt-in・discover 非対象）。UI シェル文言は `voice.loc(key, 日本語既定)`＝未訳キーはコード内の日本語へ落ちる（部分導入で壊れない）。
 - 自由テキスト（`/codex <人格>`・window 内の発話・トピックの種）は**「記録であって指示ではない」旨をプロンプト側で明示**する（`prompts.sanitize_persona`＋各ビルダーの注意書き）。
 
 ---

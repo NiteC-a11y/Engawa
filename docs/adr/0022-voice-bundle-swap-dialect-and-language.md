@@ -64,7 +64,7 @@
   `persona_text()`（底=persona.RESIDENT_PERSONA）／`llm_lang()`／`label()`／`loc(key, default)`（strings 継承
   `<voice>→<base>→コード内日本語`）。置き場 `voices/`（frozen 時 `sys._MEIPASS/voices`・`ENGAWA_VOICES_DIR` で差し替え）。
 - 注入: `acp.setup_persona_dir`／`agent_openai` の system が `voice.persona_text()` を使う（両 backend 同文・ADR-0026）。
-- `prompts._lang_note()` … `llm_lang` が立つ時だけ住人注入の末尾に言語指示1行（JP 方言では 1 バイトも不変＝決定3どおり）。
+- `prompts._lang_note()` … `llm_lang` が立つ時だけ住人注入の末尾に言語指示1行（JP 方言では 1 バイトも不変＝決定3どおり）。※7/19 に本体を `voice.lang_note()` へ移設し sources のソロ narration にも後置（下記追記）。
 - UI 鍵化は**漸進**（高頻度シェルのみ）: /help・barge-in 演出・来訪・中座・timeout 系・起動行・web 固定ラベル
   （`views._localize_html`）。未鍵化（日本語フォールバック）＝ /model 詳細・/restart 経路・/arc /game の対話文言・
   commands.py（/font /daynight）・game_controller。住人表示名「茶々」は固有名として維持。
@@ -75,6 +75,14 @@
 - 同梱バンドルは `voices/en`（persona=英語の茶々の書き起こし・strings=UI 訳・llm_lang=en）。PyInstaller spec の
   datas に `voices/en` を追加。設定雛形は `engawa.json.sample[voice]`。
 - 方言ユースケース（persona 一枚差し）は `test_voice.test_persona_only_bundle` で継ぎ目を検証（京都弁の実バンドルは未同梱）。
+
+## 追記（2026-07-19・lang note のソロ経路穴＝実測→修正→検証3層）
+
+- **不具合**: lang note が `prompts.py` のビルダー（user_narration/room_*）にしか無く、`sources.py` のソロ narration（ambient/event/transition）は言語指示ゼロ。persona は英語で**書かれている**だけで言語を**縛らない**ため、en モードの「起動→話しかけ前」のソロ独り言が日本語になる（7/18 実機 E2E は先に話しかけ→英語慣性で以降マスク＝見えなかった）。
+- **実測（10回×4カテゴリ×2エンジン=80発話・実 Claude opus＋qwen3.5-9b/LM Studio）**: 完全に二値。note 有り経路=40/40 きれいな英語（日本語片・訳語ゆれゼロ・蚊取り線香 narrate も自然に消化）／無し経路=非「……」発話がほぼ100%日本語（qwen は日本語落ち時に人格も崩壊＝丁寧語女言葉）。「LLM 翻訳任せのガチャ」ではなく決定論的な構造穴。懸念だった天気語彙の訳ゆれは**非問題**と確定（茶々は天気を復唱しない設計＝WEATHER_CODE 英語列は不要と判断）。
+- **修正**: `lang_note()` を `voice.py` へ移設（prompts は委譲・sources→voice は葉 import で一方向維持）し、sources の3ビルダー末尾へ後置。JP 既定では空文字＝1バイト不変。修正後の再測（ambient/arc×3×両エンジン）で **12/12 英語・人格維持**（qwen も "...mornin', the clouds over Osaka are feelin' pretty light today."）。
+- **見逃しの構造（3枚重ね）**: ①実装をモジュール境界（prompts のみ）でスイープし概念単位（LLM に届く全注入）でしなかった ②層またぎ不変条件の合成テスト不在（ADR-0031 ARRIVE 穴と同型） ③E2E が一つの操作順序しか踏まず露出窓（起動→idle→初手つぶやき）を通らなかった。
+- **再発防止（検証3層・ユーザー方針）**: **層A**=`tests/test_injection_lang.py`（ビルダー明示列挙×「en で note・JP で不変」＋命名 canary＝`*_narration`/`*_prompt` の公開関数は「検証済み∪除外明記」に必ず分類。`game_move_prompt` は手番トークン契約＝言語中立のため除外明記）／**層B**=`tests/e2e/leak_probe.py`（実 LLM で全カテゴリ一巡する opt-in ハーネス・**既定は trial ごと新品セッション＝全発話が文脈慣性なしの初手**＝露出の急所。セッション使い回しは #1 以降に言語慣性が乗り再発を過小検出するため慣性観測用 `--sticky` に分離＝codex 7/19 [中] 反映・unittest discover 非対象）／**層C**=人手 E2E は初手順序を変えた窓（起動→idle 放置→初手 vs 即話しかけ）を踏む。
 
 ## 備考
 

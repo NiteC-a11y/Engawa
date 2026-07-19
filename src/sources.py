@@ -17,6 +17,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 import config        # 設定解決（env > engawa.json > 既定）
+import voice         # lang_note＝住人向け narration にも出力言語指示を後置（葉 import・ADR-0022・7/19 の穴）
 
 # ── 源レベルのつまみ（env 上書き可・テスト容易化）─────────────
 ARC_COOLDOWN = int(os.environ.get("ENGAWA_ARC_COOLDOWN", "5"))
@@ -380,7 +381,7 @@ def _suppressor():
 
 def event_narration(text):
     # 箱庭イベント。時刻は入れない（茶々がツール地金=now を漏らす誘発になる。原則#2）
-    return f"[縁側の外]\n{text}\n茶々は縁側からそれを見ている。\n{_suppressor()}"
+    return f"[縁側の外]\n{text}\n茶々は縁側からそれを見ている。\n{_suppressor()}" + voice.lang_note()
 
 
 def ambient_narration(ctx):
@@ -395,14 +396,15 @@ def ambient_narration(ctx):
         parts.append(s)
     return ("[縁側の外]\n" + "\n".join(parts)
             + "\nあなた（茶々）は縁側に座って外を眺めている。\n"
-            + "独り言を漏らすなら、ひとこと。何も言いたくなければ「……」だけでよい。")
+            + "独り言を漏らすなら、ひとこと。何も言いたくなければ「……」だけでよい。"
+            + voice.lang_note())
 
 
 def transition_narration(prev, ctx):
     now = ctx["now"]
     return (f"[縁側の外]\n時刻 {now.strftime('%H:%M')}（{ctx['tod']}）。"
             f"さっきまで「{prev}」やったのが、いま「{ctx['desc']}」に変わってきた。\n"
-            f"茶々は空の移ろいを眺めている。\n{_suppressor()}")
+            f"茶々は空の移ろいを眺めている。\n{_suppressor()}" + voice.lang_note())
 
 
 # ── EventSource 基底 ─────────────────────────────────────────

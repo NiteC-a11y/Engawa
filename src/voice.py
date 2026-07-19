@@ -6,7 +6,9 @@
   機械翻訳しない）＋ `strings.json`（UI シェル文言の上書き・任意）。欠落は継承 `<voice> → <base> → 組み込み既定`。
 - persona の底は `persona.RESIDENT_PERSONA`（ja-osaka）＝**ゼロ設定/バンドル欠損でも現状維持**（起動を止めない）。
 - `loc(key, default)`: UI シェル文言の解決。未訳キーは default（コード内の日本語リテラル）に落ちる＝
-  **部分導入で壊れない**（ADR-0022 の漸進導入）。LLM 注入文言は対象外（`llm_lang` ノブは prompts.py 側）。
+  **部分導入で壊れない**（ADR-0022 の漸進導入）。LLM 注入文言は対象外（言語は `lang_note()` の1行だけ）。
+- `lang_note()`: llm_lang 時だけ LLM 注入末尾に足す出力言語指示1行。prompts と sources の**両ビルダー群が共用**
+  （「住人に届く全注入」の概念単位で漏らさない・7/19 のソロ経路穴の教訓＝tests/test_injection_lang.py が列挙検証）。
 - 置き場は repo 直下 `voices/`（frozen 時は `sys._MEIPASS/voices`＝spec の datas 同梱・views._base_dir と同流）。
   `ENGAWA_VOICES_DIR` で差し替え可（テスト・exe 外の自作 voice 用）。
 - voice は spawn 時に確定＝ライブ切替なし（長命セッションに焼き込む・ADR-0022 決定5）。キャッシュは
@@ -89,6 +91,19 @@ def persona_text():
 def llm_lang():
     """出力言語ノブ（base が日本語以外の時だけ効かせる任意項・prompts.py が参照・ADR-0022 決定3）。"""
     return current()["llm_lang"]
+
+
+_LANG_NAMES = {"en": "English", "ja": "Japanese", "fr": "French", "de": "German",
+               "es": "Spanish", "zh": "Chinese", "ko": "Korean"}   # コードは名前で指示（"Respond in en" を避ける）
+
+
+def lang_note():
+    """llm_lang が立つ時だけ、LLM 注入の末尾に足す出力言語の指示1行（ADR-0022 決定3）。
+    JP 方言（llm_lang=None）では空文字＝注入文は1バイトも変わらない。persona は英語で書かれているだけでは
+    言語を縛らない（80発話の実測で lang note 無し経路はほぼ100%日本語・7/19）＝住人に届く注入は
+    prompts 側（user/room）も sources 側（ambient/arc/transition）もすべてこれを後置する。"""
+    lang = llm_lang()
+    return f"\n(Respond in {_LANG_NAMES.get(lang, lang)}, staying in character.)" if lang else ""
 
 
 def label():
