@@ -36,5 +36,6 @@
 | 0030 | TECH_RULES は固有の実装契約に限定する（決定の言い換えは1行＋ADRポインタ・0016 の refine） | Accepted（実施済み） |
 | 0031 | 部屋内 barge-in＝最新入力が古い generation を無効化・commit は現行 generation のみ（0006 の room 拡張・0015 Inc3） | Accepted（スコープM 実装済み＝tick 駆動チェーンへの被せ／スコープL=入力 worker 化は設計記録のみ・保留） |
 | 0032 | 縁側の小物（props）＝entity+component の台帳・条件 Registry・poll 配信＝資産と状態の分離・narrate で茶々が知る（演出は汎用語彙のみ・renderer 非依存＝canvas シーン化への布石・0019 の子） | Accepted（Inc1+v2 実装済み 2026-07-18＝蚊取り線香＋rise 煙＋「あなたが焚いた」環境行／Inc2=点火イベント（茶々が焚くように見える）は設計のみ） |
+| 0033 | ローカライズは著者主権＋機械強制（現地の人がコード0行で自分の土地の表記と茶々を作りきれる・strings 単一台帳→雛形生成/掃引テスト/bundle lint・culture.json 接続・0022 の refine） | Proposed（起こし済み 2026-07-19・設計→codex レビュー→実装の順） |
 
 形式は Michael Nygard 風（背景 / 決定 / 代替案 / 影響 / 備考）。
