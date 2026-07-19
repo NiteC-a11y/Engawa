@@ -59,6 +59,19 @@
 9. **culture.json の移行順は実需順**: 役名プール（実害露見済み）→ 地名（PLACE_LABEL 素通し 2/40）→ 季節/天気語彙（痛み未観測）。スキーマはフラット JSON から始め、必要になったら構造化。
 10. **台帳欠損時はキー名表示で起動継続**: loc はキー文字列をそのまま返す＝壊れが画面で一目でバレる（静かに誤魔化さない）。起動は止めない（props/voice の欠損スキップと同じ流儀）。
 
+## 設計追補（2026-07-19・codex 設計レビュー10件を全採用＝`codex/review-2026-07-19-adr-0033.md`・EXEMPT の owner/期限のみソロ運用に過剰として不採用）
+
+11. **掃引は二系統に分離**: residue sweep（en の全サーフェスに日本語既定が漏れない）＋ **sovereignty canary**（台帳の全既定を sentinel `__L10N_<key>__` に差し替えた test voice で全サーフェスを駆動し、sentinel の出現で「可視文言が台帳経由」を証明）＝決定1「上書き可能」の直接の機械強制（日本語残存検査だけでは英語直書きを見逃す・[高]①）。
+12. **lint の状態は5値**: `missing / inherited-from-base / same-as-default / translated(overridden) / unknown`。「完訳」= missing=0 かつ unknown=0（same-as-default は要確認表示＝意図した同値を偽陽性にしない・[高]②。既定入り雛形のコピー直後に存在判定で全キー緑になる自己矛盾の解消）。
+13. **locales 正本は専用ローダー**: 読込結果を `ok / missing / malformed / wrong-shape` で保持し debuglog に一度だけ原因を出す（`_read_json` の「全部 {} に畳む」流儀は任意 bundle 用で、正本には使わない・[高]③）。起動継続は決定10のまま。frozen smoke で `locales/strings.json` の存在＋代表キー解決を検証。空文字・非文字列の値は欠損扱い。
+14. **base 継承は一段限定と明文化**（再帰なし・cycle detection を作らない＝YAGNI）。base 不在・自己参照・base がさらに base を持つ場合は lint が警告。strings/persona/llm_lang/culture の優先順位は同一の表（`voice → base → locales/組み込み`）で固定。
+15. **SURFACES にもカテゴリ別の追加検知 canary**（console 出力経路／web シェル／poll item type／ゲーム窓／system・コマンド応答）＝列挙でなく canary が強い、という injection テストの強みを移植。**EXEMPT は surface＋要素＋理由の3項目・テスト内の型付き定数から**（JSON 化は実需が出たら・[低]①）。
+16. **DOM 掃引は状態駆動**: 各ケースに poll payload／操作→期待 selector・属性を持たせ、状態遷移後に掃く（開いて body を一度走査では動的 UI を漏らす）。canvas は描画へ渡すモデル値を純関数で検証。
+17. **culture の役名は安定 ID と display を分離**し、topic/persona 照合は ID で行う（Speaker.name 一人二役事故の culture 先回り）。地名の優先順位は `ENGAWA_PLACE_LABEL`(env) > voice culture > locale 既定。定型ナレはユーザー可視分のみ strings（guest_timeout_leave 等は鍵化済み）。
+18. **loc() の静的照合テスト**: 全 `loc()` キー ∈ 台帳・台帳の未使用キー検査・**placeholder 集合一致**（書式は `str.format` と定める）・動的キーは原則禁止（理由付き EXEMPT）。移行中の `loc(key, default)` 併存は実装増分で廃止期限を切る。
+19. **雛形一致テストは二段**: 意味比較（キー・値集合）＋バイト一致（生成器は UTF-8/改行/indent/キー順を決定的に固定）。`_comment` は翻訳キー集合から除外。
+20. **voices/README は codex 提案の10項目目次を仕様採用**（voice と locale の違い→最短手順→meta→strings 書式→culture→lint 状態と直し方→fallback 説明→実機チェックリスト→よくある失敗→配布と `ENGAWA_VOICES_DIR`。lint 実行例と起動コマンド込み・exit code 定義・`--json` は実需まで不要）。
+
 ## 備考（実装フェーズへ送る細目）
 
 - 実装の増分割り（台帳移行 ~45 コールサイト／console ヘッダ等の残ハードコード鍵化／雛形＋一致テスト／掃引／lint／culture の順や束ね方）。
