@@ -53,12 +53,14 @@
    - `voices/<id>/strings.json`（+ culture.json）… 上書き。
 4. **`loc()` の解決順は3段**: `voices/<id>` → base → **`locales/strings.json`（既定）**＝コード内インライン既定を廃止（同キー別既定のドリフト源を根治）。
 5. 移行コスト: 既存 `voices/en`・PyInstaller datas・`ENGAWA_VOICES_DIR`・bat は無変更（新設ファイルのみ locales/ へ。locales/ の datas 同梱は実装時に spec へ追加）。
+6. **雛形はチェックイン＋一致テスト**: `voices/_template/strings.json` は生成物だが repo にコミット（clone 後すぐコピー可・diff で見える）。「雛形＝台帳から再生成した結果と一致」をユニットテストで張る＝台帳だけ更新して雛形を忘れると赤。生成は `tools/` の小スクリプト。
+7. **掃引テストは SURFACES registry＋DOM 二段**: render callable を明示列挙（injection canary と同型・EXEMPT は理由付き）。web は文字列検査に加えブラウザテストで DOM レベルも掃く（JS が実行時に組むラベルの見逃し防止＝7/19 の実証）。console は文字列レベル。
+8. **lint は CLI・CI 外**: `python tools/voice_lint.py <id>`＝未訳キー・未知キー（typo 検出）・meta 欠落を人間可読の表で報告。開発側の番人は掃引テスト（CI）が担い、lint は著者の道具＝「部分訳でも良い」（graceful fallback）と緊張させない。
+9. **culture.json の移行順は実需順**: 役名プール（実害露見済み）→ 地名（PLACE_LABEL 素通し 2/40）→ 季節/天気語彙（痛み未観測）。スキーマはフラット JSON から始め、必要になったら構造化。
+10. **台帳欠損時はキー名表示で起動継続**: loc はキー文字列をそのまま返す＝壊れが画面で一目でバレる（静かに誤魔化さない）。起動は止めない（props/voice の欠損スキップと同じ流儀）。
 
-## 備考（Open Questions＝設計フェーズで決める・残り）
+## 備考（実装フェーズへ送る細目）
 
-- ~~台帳の置き場・形式~~ → **決定済み（上記 設計決定 1〜4）**。
-- 雛形の生成タイミング: リポジトリにチェックイン（生成物を diff で見える化）か、ツールでオンデマンド生成か。
-- 掃引テストのサーフェス列挙: render callable の registry（injection canary と同型）か。DOM レベルの範囲（web だけか console 出力も文字列レベルで掃くか）。
-- lint の形: `python tools/voice_lint.py <id>` 等の CLI。EXEMPT 台帳の置き場（コードか JSON か）と粒度。
-- culture.json のスキーマと移行順序（役名プール→地名→季節/天気語彙のどれから）。
-- `locales/strings.json` 欠損時のフォールバック（壊れたインストールでも起動を止めない・config と同じ流儀にするか）。
+- 実装の増分割り（台帳移行 ~45 コールサイト／console ヘッダ等の残ハードコード鍵化／雛形＋一致テスト／掃引／lint／culture の順や束ね方）。
+- EXEMPT 台帳の置き場と粒度（掃引テスト内のコード定数か JSON か）。
+- culture.json の具体スキーマ（役名プールのキー名・地名の扱いと `ENGAWA_PLACE_LABEL` との優先関係）。
