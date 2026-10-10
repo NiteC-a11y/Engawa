@@ -61,7 +61,7 @@ session/cancel    → 通知（id無し）。進行ターンを畳む。adr/0006
 ## 4. プロセス管理（Windows）
 
 - **`npx` は `npx.cmd`（バッチ）。** `create_subprocess_exec` は `.cmd` を直接起動できない（WinError 2）。`shutil.which` で実体解決し、`.cmd/.bat` なら **`cmd /c` 経由**で起動する（`resolve_command()`）。
-- **コンソール窓の抑止:** アダプタ起動（`cmd /c npx …`）と `taskkill` の spawn には `creationflags=CREATE_NO_WINDOW`（`0x08000000`・非 Windows は 0）を付け、子プロセスの一瞬のコンソール窓を抑止する（`acp.CREATE_NO_WINDOW`）。※ 起動直後に隅へ飛ぶ「窓のちらつき」はコンソールでなく縁側窓自身（`create_window` を隅座標で生成＋`hidden=True` で作り `loaded`/2秒保険で `_reveal_window`＝隅へ move→show を一度だけ・`engawa_main.run_web`）＝別件。**move→show の順を崩さない**（見えてから飛ぶとフラッシュに戻る）。
+- **コンソール窓の抑止:** アダプタ起動（`cmd /c npx …`）と `taskkill` の spawn には `creationflags=CREATE_NO_WINDOW`（`0x08000000`・非 Windows は 0）を付け、子プロセスの一瞬のコンソール窓を抑止する（`acp.CREATE_NO_WINDOW`）。※ 起動直後に隅へ飛ぶ「窓のちらつき」はコンソールでなく縁側窓自身（`create_window` を隅座標で生成＋`hidden=True` で作り `loaded`/2秒保険で `_reveal_window`＝隅へ move→show を一度だけ・`engawa_main.run_web`）＝別件。**move→show の順を崩さない**（見えてから飛ぶとフラッシュに戻る）。※9月〜の起動前フラッシュはこれでも消えず未解決（環境側の疑い・Backlog）。
 - **クリーンシャットダウン必須:**
   1. タスクを cancel → await で回収（CancelledError を握りつぶす）
   2. Windows は `taskkill /PID <pid> /T /F` で**プロセスツリーごと**終了（`cmd /c` の裏の node を取り残さない）
