@@ -128,11 +128,34 @@ def _ui_config():
     return corner, easy_drag, w, h, font
 
 
+REVEAL_FALLBACK_SEC = 2.0   # loaded が来ない環境でも必ず窓を見せる保険（隠れたまま＝起動しないに見える）
+
+
 def _web_window_kwargs(w, h, easy_drag):
     """pywebview.create_window へ渡す窓オプション（html/js_api 以外）。
-    resizable=True ＝ frameless でもドラッグで広げられる（『窓が狭い』対策）。min_size で潰れ防止。"""
+    resizable=True ＝ frameless でもドラッグで広げられる（『窓が狭い』対策）。min_size で潰れ防止。
+    hidden=True ＝ 素の白窓が先に出て中身が後から描かれる『ぱぱっ』を消す（描画完了後に
+    _reveal_window で見せる）。座標指定だけでは WebView2 の初期描画が透けるので隠す方で塞ぐ。"""
     return dict(width=w, height=h, frameless=True, easy_drag=easy_drag,
-                on_top=True, resizable=True, min_size=(240, 240))
+                on_top=True, resizable=True, min_size=(240, 240), hidden=True)
+
+
+def _reveal_window(window, corner, w, h, screen_size, shown):
+    """hidden で作った窓を『隅へ移してから一度だけ見せる』。戻り: 実際に見せたか。
+    idempotent（shown フラグ）＝loaded イベントと保険タイマーの二重発火で二度 show しない。
+    移動→表示の順が肝（見えてから飛ぶとフラッシュに戻る）。GUI 非依存＝テスト可能。"""
+    if shown.is_set():
+        return False
+    shown.set()
+    try:
+        window.move(*views.corner_xy(*screen_size(), w, h, corner))
+    except Exception:
+        pass
+    try:
+        window.show()
+    except Exception:
+        pass
+    return True
 
 
 def run_web():
@@ -163,12 +186,20 @@ def run_web():
     t = threading.Thread(target=bg, daemon=True)
     t.start()
 
-    def place():                                     # GUI 起動後に画面隅へ
-        try:
-            sw, sh = _screen_size()
-            window.move(*views.corner_xy(sw, sh, web_w, web_h, corner))
-        except Exception:
-            pass
+    shown = threading.Event()
+
+    def reveal():                                    # 描画が済んでから隅で見せる
+        _reveal_window(window, corner, web_w, web_h, _screen_size, shown)
+
+    try:
+        window.events.loaded += reveal               # 中身が描けた瞬間＝いちばん自然な出し時
+    except Exception:
+        pass
+
+    def place():                                     # GUI 起動後。loaded が来なくても必ず見せる保険
+        tm = threading.Timer(REVEAL_FALLBACK_SEC, reveal)   # 隠れたまま二度と出ない、を防ぐ
+        tm.daemon = True                                    # 終了を待たせない
+        tm.start()
 
     webview.start(place)                             # 窓を閉じるまでブロック（メインスレッド）
     view.signal_close()                              # 閉じた → inputs() が None → scheduler 終了

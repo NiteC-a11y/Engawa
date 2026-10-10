@@ -1,6 +1,7 @@
 """views の純関数: collapse_ws（客人の声の1行化）と corner_xy（隅配置の座標）。"""
 import os
 import sys
+import threading
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
@@ -322,6 +323,64 @@ class TestUiWindowWiring(unittest.TestCase):
         self.assertEqual(k["min_size"], (240, 240))   # 潰れ防止
         self.assertEqual((k["width"], k["height"]), (400, 520))   # サイズ passthrough
         self.assertTrue(k["frameless"])               # 枠なし隅窓は維持
+
+    def test_window_is_created_hidden(self):
+        """素の白窓が先に出る『ぱぱっ』対策＝隠して作る。見せるのは _reveal_window の仕事。"""
+        k = self.em._web_window_kwargs(400, 520, easy_drag=False)
+        self.assertTrue(k["hidden"])
+
+
+class TestRevealWindow(unittest.TestCase):
+    """hidden で作った窓を見せる手順（GUI 非依存の純ロジック）。"""
+
+    class FakeWindow:
+        def __init__(self, move_raises=False, show_raises=False):
+            self.moves, self.shows = [], 0
+            self._mr, self._sr = move_raises, show_raises
+
+        def move(self, x, y):
+            if self._mr:
+                raise RuntimeError("move failed")
+            self.moves.append((x, y))
+
+        def show(self):
+            if self._sr:
+                raise RuntimeError("show failed")
+            self.shows += 1
+
+    def setUp(self):
+        import engawa_main
+        self.em = engawa_main
+
+    def _reveal(self, win, shown=None):
+        return self.em._reveal_window(win, "br", 400, 520,
+                                      lambda: (1920, 1080), shown or threading.Event())
+
+    def test_moves_to_corner_then_shows(self):
+        """順番が肝: 見せてから動かすとフラッシュに戻る＝move が show より先。"""
+        win = self.FakeWindow()
+        self.assertTrue(self._reveal(win))
+        self.assertEqual(win.moves, [views.corner_xy(1920, 1080, 400, 520, "br")])
+        self.assertEqual(win.shows, 1)
+
+    def test_second_call_is_noop(self):
+        """loaded イベントと保険タイマーの二重発火で二度 show しない（idempotent）。"""
+        win, shown = self.FakeWindow(), threading.Event()
+        self.assertTrue(self._reveal(win, shown))
+        self.assertFalse(self._reveal(win, shown))    # 2回目は何もせず False
+        self.assertEqual(win.shows, 1)
+        self.assertEqual(len(win.moves), 1)
+
+    def test_show_still_runs_when_move_fails(self):
+        """位置合わせに失敗しても窓は必ず出す（隠れたまま＝起動しないに見えるのが最悪）。"""
+        win = self.FakeWindow(move_raises=True)
+        self.assertTrue(self._reveal(win))
+        self.assertEqual(win.shows, 1)
+
+    def test_show_failure_is_swallowed(self):
+        """窓が既に閉じている等で show が落ちても呼び側（GUI コールバック）は壊さない。"""
+        win = self.FakeWindow(show_raises=True)
+        self.assertTrue(self._reveal(win))            # 例外を投げない
 
     def test_size_and_font_from_config_env(self):
         os.environ["ENGAWA_UI_W"] = "500"
